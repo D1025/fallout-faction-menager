@@ -26,6 +26,66 @@ enum UserRole {
     ADMIN
 }
 
+// DODAJ ENUM
+enum EffectKind {
+  WEAPON   // zwykły efekt/cecha broni
+  CRITICAL // efekt krytyczny
+}
+
+// SZABLON BRONI (zdjęcie jako plik w public/)
+model WeaponTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  imagePath String?  // np. /uploads/weapons/abc.jpg
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profiles  WeaponProfile[]
+}
+
+// PROFIL BRONI (np. "Pistol (12\")", test itd.)
+model WeaponProfile {
+  id       String   @id @default(cuid())
+  weaponId String
+  type     String
+  test     String
+  parts    Int?
+  rating   Int?
+
+  weapon   WeaponTemplate @relation(fields: [weaponId], references: [id])
+  effects  WeaponProfileEffect[]  // połączone efekty (w tym krytyki)
+
+  @@index([weaponId])
+}
+
+// SŁOWNIK EFEKTÓW (admin edytuje)
+model Effect {
+  id          String     @id @default(cuid())
+  name        String
+  kind        EffectKind
+  description String     // szablon np. "Ignite (X): zadaj X kości ...", "Maim"
+  requiresValue Boolean  @default(false) // czy trzeba podać X
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  profiles    WeaponProfileEffect[]
+}
+
+// ŁĄCZNIK PROFIL <-> EFEKT (z opcjonalnym X)
+model WeaponProfileEffect {
+  id         String         @id @default(cuid())
+  profileId  String
+  effectId   String
+  valueInt   Int?           // podstawia X, jeśli requiresValue = true
+
+  profile    WeaponProfile  @relation(fields: [profileId], references: [id])
+  effect     Effect         @relation(fields: [effectId], references: [id])
+
+  @@unique([profileId, effectId]) // ten sam efekt nie powtarza się w profilu
+  @@index([effectId])
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String   @unique   // ⬅️ dodaj
@@ -127,38 +187,6 @@ model UnitTemplateFaction {
 
   @@unique([unitTemplateId, factionId])
   @@index([factionId])
-}
-
-model WeaponTemplate {
-  id          String          @id @default(cuid())
-  name        String
-  imageUrl    String?
-  notes       String?         // opis, cytat itd.
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-
-  profiles    WeaponProfile[]
-}
-
-model WeaponProfile {
-  id             String   @id @default(cuid())
-  weaponId       String
-  /** Przykłady: "Pistol (12”)", "Rifle (24”)" */
-  type           String
-  /** Test np. "4A" */
-  test           String
-  /** Cechy jako tekst np. "Reliable, Piercing (1)" */
-  traits         String?
-  /** Efekt krytyczny np. "Maim", "Ignite (1), Maim" */
-  criticalEffect String?
-  /** Części / Parts (liczba) */
-  parts          Int?
-  /** Rating modyfikatora np. +6, +7 – przechowuj jako liczba (np. 6, 7) */
-  rating         Int?
-
-  weapon         WeaponTemplate @relation(fields: [weaponId], references: [id])
-
-  @@index([weaponId])
 }
 
 model WeaponSet {
