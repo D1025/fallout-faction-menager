@@ -1,0 +1,27 @@
+services:
+  web:
+    build: .
+    ports: ["3000:3000"]
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: "npm run start:docker"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: root_admin
+      POSTGRES_PASSWORD: ${PG_ROOT_PASSWORD}
+      POSTGRES_DB: fallout
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root_admin -d fallout"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  pgdata:

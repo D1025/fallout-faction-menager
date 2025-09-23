@@ -1,0 +1,234 @@
+// prisma/schema.prisma
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * === ENUMY ===
+ */
+enum Availability {
+  GLOBAL
+  RESTRICTED
+}
+
+/**
+ * === MODELE KATALOGOWE ===
+ */
+
+enum UserRole {
+    USER
+    ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String   @unique   // ⬅️ dodaj
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+
+  armies    Army[]
+  shares    ArmyShare[]
+}
+
+
+model Army {
+  id        String   @id @default(cuid())
+  name      String
+  factionId String
+  tier      Int
+  // NEW:
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id])
+
+  faction Faction @relation(fields: [factionId], references: [id])
+  units   UnitInstance[]
+  changes ResourceChange[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shares  ArmyShare[]
+}
+
+enum SharePermission {
+  READ
+  WRITE
+}
+
+model ArmyShare {
+  id        String          @id @default(cuid())
+  armyId    String
+  userId    String
+  perm      SharePermission @default(READ)
+  createdAt DateTime        @default(now())
+
+  army Army @relation(fields: [armyId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([armyId, userId]) // jeden wpis na relację
+}
+
+model Faction {
+  id   String @id @default(cuid())
+  name String @unique
+
+  // relacje
+  limits        FactionLimit[]
+  unitLinks     UnitTemplateFaction[]
+  unitTemplates UnitTemplate[]        @relation("TemplatesPrimaryFaction")
+  armies        Army[]
+}
+
+model FactionLimit {
+  id        String @id @default(cuid())
+  factionId String
+  tag       String // np. "Champion", "Facility"
+  tier1     Int?
+  tier2     Int?
+  tier3     Int?
+
+  faction Faction @relation(fields: [factionId], references: [id])
+
+  @@index([factionId, tag])
+}
+
+model UnitTemplate {
+  id                  String       @id @default(cuid())
+  primaryFactionId    String?
+  name                String
+  roleTag             String? // np. "Champion"
+  baseCost            Int
+  baseStats           Json // {S,P,E,C,I,A,L, heart}
+  allowedWeaponSetIds String[]
+  startPerkIds        String[]
+  armyLimit           Int?
+  availability        Availability
+
+  primaryFaction Faction?              @relation("TemplatesPrimaryFaction", fields: [primaryFactionId], references: [id])
+  factions       UnitTemplateFaction[]
+
+  @@index([primaryFactionId])
+}
+
+model UnitTemplateFaction {
+  id             String  @id @default(cuid())
+  unitTemplateId String
+  factionId      String
+  isBanned       Boolean @default(false)
+
+  unitTemplate UnitTemplate @relation(fields: [unitTemplateId], references: [id])
+  faction      Faction      @relation(fields: [factionId], references: [id])
+
+  @@unique([unitTemplateId, factionId])
+  @@index([factionId])
+}
+
+model WeaponTemplate {
+  id          String          @id @default(cuid())
+  name        String
+  imageUrl    String?
+  notes       String?         // opis, cytat itd.
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  profiles    WeaponProfile[]
+}
+
+model WeaponProfile {
+  id             String   @id @default(cuid())
+  weaponId       String
+  /** Przykłady: "Pistol (12”)", "Rifle (24”)" */
+  type           String
+  /** Test np. "4A" */
+  test           String
+  /** Cechy jako tekst np. "Reliable, Piercing (1)" */
+  traits         String?
+  /** Efekt krytyczny np. "Maim", "Ignite (1), Maim" */
+  criticalEffect String?
+  /** Części / Parts (liczba) */
+  parts          Int?
+  /** Rating modyfikatora np. +6, +7 – przechowuj jako liczba (np. 6, 7) */
+  rating         Int?
+
+  weapon         WeaponTemplate @relation(fields: [weaponId], references: [id])
+
+  @@index([weaponId])
+}
+
+model WeaponSet {
+  id      String   @id @default(cuid())
+  name    String
+  weapons String[] // listy WeaponTemplate.id
+}
+
+model Perk {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  tags        String[]
+}
+
+model UnitInstance {
+  id            String  @id @default(cuid())
+  armyId        String
+  templateId    String
+  weaponSetId   String?
+  wounds        Int     @default(0)
+  present       Boolean @default(true)
+  photoPath     String?
+  chosenPerkIds String[] @default([])
+  upgradesCount Int     @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  army       Army @relation(fields: [armyId], references: [id])
+  weapons    WeaponInstance[]
+  upgrades   StatUpgrade[]
+
+  @@index([armyId])
+  @@index([templateId])
+}
+
+model WeaponInstance {
+  id         String   @id @default(cuid())
+  unitId     String
+  templateId String
+  activeMods String[] @default([])
+
+  unit UnitInstance @relation(fields: [unitId], references: [id])
+
+  @@index([unitId])
+  @@index([templateId])
+}
+
+model StatUpgrade {
+  id      String   @id @default(cuid())
+  unitId  String
+  statKey String // "S","P","E","C","I","A","L","heart"
+  delta   Int
+  at      DateTime @default(now())
+
+  unit UnitInstance @relation(fields: [unitId], references: [id])
+
+  @@index([unitId])
+}
+
+model ResourceChange {
+  id     String   @id @default(cuid())
+  armyId String
+  kind   String // "caps" | "parts" | "reach"
+  delta  Int
+  note   String?
+  at     DateTime @default(now())
+
+  army Army @relation(fields: [armyId], references: [id])
+
+  @@index([armyId, kind, at])
+}
