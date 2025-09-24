@@ -133,8 +133,7 @@ export default function ArmyDashboardClient({
         return groups.grunt;
     }, [filter, units, groups]);
 
-    /* ---------- SPECIAL: identyczny kompakt jak w UnitClient ---------- */
-
+    /* ---------- SPECIAL (kompakt) ---------- */
     function SpecialCompact({
                                 base,
                                 bonus,
@@ -143,14 +142,13 @@ export default function ArmyDashboardClient({
         bonus: UnitListItem['bonus'];
     }) {
         const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', '♥'] as const;
+        const sign = (x: number) => (x > 0 ? `+${x}` : `${x}`);
 
         return (
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {HEAD.map((h) => (
-                        <div key={h} className="px-2 py-1 text-center">
-                            {h === '♥' ? 'HP' : h}
-                        </div>
+                        <div key={h} className="px-2 py-1 text-center">{h === '♥' ? 'HP' : h}</div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
@@ -163,8 +161,14 @@ export default function ArmyDashboardClient({
                         const delta = finalVal - baseVal;
                         return (
                             <div key={h} className="px-2 py-1 text-center tabular-nums">
-                                <span className={delta !== 0 ? 'text-emerald-300 font-semibold' : ''}>{finalVal}</span>
-                                {delta !== 0 && <sup className="ml-0.5 align-super text-[10px] text-emerald-400">+{delta}</sup>}
+                <span className={delta !== 0 ? (delta > 0 ? 'text-emerald-300 font-semibold' : 'text-red-300 font-semibold') : ''}>
+                  {finalVal}
+                </span>
+                                {delta !== 0 && (
+                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>
+                                        {sign(delta)}
+                                    </sup>
+                                )}
                             </div>
                         );
                     })}
@@ -173,7 +177,7 @@ export default function ArmyDashboardClient({
         );
     }
 
-    /* ---------- helper: format X -> valueInt ---------- */
+    /* ---------- helper: X -> valueInt ---------- */
     function formatEffect(name: string, valueInt: number | null): string {
         if (valueInt == null) return name;
         const out = name.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
@@ -181,9 +185,8 @@ export default function ArmyDashboardClient({
         return `${name} (${valueInt})`;
     }
 
-    /* ---------- helper: wylicz finalne pola broni z multi-profilu ---------- */
+    /* ---------- helper: wylicz finalne pola broni ---------- */
     function computeWeaponDisplay(w: UnitListItem['weapons'][number]) {
-        // znajdź OSTATNI wybrany profil, który MA override (ignoruj te z null)
         const rev = [...w.selectedProfileIds].reverse();
         const overId = rev.find((id) => {
             const p = w.profiles.find((pp) => pp.id === id);
@@ -195,7 +198,6 @@ export default function ArmyDashboardClient({
         const type = over?.typeOverride ?? w.baseType;
         const test = over?.testOverride ?? w.baseTest;
 
-        // zsumowane efekty (bazowe + z wybranych profili)
         const agg = new Map<string, UIEffect>();
         for (const e of w.baseEffects) {
             const key = `${e.kind}:${e.name}:${e.valueInt ?? ''}`;
@@ -224,7 +226,6 @@ export default function ArmyDashboardClient({
     }
 
     /* ---------- Wiersz jednostki ---------- */
-
     function UnitRow({
                          u,
                          armyId: aId,
@@ -240,7 +241,7 @@ export default function ArmyDashboardClient({
         const [absent, setAbsent] = useState(!u.present);
 
         async function savePresence(nextPresent: boolean) {
-            setAbsent(!nextPresent); // optimistic
+            setAbsent(!nextPresent);
             await fetch(`/api/units/${u.id}/presence`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -286,18 +287,15 @@ export default function ArmyDashboardClient({
                     </div>
                 </div>
 
-                {/* SPECIAL — kompakt jak w UnitClient */}
                 <div className="mt-2">
                     <SpecialCompact base={u.base} bonus={u.bonus} />
                 </div>
 
-                {/* Broń — mobile <400px wertykalnie, >=400px tabela */}
                 <div className="mt-2 grid gap-2">
                     {u.weapons.map((w, idx) => {
                         const d = computeWeaponDisplay(w);
                         return (
                             <div key={idx} className="rounded-xl border border-zinc-800 bg-zinc-950">
-                                {/* < 400px: pionowy grid */}
                                 <div className="block min-[400px]:hidden">
                                     {([
                                         ['Weapon', w.name],
@@ -315,7 +313,6 @@ export default function ArmyDashboardClient({
                                     ))}
                                 </div>
 
-                                {/* ≥ 400px: tabela */}
                                 <div className="hidden min-[400px]:block overflow-x-auto">
                                     <table className="w-full table-auto text-sm">
                                         <thead>
@@ -343,7 +340,6 @@ export default function ArmyDashboardClient({
                     })}
                 </div>
 
-                {/* Kontrolki */}
                 <div className="mt-2 flex items-center justify-end gap-3">
                     <label
                         className="flex items-center gap-1 text-xs"
@@ -384,13 +380,98 @@ export default function ArmyDashboardClient({
         );
     }
 
-    /* ====== Ikony (proste emoji, zero zależności) ====== */
+    /* ====== Ikony ====== */
     const ICON: Record<Kind, string> = {
         caps: '🪙',
         parts: '🧩',
         exp: '⭐',
         reach: 'REACH',
     };
+
+    /* ====== HOME TURF – stan i metody ====== */
+    type Facility = { id: string; name: string };
+    const [hazard, setHazard] = useState<string>('');
+    const [facilities, setFacilities] = useState<Facility[]>([]);
+    const [ftNew, setFtNew] = useState('');
+    const [savingHazard, setSavingHazard] = useState(false);
+    const [loadingTurf, setLoadingTurf] = useState(false);
+    const [addingFac, setAddingFac] = useState(false);
+    const [deletingFacId, setDeletingFacId] = useState<string | null>(null);
+
+    async function loadTurf() {
+        setLoadingTurf(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/home-turf`, { cache: 'no-store' });
+            if (!res.ok) throw new Error();
+            const data = (await res.json()) as { hazard: string; facilities: Facility[] };
+            setHazard(data.hazard ?? '');
+            setFacilities(data.facilities ?? []);
+        } catch {
+            // noop
+        } finally {
+            setLoadingTurf(false);
+        }
+    }
+
+    // Lazy load po wejściu w zakładkę TURF
+    useEffect(() => {
+        if (tab === 'TURF') void loadTurf();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab]);
+
+    async function saveHazard() {
+        setSavingHazard(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/home-turf`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hazard }),
+            });
+            if (!res.ok) {
+                const t = await res.text().catch(() => '');
+                throw new Error(t || 'fail');
+            }
+        } catch {
+            alert('Nie udało się zapisać hazardu');
+        } finally {
+            setSavingHazard(false);
+        }
+    }
+
+    async function addFacility() {
+        const name = ftNew.trim();
+        if (!name) return;
+        setAddingFac(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/home-turf/facilities`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            });
+            if (!res.ok) throw new Error();
+            const created = (await res.json()) as Facility;
+            setFacilities((f) => [created, ...f]);
+            setFtNew('');
+        } catch {
+            alert('Nie udało się dodać facility');
+        } finally {
+            setAddingFac(false);
+        }
+    }
+
+    async function deleteFacility(id: string) {
+        if (!confirm('Usunąć to facility?')) return;
+        setDeletingFacId(id);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/home-turf/facilities/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error();
+            setFacilities((f) => f.filter((x) => x.id !== id));
+        } catch {
+            alert('Nie udało się usunąć facility');
+        } finally {
+            setDeletingFacId(null);
+        }
+    }
 
     return (
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
@@ -548,17 +629,83 @@ export default function ArmyDashboardClient({
                 </section>
             )}
 
-            {/* TASKS (placeholder – zrobimy później) */}
+            {/* TASKS (placeholder) */}
             {tab === 'TASKS' && (
                 <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-400">
                     (Zadania) – w przygotowaniu…
                 </section>
             )}
 
-            {/* HOME TURF (placeholder) */}
+            {/* TURF */}
             {tab === 'TURF' && (
-                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-400">
-                    (Home Turf) – w przygotowaniu…
+                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="text-sm font-medium">Home Turf</div>
+
+                    {/* Hazard */}
+                    <div className="mt-3">
+                        <label className="text-xs text-zinc-400">Hazard</label>
+                        <textarea
+                            value={hazard}
+                            onChange={(e) => setHazard(e.target.value)}
+                            rows={3}
+                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            placeholder="Opis zagrożeń terenu…"
+                        />
+                        <div className="mt-2 flex items-center gap-2">
+                            <button
+                                onClick={() => void saveHazard()}
+                                disabled={savingHazard}
+                                className="rounded-xl bg-emerald-500 px-3 py-1 text-sm font-semibold text-emerald-950 disabled:opacity-50"
+                            >
+                                {savingHazard ? 'Zapisywanie…' : 'Zapisz hazard'}
+                            </button>
+                            {loadingTurf && <span className="text-xs text-zinc-500">Ładowanie…</span>}
+                        </div>
+                    </div>
+
+                    {/* Facilities */}
+                    <div className="mt-5">
+                        <div className="text-sm font-medium">Facilities</div>
+
+                        <div className="mt-2 flex gap-2">
+                            <input
+                                value={ftNew}
+                                onChange={(e) => setFtNew(e.target.value)}
+                                className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                placeholder="np. Warsztat, Farma, Pancerna Brama…"
+                            />
+                            <button
+                                onClick={() => void addFacility()}
+                                disabled={addingFac}
+                                className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-50"
+                            >
+                                {addingFac ? 'Dodawanie…' : 'Dodaj'}
+                            </button>
+                        </div>
+
+                        <div className="mt-2 grid gap-2">
+                            {facilities.map((f) => (
+                                <div
+                                    key={f.id}
+                                    className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2"
+                                >
+                                    <div className="text-sm">{f.name}</div>
+                                    <button
+                                        onClick={() => void deleteFacility(f.id)}
+                                        disabled={deletingFacId === f.id}
+                                        className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
+                                        aria-label="Usuń facility"
+                                        title="Usuń facility"
+                                    >
+                                        {deletingFacId === f.id ? 'Usuwanie…' : 'Usuń'}
+                                    </button>
+                                </div>
+                            ))}
+                            {facilities.length === 0 && (
+                                <div className="text-sm text-zinc-500">Brak facilities — dodaj pierwsze powyżej.</div>
+                            )}
+                        </div>
+                    </div>
                 </section>
             )}
 

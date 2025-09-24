@@ -30,12 +30,12 @@ type Perk = { id: string; name: string; requiresValue: boolean };
 
 export function UnitClient({
                                unitId,
-                               armyId: _armyId, // nieużywane
+                               armyId: _armyId,
                                name,
                                roleTag,
-                               present: _present, // nieużywane tutaj
-                               wounds: _wounds, // nieużywane tutaj
-                               special, // bazowe
+                               present: _present,
+                               wounds: _wounds,
+                               special,
                                upgrades,
                                weapons,
                            }: {
@@ -67,7 +67,7 @@ export function UnitClient({
         })();
     }, []);
 
-    // ===== Łączne bonusy z ulepszeń =====
+    // ===== Łączne bonusy z ulepszeń (w tym rany – ujemne) =====
     const bonus = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const u of upgrades) {
@@ -112,7 +112,7 @@ export function UnitClient({
         const res = await fetch(`/api/units/${unitId}/upgrades`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ statKey: upStat, delta: upDelta }),
+            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // może być ujemny
         });
         if (!res.ok) {
             alert('Nie udało się dodać ulepszenia');
@@ -150,9 +150,10 @@ export function UnitClient({
         location.reload();
     }
 
-    /* ===== SPECIAL tabela (kompakt jak w starym komponencie) ===== */
+    /* ===== SPECIAL kompakt z poprawnym +/− ===== */
     function renderSpecialCompact() {
         const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', '♥'] as const;
+        const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
         return (
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
@@ -169,8 +170,14 @@ export function UnitClient({
                         const delta = fin - base;
                         return (
                             <div key={h} className="px-2 py-1 text-center tabular-nums">
-                                <span className={delta !== 0 ? 'text-emerald-300 font-semibold' : ''}>{fin}</span>
-                                {delta !== 0 && <sup className="ml-0.5 align-super text-[10px] text-emerald-400">+{delta}</sup>}
+                <span className={delta !== 0 ? (delta > 0 ? 'text-emerald-300 font-semibold' : 'text-red-300 font-semibold') : ''}>
+                  {fin}
+                </span>
+                                {delta !== 0 && (
+                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>
+                                        {sign(delta)}
+                                    </sup>
+                                )}
                             </div>
                         );
                     })}
@@ -179,19 +186,16 @@ export function UnitClient({
         );
     }
 
-    /* ===== helper do efektów: X → valueInt, inaczej dopisek (valueInt) ===== */
+    /* ===== helper do efektów: X → valueInt ===== */
     function formatEffect(name: string, valueInt: number | null): string {
         if (valueInt == null) return name;
-        // najpierw zamień dokładne "(X)" na samą liczbę
         let replaced = name.replace(/\(\s*X\s*\)/g, String(valueInt));
-        // potem każde odrębne X (np. "Ignite X") na liczbę
         replaced = replaced.replace(/\bX\b/g, String(valueInt));
         if (replaced !== name) return replaced;
-        // jeśli nie było X w nazwie – klasyczny sufiks
         return `${name} (${valueInt})`;
     }
 
-    /* ===== Broń — tabela jak w screenie 2, breakpoint 400px ===== */
+    /* ===== Karta broni (bez zmian funkcjonalnych) ===== */
     function WeaponCard({ w }: { w: WeaponUI }) {
         const [selected, setSelected] = useState<string[]>(w.selectedProfileIds);
 
@@ -339,7 +343,6 @@ export function UnitClient({
                             const isSel = r.kind === 'PROFILE' ? selected.includes(r.profileId) : false;
                             return (
                                 <tr key={idx} className="border-t border-zinc-800 align-top bg-zinc-950">
-                                    {/* Type: scalony, jeśli wszystkie takie same */}
                                     {mergedType ? (
                                         idx === 0 ? (
                                             <td className="px-2 py-1 whitespace-normal break-words" rowSpan={rows.length}>
@@ -349,7 +352,6 @@ export function UnitClient({
                                     ) : (
                                         <td className="px-2 py-1 whitespace-normal break-words">{r.type || '—'}</td>
                                     )}
-
                                     <td className="px-2 py-1 whitespace-normal break-words">{r.test ?? '—'}</td>
                                     <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
                                         {r.traits.length ? (
@@ -424,11 +426,12 @@ export function UnitClient({
                 </div>
             </section>
 
-            {/* Ulepszenia */}
+            {/* Ulepszenia (+ Rany) */}
             <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
                 <div className="text-sm font-medium">Ulepszenia</div>
 
-                <div className="mt-2 flex items-center gap-2">
+                {/* Panel dodawania – pozwala na wartości ujemne */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select
                         value={upStat}
                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setUpStat(e.target.value as StatKey)}
@@ -446,18 +449,43 @@ export function UnitClient({
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setUpDelta(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)
                         }
-                        className="w-20 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-right"
+                        className="w-24 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-right"
+                        placeholder="np. -1, 2"
                     />
+                    <div className="flex gap-1">
+                        {[-3, -2, -1, +1, +2, +3].map((d) => (
+                            <button
+                                key={d}
+                                onClick={() => setUpDelta(d)}
+                                className={
+                                    'rounded-lg border px-2 py-1 text-xs ' +
+                                    (d < 0 ? 'border-red-700/60 bg-red-900/20 text-red-300' : 'border-emerald-700/60 bg-emerald-900/20 text-emerald-300')
+                                }
+                                title={d < 0 ? 'Rana (ujemny modyfikator)' : 'Ulepszenie (dodatni)'}
+                            >
+                                {d > 0 ? `+${d}` : d}
+                            </button>
+                        ))}
+                    </div>
                     <button onClick={() => void addUpgrade()} className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950">
                         Dodaj
                     </button>
                 </div>
 
+                <div className="mt-2 text-[11px] text-zinc-500">
+                    * Ujemne modyfikacje (rany) <span className="text-red-400 font-medium">nie wliczają się do ratingu</span>.
+                </div>
+
+                {/* Listy: dodatnie / zerowe */}
                 <div className="mt-3 grid gap-1 text-xs text-zinc-300">
-                    {upgrades.map((u) => (
-                        <div key={u.id} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1">
+                    {upgrades.filter((u) => u.delta >= 0).map((u) => (
+                        <div
+                            key={u.id}
+                            className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1"
+                        >
                             <div>
-                                <span className="font-medium">{u.statKey.toUpperCase()}</span> {u.delta > 0 ? `+${u.delta}` : u.delta}
+                                <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
+                                {u.delta > 0 ? `+${u.delta}` : u.delta}
                                 <span className="text-zinc-500"> • {new Date(u.at).toLocaleString()}</span>
                             </div>
                             <button
@@ -470,7 +498,38 @@ export function UnitClient({
                             </button>
                         </div>
                     ))}
-                    {upgrades.length === 0 && <div className="text-zinc-500">Brak ulepszeń</div>}
+                    {upgrades.filter((u) => u.delta >= 0).length === 0 && (
+                        <div className="text-zinc-500">Brak dodatnich ulepszeń</div>
+                    )}
+                </div>
+
+                {/* Rany (ujemne) */}
+                <div className="mt-4">
+                    <div className="text-sm font-medium text-red-300">Rany (ujemne)</div>
+                    <div className="mt-2 grid gap-1 text-xs">
+                        {upgrades.filter((u) => u.delta < 0).map((u) => (
+                            <div
+                                key={u.id}
+                                className="flex items-center justify-between rounded-lg border border-red-800 bg-red-950/40 px-2 py-1 text-red-200"
+                            >
+                                <div>
+                                    <span className="font-semibold">{u.statKey.toUpperCase()}</span> {u.delta}
+                                    <span className="ml-1 text-red-300/70">• {new Date(u.at).toLocaleString()}</span>
+                                </div>
+                                <button
+                                    onClick={() => void deleteUpgrade(u.id)}
+                                    className="rounded-md border border-red-700/70 px-2 py-0.5 hover:bg-red-900/30"
+                                    aria-label="Usuń ranę"
+                                    title="Cofnij"
+                                >
+                                    Cofnij
+                                </button>
+                            </div>
+                        ))}
+                        {upgrades.filter((u) => u.delta < 0).length === 0 && (
+                            <div className="text-zinc-500">Brak ran</div>
+                        )}
+                    </div>
                 </div>
             </section>
 

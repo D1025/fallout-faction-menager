@@ -22,7 +22,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 include: {
                     unit: true,
                     upgrades: true,
-                    weapons: true, // dociągniemy szablony niżej
+                    weapons: true,
                     selectedOption: true,
                 },
                 orderBy: { createdAt: 'asc' },
@@ -32,14 +32,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
 
     if (!army) return <div className="p-4 text-red-300">Nie znaleziono armii.</div>;
 
-    // Zasady przeliczania ratingu za stat-upy
     const rules = await prisma.factionUpgradeRule.findMany({
         where: { factionId: army.factionId },
         select: { statKey: true, ratingPerPoint: true },
     });
     const ruleByKey = new Map<string, number>(rules.map((r) => [r.statKey, r.ratingPerPoint]));
 
-    // Dociągnij szablony broni dla wszystkich WeaponInstance
     const allTemplateIds = Array.from(new Set(army.units.flatMap((u) => u.weapons.map((w) => w.templateId))));
     const templates =
         allTemplateIds.length > 0
@@ -53,7 +51,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             : [];
     const weaponById = new Map(templates.map((t) => [t.id, t]));
 
-    // >>> WAŻNE: wyprowadź typ z *lokalnej* stałej, nie bezpośrednio z `army`
     const unitsArr = army.units;
     type UnitRow = (typeof unitsArr)[number];
 
@@ -61,7 +58,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         const baseFromTemplate = u.unit.baseRating ?? 0;
         const optionRating = u.selectedOption?.rating ?? 0;
 
-        // rating z profili broni (sumujemy Δ z wybranych profili)
         const weaponDelta = u.weapons.reduce((acc, w) => {
             const t = weaponById.get(w.templateId);
             if (!t) return acc;
@@ -70,8 +66,9 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return acc + sum;
         }, 0);
 
-        // rating z ulepszeń statów (SUM(delta*rule))
+        // ⬇️ TYLKO dodatnie stat-upy liczą się do ratingu
         const statsDelta = u.upgrades.reduce((acc, up) => {
+            if (up.delta <= 0) return acc; // ignoruj rany
             const key = up.statKey === 'hp' ? 'hp' : up.statKey;
             const per = ruleByKey.get(key) ?? 0;
             return acc + up.delta * per;
@@ -80,7 +77,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         return baseFromTemplate + optionRating + weaponDelta + statsDelta;
     }
 
-    // Mapuj jednostki do UI
     const uiUnits = unitsArr.map((u) => {
         const base = {
             hp: u.unit.hp,
@@ -93,14 +89,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             L: u.unit.l,
         };
 
-        // Bonus z ulepszeń (na SPECIAL i HP)
         const bonus: BonusMap = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const up of u.upgrades) {
             if (up.statKey === 'hp') bonus.HP += up.delta;
             else if (isBonusKey(up.statKey)) bonus[up.statKey] += up.delta;
         }
 
-        // >>> BROŃ: bogaty kształt dla dashboardu (base + override)
         const weapons = u.weapons.map((w) => {
             const t = weaponById.get(w.templateId);
 
@@ -127,7 +121,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                         valueInt: e.valueInt,
                     })),
-                    // (opcjonalne) pola pomocnicze do tabeli, jeśli chcesz później je pokazać:
                     parts: ('parts' in p ? (p as unknown as { parts: number | null }).parts : null) ?? null,
                     rating: ('ratingDelta' in p ? (p as unknown as { ratingDelta: number | null }).ratingDelta : null) ?? null,
                 })) ?? [];
@@ -174,7 +167,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     armyName={army.name}
                     tier={army.tier}
                     factionName={army.faction.name}
-                    resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }} // + exp
+                    resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
                     units={uiUnits}
                     rating={armyRating}
                 />

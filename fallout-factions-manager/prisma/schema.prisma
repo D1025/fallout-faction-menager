@@ -59,7 +59,7 @@ model Army {
 
   // << NOWE >>
   activeGoalSetId String?
-  activeGoalSet   FactionGoalSet? @relation(fields: [activeGoalSetId], references: [id])
+  activeGoalSet   FactionGoalSet?    @relation(fields: [activeGoalSetId], references: [id])
   goalProgress    ArmyGoalProgress[]
 
   ownerId String
@@ -71,19 +71,20 @@ model Army {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shares ArmyShare[]
+  shares   ArmyShare[]
+  HomeTurf HomeTurf?
 }
 
 model ArmyGoalProgress {
-  id      String   @id @default(cuid())
-  armyId  String
-  goalId  String
-  ticks   Int      @default(0)   // ile “dongli” odklikanie
+  id        String   @id @default(cuid())
+  armyId    String
+  goalId    String
+  ticks     Int      @default(0) // ile “dongli” odklikanie
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  army Army         @relation(fields: [armyId], references: [id])
-  goal FactionGoal  @relation(fields: [goalId], references: [id])
+  army Army        @relation(fields: [armyId], references: [id])
+  goal FactionGoal @relation(fields: [goalId], references: [id])
 
   @@unique([armyId, goalId])
   @@index([armyId])
@@ -363,6 +364,7 @@ model FactionGoalSet {
 
   faction Faction       @relation(fields: [factionId], references: [id])
   goals   FactionGoal[]
+  Army    Army[]
 
   @@index([factionId, name])
 }
@@ -377,7 +379,8 @@ model FactionGoal {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  set FactionGoalSet @relation(fields: [setId], references: [id])
+  set              FactionGoalSet     @relation(fields: [setId], references: [id])
+  ArmyGoalProgress ArmyGoalProgress[]
 
   @@index([setId, tier, order])
 }
@@ -394,4 +397,25 @@ model FactionUpgradeRule {
 
   @@unique([factionId, statKey])
   @@index([factionId])
+}
+
+model HomeTurf {
+  id        String   @id @default(cuid())
+  armyId    String   @unique
+  hazard    String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  army       Army           @relation(fields: [armyId], references: [id])
+  facilities HomeFacility[]
+}
+
+model HomeFacility {
+  id     String @id @default(cuid())
+  turfId String
+  name   String
+
+  turf HomeTurf @relation(fields: [turfId], references: [id])
+
+  @@index([turfId])
 }
