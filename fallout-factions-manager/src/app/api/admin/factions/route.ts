@@ -2,14 +2,22 @@ import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { FactionUpsertSchema } from '@/lib/validation/faction';
 
+export const runtime = 'nodejs';
+
 export async function GET() {
-    const list = await prisma.faction.findMany({ include: { limits: true }, orderBy: { name: 'asc' } });
+    // Zostawiamy jak było: frakcje + limity (UI admin pobiera goals/upgrades bezpośrednio z serwera)
+    const list = await prisma.faction.findMany({
+        include: { limits: true },
+        orderBy: { name: 'asc' },
+    });
     return new Response(JSON.stringify(list), { status: 200 });
 }
 
 export async function POST(req: Request) {
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    if (session?.user.role !== 'ADMIN') {
+        return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    }
 
     const body = await req.json().catch(() => null);
     const parsed = FactionUpsertSchema.safeParse(body);
@@ -20,6 +28,7 @@ export async function POST(req: Request) {
 
     const created = await prisma.$transaction(async (tx) => {
         const f = await tx.faction.create({ data: { name } });
+
         if (limits.length) {
             await tx.factionLimit.createMany({
                 data: limits.map((l) => ({
@@ -31,7 +40,11 @@ export async function POST(req: Request) {
                 })),
             });
         }
-        return tx.faction.findUnique({ where: { id: f.id }, include: { limits: true } });
+
+        return tx.faction.findUnique({
+            where: { id: f.id },
+            include: { limits: true },
+        });
     });
 
     return new Response(JSON.stringify(created), { status: 201 });

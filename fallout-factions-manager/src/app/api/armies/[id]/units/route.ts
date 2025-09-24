@@ -11,10 +11,7 @@ const CreateUnitSchema = z.object({
 });
 
 async function userHasWriteAccess(armyId: string, userId: string): Promise<boolean> {
-    const army = await prisma.army.findUnique({
-        where: { id: armyId },
-        select: { ownerId: true },
-    });
+    const army = await prisma.army.findUnique({ where: { id: armyId }, select: { ownerId: true } });
     if (!army) return false;
     if (army.ownerId === userId) return true;
 
@@ -31,6 +28,7 @@ async function userHasWriteAccess(armyId: string, userId: string): Promise<boole
  * - utwórz UnitInstance (selectedOptionId = optionId)
  * - na podstawie option.weapon1Id / option.weapon2Id dodaj 1–2 WeaponInstance
  */
+
 export async function POST(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
     const armyId = id;
@@ -46,19 +44,12 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     }
     const { unitTemplateId, optionId } = parsed.data;
 
-    // uprawnienia
     const can = await userHasWriteAccess(armyId, userId);
     if (!can) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
-    // pobierz opcję i zweryfikuj przynależność do template
     const option = await prisma.unitWeaponOption.findUnique({
         where: { id: optionId },
-        select: {
-            id: true,
-            unitId: true,
-            weapon1Id: true,
-            weapon2Id: true,
-        },
+        select: { id: true, unitId: true, weapon1Id: true, weapon2Id: true },
     });
 
     if (!option || option.unitId !== unitTemplateId) {
@@ -68,7 +59,6 @@ export async function POST(req: Request, ctx: AsyncCtx) {
         );
     }
 
-    // przygotuj listę broni (1–2 szt.)
     const weaponIds = [option.weapon1Id, option.weapon2Id].filter(
         (x): x is string => typeof x === 'string' && x.length > 0,
     );
@@ -77,7 +67,6 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-        // utwórz UnitInstance
         const unit = await tx.unitInstance.create({
             data: {
                 armyId,
@@ -91,13 +80,8 @@ export async function POST(req: Request, ctx: AsyncCtx) {
             select: { id: true },
         });
 
-        // dodaj WeaponInstance dla każdej broni z opcji
         await tx.weaponInstance.createMany({
-            data: weaponIds.map((wid) => ({
-                unitId: unit.id,
-                templateId: wid,
-                activeMods: [],
-            })),
+            data: weaponIds.map((wid) => ({ unitId: unit.id, templateId: wid, activeMods: [] })),
         });
 
         return tx.unitInstance.findUnique({

@@ -5,13 +5,13 @@ import Link from 'next/link';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
+import CreateArmySheet from '@/components/home/CreateArmySheet';
 
 export default async function Home() {
   const session = await auth();
   const userId = session?.user?.id;
   const isAdmin = session?.user.role === 'ADMIN';
 
-  // Gdyby middleware był wyłączony i user nie był zalogowany:
   if (!userId) {
     return (
         <div className="min-h-dvh grid place-items-center bg-zinc-950 text-zinc-100 p-4">
@@ -31,13 +31,19 @@ export default async function Home() {
 
   let myArmies:
       | { id: string; name: string; tier: number }[]
-      | []
-      , shared:
+      | [] = [];
+  let shared:
       | { id: string; perm: 'READ' | 'WRITE'; army: { id: string; name: string; tier: number } }[]
       | [] = [];
+  let factions: {
+    id: string;
+    name: string;
+    limits: { tag: string; tier1: number | null; tier2: number | null; tier3: number | null }[];
+    goalSets: { id: string; name: string; goals: { tier: 1 | 2 | 3; description: string; target: number; order: number }[] }[];
+  }[] = [];
 
   try {
-    [myArmies, shared] = await Promise.all([
+    const [armies, sharedRows, factionRows] = await Promise.all([
       prisma.army.findMany({
         where: { ownerId: userId },
         orderBy: { updatedAt: 'desc' },
@@ -48,10 +54,41 @@ export default async function Home() {
         include: { army: { select: { id: true, name: true, tier: true } } },
         orderBy: { createdAt: 'desc' },
       }),
+      prisma.faction.findMany({
+        include: {
+          limits: true,
+          goalSets: { include: { goals: true }, orderBy: { name: 'asc' } },
+        },
+        orderBy: { name: 'asc' },
+      }),
     ]);
+
+    myArmies = armies;
+    shared = sharedRows;
+    factions = factionRows.map(f => ({
+      id: f.id,
+      name: f.name,
+      limits: f.limits.map(l => ({
+        tag: l.tag,
+        tier1: l.tier1 ?? null,
+        tier2: l.tier2 ?? null,
+        tier3: l.tier3 ?? null,
+      })),
+      goalSets: f.goalSets.map(s => ({
+        id: s.id,
+        name: s.name,
+        goals: s.goals.map(g => ({
+          tier: (g.tier as 1 | 2 | 3),
+          description: g.description,
+          target: g.target,
+          order: g.order,
+        })),
+      })),
+    }));
   } catch {
     myArmies = [];
     shared = [];
+    factions = [];
   }
 
   return (
@@ -61,10 +98,7 @@ export default async function Home() {
             <div className="text-base font-semibold">Twoje drużyny</div>
             <div className="flex items-center gap-2">
               {isAdmin && (
-                  <Link
-                      href="/admin"
-                      className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
-                  >
+                  <Link href="/admin" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
                     Admin
                   </Link>
               )}
@@ -74,22 +108,16 @@ export default async function Home() {
         </header>
 
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
-          {/* Moje drużyny */}
           <section className="mt-3">
             <div className="mb-2 flex items-center justify-between">
               <div className="text-sm font-medium">Moje drużyny</div>
-              <Link
-                  href="/army/new"
-                  className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 active:scale-[0.99]"
-              >
-                Dodaj nową
-              </Link>
+              <CreateArmySheet factions={factions} />
             </div>
             <div className="grid gap-2">
               {myArmies.map((a) => (
                   <Link
                       key={a.id}
-                      href={`/army/${a.id}`}
+                      href={`/army/${a.id}`}   // <-- tu zmiana (było /unit)
                       className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]"
                   >
                     <div className="flex items-center justify-between">
@@ -107,14 +135,13 @@ export default async function Home() {
             </div>
           </section>
 
-          {/* Udostępnione dla mnie */}
           <section className="mt-5">
             <div className="mb-2 text-sm font-medium">Udostępnione dla mnie</div>
             <div className="grid gap-2">
               {shared.map((s) => (
                   <Link
                       key={s.id}
-                      href={`/army/${s.army.id}`}
+                      href={`/army/${s.army.id}`}  // <-- tu zmiana (było /unit)
                       className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]"
                   >
                     <div className="flex items-center justify-between">

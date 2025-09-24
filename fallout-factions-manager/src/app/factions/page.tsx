@@ -1,4 +1,4 @@
-// app/factions/page.tsx  (lub: src/app/factions/page.tsx)
+// src/app/factions/page.tsx
 export const dynamic = 'force-dynamic'; // nie generuj w czasie builda
 export const revalidate = 0;
 
@@ -24,9 +24,11 @@ export default async function Page() {
                 tier2: l.tier2 ?? null,
                 tier3: l.tier3 ?? null,
             })),
+            // wymagane przez typ Faction w FactionsClient:
+            goalSets: [],
+            upgradeRules: [],
         }));
     } catch {
-        // opcjonalnie: możesz zalogować do Sentry/console na serwerze
         factions = [];
     }
 

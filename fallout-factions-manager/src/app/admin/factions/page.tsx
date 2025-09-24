@@ -1,32 +1,43 @@
-// src/app/admin/factions/page.tsx
+// app/admin/factions/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import Link from "next/link";
-import { prisma } from "@/server/prisma";
-import { AdminFactionsClient } from "@/components/AdminFactionsClient";
+import { prisma } from '@/server/prisma';
+import { FactionsClient, type UIFaction } from '@/components/FactionsClient';
 
-export default async function FactionsAdminPage() {
-    // Pobierz frakcje z limitami (alfabetycznie)
-    const factions = await prisma.faction.findMany({
-        include: { limits: true },
-        orderBy: { name: "asc" },
-    });
+export default async function Page() {
+    let factions: UIFaction[] = [];
+    try {
+        const rows = await prisma.faction.findMany({
+            include: {
+                limits: true,
+                goalSets: { include: { goals: true }, orderBy: { name: 'asc' } },
+                upgradeRules: true,
+            },
+            orderBy: { name: 'asc' },
+        });
 
-    return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <div className="text-base font-semibold">Frakcje (admin)</div>
-                    <Link href="/admin" className="text-sm text-zinc-300">
-                        ← Wróć
-                    </Link>
-                </div>
-            </header>
+        factions = rows.map((f) => ({
+            id: f.id,
+            name: f.name,
+            limits: f.limits.map((l) => ({
+                tag: l.tag,
+                tier1: l.tier1 ?? null,
+                tier2: l.tier2 ?? null,
+                tier3: l.tier3 ?? null,
+            })),
+            goalSets: f.goalSets.map((gs) => ({
+                id: gs.id,
+                name: gs.name,
+                goals: gs.goals
+                    .sort((a, b) => a.tier - b.tier || a.order - b.order)
+                    .map((g) => ({ id: g.id, tier: g.tier as 1 | 2 | 3, description: g.description, target: g.target, order: g.order })),
+            })),
+            upgradeRules: f.upgradeRules.map((r) => ({ statKey: r.statKey, ratingPerPoint: r.ratingPerPoint })),
+        }));
+    } catch {
+        factions = [];
+    }
 
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <AdminFactionsClient initial={factions} />
-            </main>
-        </div>
-    );
+    return <FactionsClient initialFactions={factions} />;
 }

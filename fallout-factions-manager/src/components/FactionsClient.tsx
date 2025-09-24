@@ -1,71 +1,191 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 /* ===== Types ===== */
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null };
-export type Faction = { id: string; name: string; limits: FactionLimit[] };
-type CreateArmyPayload = { name: string; factionId: string; tier: 1 | 2 | 3 };
+export type Goal = { id?: string; tier: 1 | 2 | 3; description: string; target: number; order: number };
+export type GoalSet = { id?: string; name: string; goals: Goal[] };
+export type UpgradeRule = { statKey: string; ratingPerPoint: number };
 
-/* ===== Helper API (lokalnie w pliku, bez importów) ===== */
-async function createArmy(payload: CreateArmyPayload): Promise<{ id: string }> {
+export type Faction = {
+    id: string;
+    name: string;
+    limits: FactionLimit[];
+    goalSets: GoalSet[];
+    upgradeRules: UpgradeRule[];
+};
+
+export type UIFaction = Faction;
+
+/* ===== Utils ===== */
+function getErrorMessage(err: unknown): string {
+    if (err instanceof Error) return err.message;
     try {
-        const res = await fetch('/api/armies', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        if (res.ok) return (await res.json()) as { id: string };
-        // fallback na wypadek 4xx/5xx (żeby UI demo działał)
-        return { id: `mock_${Math.random().toString(36).slice(2)}` };
+        return JSON.stringify(err);
     } catch {
-        return { id: `mock_${Math.random().toString(36).slice(2)}` };
+        return String(err);
     }
 }
 
+/* ===== API helpers ===== */
+async function postFaction(payload: { name: string; limits: FactionLimit[] }): Promise<{ id: string; name: string }> {
+    const res = await fetch(`/api/admin/factions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+}
+async function patchFaction(id: string, payload: { name: string; limits: FactionLimit[] }): Promise<void> {
+    const res = await fetch(`/api/admin/factions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+async function deleteFaction(id: string): Promise<void> {
+    const res = await fetch(`/api/admin/factions/${id}`, { method: 'DELETE' });
+    if (res.status === 204) return;
+    if (!res.ok) throw new Error(await res.text());
+}
+async function putGoals(factionId: string, sets: GoalSet[]): Promise<void> {
+    const res = await fetch(`/api/admin/factions/${factionId}/goals`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sets }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+async function putUpgrades(factionId: string, rules: UpgradeRule[]): Promise<void> {
+    const res = await fetch(`/api/admin/factions/${factionId}/upgrades`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+}
+
 /* ===== Komponent ===== */
-export function FactionsClient({ initialFactions }: { initialFactions: Faction[] }) {
-    const router = useRouter();
+export function FactionsClient({ initialFactions }: { initialFactions: UIFaction[] }) {
     const [q, setQ] = useState('');
-    const [selected, setSelected] = useState<Faction | null>(null);
-    const [creating, setCreating] = useState(false);
+    const [factions, setFactions] = useState<UIFaction[]>(initialFactions);
+    const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
+    const [savingAll, setSavingAll] = useState(false);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
-        if (!s) return initialFactions;
-        return initialFactions.filter((f) => f.name.toLowerCase().includes(s));
-    }, [q, initialFactions]);
+        if (!s) return factions;
+        return factions.filter((f) => f.name.toLowerCase().includes(s));
+    }, [q, factions]);
+
+    function openCreate() {
+        const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '', target: 0, order })),
+        );
+        const blank: UIFaction = {
+            id: 'NEW',
+            name: '',
+            limits: [],
+            goalSets: [{ name: 'Zestaw 1', goals: emptyGoals }],
+            upgradeRules: [
+                { statKey: 'hp', ratingPerPoint: 0 },
+                { statKey: 'S', ratingPerPoint: 0 },
+                { statKey: 'P', ratingPerPoint: 0 },
+                { statKey: 'E', ratingPerPoint: 0 },
+                { statKey: 'C', ratingPerPoint: 0 },
+                { statKey: 'I', ratingPerPoint: 0 },
+                { statKey: 'A', ratingPerPoint: 0 },
+                { statKey: 'L', ratingPerPoint: 0 },
+            ],
+        };
+        setEditor({ mode: 'create', data: blank });
+    }
+
+    function openEdit(f: UIFaction) {
+        const deep = JSON.parse(JSON.stringify(f)) as UIFaction;
+        setEditor({ mode: 'edit', data: deep });
+    }
+
+    function upsertLocalFaction(updated: UIFaction) {
+        setFactions((prev) => {
+            const exists = prev.some((f) => f.id === updated.id);
+            return exists ? prev.map((f) => (f.id === updated.id ? updated : f)) : [updated, ...prev];
+        });
+    }
+
+    function removeLocalFaction(id: string) {
+        setFactions((prev) => prev.filter((f) => f.id !== id));
+    }
 
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <Header title="Wybierz frakcję" />
+            <Header
+                title="Frakcje – limity, zadania, ulepszenia"
+                right={
+                    <button
+                        onClick={openCreate}
+                        className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+                    >
+                        + Dodaj frakcję
+                    </button>
+                }
+            />
 
             <main className="mx-auto w-full max-w-screen-sm px-3 pb-24">
                 <Search value={q} onChange={setQ} placeholder="Szukaj frakcji" />
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                     {filtered.map((f) => (
-                        <FactionCard
-                            key={f.id}
-                            faction={f}
-                            onChoose={() => {
-                                setSelected(f);
-                                setCreating(true);
-                            }}
-                        />
+                        <FactionCard key={f.id} faction={f} onOpen={() => openEdit(f)} />
                     ))}
                 </div>
             </main>
 
-            {creating && selected && (
-                <CreateArmySheet
-                    faction={selected}
-                    onClose={() => setCreating(false)}
-                    onSubmit={async (_payload) => {
-                        const { id } = await createArmy(_payload);
-                        setCreating(false);
-                        router.push(`/army/${id}`);
+            {editor && (
+                <EditorSheet
+                    mode={editor.mode}
+                    initial={editor.data}
+                    onCancel={() => setEditor(null)}
+                    onSaved={(saved) => {
+                        upsertLocalFaction(saved);
+                        setEditor(null);
+                    }}
+                    onDeleted={(id) => {
+                        removeLocalFaction(id);
+                        setEditor(null);
+                    }}
+                    onDeleteRequest={async (id) => {
+                        if (!confirm('Na pewno usunąć frakcję? Operacja nieodwracalna.')) return;
+                        await deleteFaction(id);
+                    }}
+                    saving={savingAll}
+                    onSaveAll={async (draft) => {
+                        setSavingAll(true);
+                        try {
+                            if (editor.mode === 'create') {
+                                const created = await postFaction({
+                                    name: draft.name.trim(),
+                                    limits: draft.limits,
+                                });
+                                const newId = created.id;
+                                await putGoals(newId, draft.goalSets);
+                                await putUpgrades(newId, draft.upgradeRules);
+                                return { ...draft, id: newId, name: created.name };
+                            } else {
+                                await patchFaction(draft.id, {
+                                    name: draft.name.trim(),
+                                    limits: draft.limits,
+                                });
+                                await putGoals(draft.id, draft.goalSets);
+                                await putUpgrades(draft.id, draft.upgradeRules);
+                                return draft;
+                            }
+                        } finally {
+                            setSavingAll(false);
+                        }
                     }}
                 />
             )}
@@ -73,13 +193,14 @@ export function FactionsClient({ initialFactions }: { initialFactions: Faction[]
     );
 }
 
-/* ========== UI Building Blocks (mobile-first) ========== */
-function Header({ title }: { title: string }) {
+/* ========== UI ========== */
+
+function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
         <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
             <div className="mx-auto flex h-14 w-full max-w-screen-sm items-center justify-between px-3">
                 <div className="text-lg font-semibold tracking-wide">{title}</div>
-                <div className="text-xs text-zinc-400">mobile-first</div>
+                <div className="text-xs text-zinc-400">{right}</div>
             </div>
         </header>
     );
@@ -114,10 +235,10 @@ function Search({
     );
 }
 
-function FactionCard({ faction, onChoose }: { faction: Faction; onChoose: () => void }) {
+function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => void }) {
     return (
         <button
-            onClick={onChoose}
+            onClick={onOpen}
             className="group flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left active:scale-[0.99]"
         >
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-800 text-zinc-300">
@@ -127,7 +248,7 @@ function FactionCard({ faction, onChoose }: { faction: Faction; onChoose: () => 
                 <div className="flex items-center justify-between">
                     <div className="text-base font-semibold leading-tight">{faction.name}</div>
                     <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
-            tap, aby wybrać
+            edytuj
           </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -149,94 +270,285 @@ function LimitBadge({ tag, values }: { tag: string; values: (number | null | und
     );
 }
 
-function CreateArmySheet({
-                             faction,
-                             onClose,
-                             onSubmit,
-                         }: {
-    faction: Faction;
-    onClose: () => void;
-    onSubmit: (payload: CreateArmyPayload) => void | Promise<void>;
+/* ====== EDITOR SHEET ====== */
+
+function EditorSheet({
+                         mode,
+                         initial,
+                         onCancel,
+                         onSaved,
+                         onSaveAll,
+                         onDeleted,
+                         onDeleteRequest,
+                         saving,
+                     }: {
+    mode: 'create' | 'edit';
+    initial: UIFaction;
+    onCancel: () => void;
+    onSaved: (saved: UIFaction) => void;
+    onSaveAll: (draft: UIFaction) => Promise<UIFaction>;
+    onDeleted: (id: string) => void;
+    onDeleteRequest: (id: string) => Promise<void>;
+    saving: boolean;
 }) {
-    const [tier, setTier] = useState<1 | 2 | 3>(1);
-    const [name, setName] = useState('');
-    const canSubmit = name.trim().length >= 3;
+    const [draft, setDraft] = useState<UIFaction>(initial);
+
+    function handleCancel() {
+        setDraft(initial);
+        onCancel();
+    }
+
+    function setName(name: string) {
+        setDraft((d) => ({ ...d, name }));
+    }
+
+    /* === LIMITY === */
+    function addLimit() {
+        setDraft((d) => ({ ...d, limits: [...d.limits, { tag: '', tier1: null, tier2: null, tier3: null }] }));
+    }
+    function removeLimit(idx: number) {
+        setDraft((d) => ({ ...d, limits: d.limits.filter((_, i) => i !== idx) }));
+    }
+    function setLimit(idx: number, field: keyof FactionLimit, value: string) {
+        setDraft((d) => ({
+            ...d,
+            limits: d.limits.map((l, i) =>
+                i === idx
+                    ? {
+                        ...l,
+                        [field]:
+                            field === 'tag'
+                                ? value
+                                : value.trim() === ''
+                                    ? null
+                                    : Number.isFinite(Number(value))
+                                        ? Number(value)
+                                        : l[field],
+                    }
+                    : l,
+            ),
+        }));
+    }
+
+    /* === ZESTAWY ZADAŃ === */
+    function addGoalSet() {
+        const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '', target: 0, order })),
+        );
+        setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Zestaw ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
+    }
+    function removeGoalSet(idx: number) {
+        setDraft((d) => ({ ...d, goalSets: d.goalSets.filter((_, i) => i !== idx) }));
+    }
+    function setGoalSetName(idx: number, name: string) {
+        setDraft((d) => ({ ...d, goalSets: d.goalSets.map((s, i) => (i === idx ? { ...s, name } : s)) }));
+    }
+    function setGoal(setIdx: number, tier: 1 | 2 | 3, order: number, field: 'description' | 'target', value: string) {
+        setDraft((d) => ({
+            ...d,
+            goalSets: d.goalSets.map((gs, i) => {
+                if (i !== setIdx) return gs;
+                const goals = gs.goals.map((g) => (g.tier === tier && g.order === order ? { ...g, [field]: field === 'target' ? Number(value) || 0 : value } : g));
+                return { ...gs, goals };
+            }),
+        }));
+    }
+
+    /* === UPGRADE RULES === */
+    const statKeys = ['hp', 'S', 'P', 'E', 'C', 'I', 'A', 'L'] as const;
+    function setRule(statKey: string, ratingPerPoint: number) {
+        setDraft((d) => {
+            const exists = d.upgradeRules.find((r) => r.statKey === statKey);
+            const rules = exists
+                ? d.upgradeRules.map((r) => (r.statKey === statKey ? { ...r, ratingPerPoint } : r))
+                : [...d.upgradeRules, { statKey, ratingPerPoint }];
+            return { ...d, upgradeRules: rules };
+        });
+    }
+
+    async function handleSaveAll() {
+        if (!draft.name.trim()) {
+            alert('Podaj nazwę frakcji.');
+            return;
+        }
+        try {
+            const saved = await onSaveAll(draft);
+            onSaved(saved);
+        } catch (e: unknown) {
+            alert('Błąd zapisu: ' + getErrorMessage(e));
+        }
+    }
 
     return (
         <div className="fixed inset-0 z-20">
-            {/* backdrop */}
-            <button aria-label="Zamknij" onClick={onClose} className="absolute inset-0 bg-black/60" />
+            <button aria-label="Zamknij" onClick={handleCancel} className="absolute inset-0 bg-black/60" />
 
-            {/* sheet */}
             <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
                 <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
-                <div className="mb-2 text-sm text-zinc-400">Tworzysz armię dla</div>
-                <div className="text-lg font-semibold">{faction.name}</div>
+                <div className="mb-2 text-sm text-zinc-400">{mode === 'create' ? 'Nowa frakcja' : 'Edycja frakcji'}</div>
 
-                <div className="mt-4 grid gap-3">
-                    <label className="grid gap-1">
-                        <span className="text-xs text-zinc-400">Nazwa armii</span>
-                        <input
-                            autoFocus
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="np. Oddział Alfa"
-                            className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-zinc-500"
-                        />
-                    </label>
-
-                    <div className="grid gap-2">
-                        <span className="text-xs text-zinc-400">Tier</span>
-                        <div className="flex gap-2">
-                            {[1, 2, 3].map((t) => (
-                                <TierPill key={t} active={tier === t} onClick={() => setTier(t as 1 | 2 | 3)}>
-                                    Tier {t}
-                                </TierPill>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <span className="text-xs text-zinc-400">Wybrane limity (Tier {tier})</span>
-                        <div className="flex flex-wrap gap-1.5">
-                            {faction.limits.map((l) => (
-                                <LimitBadge key={l.tag} tag={l.tag} values={[tier === 1 ? l.tier1 : tier === 2 ? l.tier2 : l.tier3]} />
-                            ))}
-                        </div>
-                    </div>
+                {/* NAZWA + USUŃ (tylko edit) */}
+                <div className="flex items-center gap-2">
+                    <input
+                        value={draft.name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Nazwa frakcji"
+                        className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    />
+                    {mode === 'edit' && (
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await onDeleteRequest(draft.id);
+                                    onDeleted(draft.id);
+                                } catch (e: unknown) {
+                                    alert('Nie udało się usunąć: ' + getErrorMessage(e));
+                                }
+                            }}
+                            className="rounded-xl border border-red-700 bg-red-900/30 px-3 py-2 text-sm text-red-200"
+                        >
+                            Usuń
+                        </button>
+                    )}
                 </div>
 
+                {/* LIMITY */}
+                <section className="mt-4">
+                    <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium">Limity</div>
+                        <button onClick={addLimit} className="text-xs text-emerald-300">Dodaj limit</button>
+                    </div>
+                    <div className="mt-2 grid gap-2">
+                        {draft.limits.map((l, idx) => (
+                            <div key={idx} className="grid grid-cols-7 items-center gap-2 rounded-xl border border-zinc-800 p-2">
+                                <input
+                                    value={l.tag}
+                                    onChange={(e) => setLimit(idx, 'tag', e.target.value)}
+                                    placeholder="Tag (np. LEADER)"
+                                    className="col-span-3 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                />
+                                <input
+                                    value={l.tier1 ?? ''}
+                                    inputMode="numeric"
+                                    placeholder="T1"
+                                    onChange={(e) => setLimit(idx, 'tier1', e.target.value)}
+                                    className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                />
+                                <input
+                                    value={l.tier2 ?? ''}
+                                    inputMode="numeric"
+                                    placeholder="T2"
+                                    onChange={(e) => setLimit(idx, 'tier2', e.target.value)}
+                                    className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                />
+                                <input
+                                    value={l.tier3 ?? ''}
+                                    inputMode="numeric"
+                                    placeholder="T3"
+                                    onChange={(e) => setLimit(idx, 'tier3', e.target.value)}
+                                    className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                />
+                                <button onClick={() => removeLimit(idx)} className="text-xs text-red-300">Usuń</button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* ZESTAWY ZADAŃ */}
+                <section className="mt-6">
+                    <div className="flex items-center justify-between">
+                        <div className="text-sm font-medium">Zestawy zadań</div>
+                        <button onClick={addGoalSet} className="text-xs text-emerald-300">Dodaj zestaw</button>
+                    </div>
+
+                    {draft.goalSets.map((gs, setIdx) => (
+                        <div key={setIdx} className="mt-2 rounded-xl border border-zinc-800 p-3">
+                            <div className="flex items-center justify-between">
+                                <input
+                                    value={gs.name}
+                                    onChange={(e) => setGoalSetName(setIdx, e.target.value)}
+                                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                />
+                                <button onClick={() => removeGoalSet(setIdx)} className="text-xs text-red-300">Usuń</button>
+                            </div>
+
+                            {[1, 2, 3].map((t) => (
+                                <div key={t} className="mt-3">
+                                    <div className="text-xs font-semibold text-zinc-300">TIER {t}</div>
+                                    {[0, 1, 2].map((order) => {
+                                        const g =
+                                            gs.goals.find((x) => x.tier === t && x.order === order) || ({
+                                                tier: t as 1 | 2 | 3,
+                                                description: '',
+                                                target: 0,
+                                                order,
+                                            } as Goal);
+                                        return (
+                                            <div key={order} className="mt-1 grid grid-cols-12 gap-2">
+                                                <input
+                                                    placeholder={`Opis #${order + 1}`}
+                                                    value={g.description}
+                                                    onChange={(e) => setGoal(setIdx, t as 1 | 2 | 3, order, 'description', e.target.value)}
+                                                    className="col-span-9 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                />
+                                                <input
+                                                    placeholder="Target"
+                                                    inputMode="numeric"
+                                                    value={g.target}
+                                                    onChange={(e) => setGoal(setIdx, t as 1 | 2 | 3, order, 'target', e.target.value)}
+                                                    className="col-span-3 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+                    ))}
+                </section>
+
+                {/* UPGRADE RULES */}
+                <section className="mt-6">
+                    <div className="text-sm font-medium">Tabela ulepszeń (rating za +1)</div>
+                    <div className="mt-2 grid grid-cols-4 gap-2">
+                        {statKeys.map((k) => {
+                            const v = draft.upgradeRules.find((r) => r.statKey === k)?.ratingPerPoint ?? 0;
+                            return (
+                                <div key={k}>
+                                    <label className="block text-[10px] text-zinc-400 uppercase">{k}</label>
+                                    <input
+                                        inputMode="numeric"
+                                        value={v}
+                                        onChange={(e) => {
+                                            const num = Number(e.target.value);
+                                            setRule(k, Number.isFinite(num) ? num : 0);
+                                        }}
+                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+
+                {/* ACTIONS */}
                 <div className="mt-5 flex gap-2">
                     <button
-                        onClick={onClose}
+                        onClick={handleCancel}
                         className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 active:scale-[0.99]"
                     >
-                        Anuluj
+                        Cofnij
                     </button>
                     <button
-                        disabled={!canSubmit}
-                        onClick={() => onSubmit({ name: name.trim(), factionId: faction.id, tier })}
+                        disabled={saving}
+                        onClick={() => void handleSaveAll()}
                         className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.99]"
                     >
-                        Utwórz armię
+                        {saving ? 'Zapisywanie…' : 'Zapisz'}
                     </button>
                 </div>
             </div>
         </div>
-    );
-}
-
-function TierPill(props: React.PropsWithChildren<{ active?: boolean; onClick?: () => void }>) {
-    return (
-        <button
-            onClick={props.onClick}
-            className={
-                'h-9 flex-1 rounded-xl border px-3 text-sm font-medium active:scale-[0.98] ' +
-                (props.active ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
-            }
-        >
-             {props.children}
-        </button>
     );
 }
 

@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
@@ -10,115 +9,63 @@ datasource db {
 }
 
 /**
- * === ENUMY ===
+ * ================= ENUMY =================
  */
-enum Availability {
-  GLOBAL
-  RESTRICTED
-}
-
-/**
- * === MODELE KATALOGOWE ===
- */
-
 enum UserRole {
-    USER
-    ADMIN
-}
-
-// DODAJ ENUM
-enum EffectKind {
-  WEAPON   // zwykły efekt/cecha broni
-  CRITICAL // efekt krytyczny
-}
-
-// SZABLON BRONI (zdjęcie jako plik w public/)
-model WeaponTemplate {
-  id        String   @id @default(cuid())
-  name      String
-  imagePath String?  // np. /uploads/weapons/abc.jpg
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  profiles  WeaponProfile[]
-}
-
-// PROFIL BRONI (np. "Pistol (12\")", test itd.)
-model WeaponProfile {
-  id       String   @id @default(cuid())
-  weaponId String
-  type     String
-  test     String
-  parts    Int?
-  rating   Int?
-
-  weapon   WeaponTemplate @relation(fields: [weaponId], references: [id])
-  effects  WeaponProfileEffect[]  // połączone efekty (w tym krytyki)
-
-  @@index([weaponId])
-}
-
-// SŁOWNIK EFEKTÓW (admin edytuje)
-model Effect {
-  id          String     @id @default(cuid())
-  name        String
-  kind        EffectKind
-  description String     // szablon np. "Ignite (X): zadaj X kości ...", "Maim"
-  requiresValue Boolean  @default(false) // czy trzeba podać X
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  profiles    WeaponProfileEffect[]
-}
-
-// ŁĄCZNIK PROFIL <-> EFEKT (z opcjonalnym X)
-model WeaponProfileEffect {
-  id         String         @id @default(cuid())
-  profileId  String
-  effectId   String
-  valueInt   Int?           // podstawia X, jeśli requiresValue = true
-
-  profile    WeaponProfile  @relation(fields: [profileId], references: [id])
-  effect     Effect         @relation(fields: [effectId], references: [id])
-
-  @@unique([profileId, effectId]) // ten sam efekt nie powtarza się w profilu
-  @@index([effectId])
-}
-
-model User {
-  id        String   @id @default(cuid())
-  name      String   @unique   // ⬅️ dodaj
-  role      UserRole @default(USER)
-  createdAt DateTime @default(now())
-
-  armies    Army[]
-  shares    ArmyShare[]
-}
-
-
-model Army {
-  id        String   @id @default(cuid())
-  name      String
-  factionId String
-  tier      Int
-  // NEW:
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id])
-
-  faction Faction @relation(fields: [factionId], references: [id])
-  units   UnitInstance[]
-  changes ResourceChange[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  shares  ArmyShare[]
+  USER
+  ADMIN
 }
 
 enum SharePermission {
   READ
   WRITE
+}
+
+enum EffectKind {
+  WEAPON
+  CRITICAL
+}
+
+enum PerkBehavior {
+  NONE
+  COMPANION_ROBOT
+  COMPANION_BEAST
+}
+
+/**
+ * ============ UŻYTKOWNICY / ARMIE ============
+ */
+model User {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+
+  armies Army[]
+  shares ArmyShare[]
+}
+
+model Army {
+  id        String @id @default(cuid())
+  name      String
+  factionId String
+  tier      Int
+
+  // zasoby – sumy, bez historii
+  caps  Int @default(0)
+  parts Int @default(0)
+  reach Int @default(0)
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
+
+  faction Faction        @relation(fields: [factionId], references: [id])
+  units   UnitInstance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shares ArmyShare[]
 }
 
 model ArmyShare {
@@ -131,24 +78,28 @@ model ArmyShare {
   army Army @relation(fields: [armyId], references: [id])
   user User @relation(fields: [userId], references: [id])
 
-  @@unique([armyId, userId]) // jeden wpis na relację
+  @@unique([armyId, userId])
 }
 
+/**
+ * ============ FRAKCJE I LIMITY ============
+ */
 model Faction {
   id   String @id @default(cuid())
   name String @unique
 
-  // relacje
   limits        FactionLimit[]
-  unitLinks     UnitTemplateFaction[]
-  unitTemplates UnitTemplate[]        @relation("TemplatesPrimaryFaction")
+  unitTemplates UnitTemplate[] @relation("TemplatesPrimaryFaction")
   armies        Army[]
+
+  goalSets     FactionGoalSet[]
+  upgradeRules FactionUpgradeRule[]
 }
 
 model FactionLimit {
   id        String @id @default(cuid())
   factionId String
-  tag       String // np. "Champion", "Facility"
+  tag       String
   tier1     Int?
   tier2     Int?
   tier3     Int?
@@ -158,79 +109,209 @@ model FactionLimit {
   @@index([factionId, tag])
 }
 
-model UnitTemplate {
-  id                  String       @id @default(cuid())
-  primaryFactionId    String?
-  name                String
-  roleTag             String? // np. "Champion"
-  baseCost            Int
-  baseStats           Json // {S,P,E,C,I,A,L, heart}
-  allowedWeaponSetIds String[]
-  startPerkIds        String[]
-  armyLimit           Int?
-  availability        Availability
+/**
+ * ============ BROŃ, PROFILE, EFEKTY ============
+ * - WeaponTemplate ma bazowe staty i bazowe efekty (weapon/critical)
+ * - WeaponProfile to upgrade (można wybrać wiele); nadpisuje pola / dodaje rating
+ */
+model WeaponTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  imagePath String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  primaryFaction Faction?              @relation("TemplatesPrimaryFaction", fields: [primaryFactionId], references: [id])
-  factions       UnitTemplateFaction[]
+  // Baza (bez wymagania ratingu/parts — mogą być null)
+  baseType   String @default("")
+  baseTest   String @default("")
+  baseParts  Int?
+  baseRating Int?
 
-  @@index([primaryFactionId])
+  // Bazowe efekty (niezależne od profili)
+  baseEffects WeaponBaseEffect[]
+
+  profiles         WeaponProfile[]
+  optionsAsWeapon1 UnitWeaponOption[] @relation("OptionWeapon1")
+  optionsAsWeapon2 UnitWeaponOption[] @relation("OptionWeapon2")
+
+  instances WeaponInstance[]
 }
 
-model UnitTemplateFaction {
-  id             String  @id @default(cuid())
-  unitTemplateId String
-  factionId      String
-  isBanned       Boolean @default(false)
+model WeaponBaseEffect {
+  id       String @id @default(cuid())
+  weaponId String
+  effectId String
+  valueInt Int?
 
-  unitTemplate UnitTemplate @relation(fields: [unitTemplateId], references: [id])
-  faction      Faction      @relation(fields: [factionId], references: [id])
+  weapon WeaponTemplate @relation(fields: [weaponId], references: [id])
+  effect Effect         @relation(fields: [effectId], references: [id])
 
-  @@unique([unitTemplateId, factionId])
+  @@unique([weaponId, effectId])
+  @@index([weaponId])
+  @@index([effectId])
+}
+
+model WeaponProfile {
+  id       String @id @default(cuid())
+  weaponId String
+
+  // Upgrade – nadpisania/dodatki
+  order         Int     @default(0)
+  typeOverride  String?
+  testOverride  String?
+  partsOverride Int?
+  ratingDelta   Int?
+
+  weapon  WeaponTemplate        @relation(fields: [weaponId], references: [id])
+  effects WeaponProfileEffect[]
+
+  @@index([weaponId])
+}
+
+model Effect {
+  id            String     @id @default(cuid())
+  name          String
+  kind          EffectKind
+  description   String
+  requiresValue Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  profiles         WeaponProfileEffect[]
+  WeaponBaseEffect WeaponBaseEffect[]
+}
+
+model WeaponProfileEffect {
+  id        String @id @default(cuid())
+  profileId String
+  effectId  String
+  valueInt  Int?
+
+  profile WeaponProfile @relation(fields: [profileId], references: [id])
+  effect  Effect        @relation(fields: [effectId], references: [id])
+
+  @@unique([profileId, effectId])
+  @@index([effectId])
+}
+
+/**
+ * ============ PERKI ============
+ */
+model Perk {
+  id            String       @id @default(cuid())
+  name          String
+  description   String
+  requiresValue Boolean      @default(false)
+  startAllowed  Boolean      @default(false)
+  behavior      PerkBehavior @default(NONE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  startOnUnits UnitStartPerk[]
+}
+
+/**
+ * ============ SZABLONY JEDNOSTEK ============
+ */
+model UnitTemplate {
+  id        String  @id @default(cuid())
+  name      String
+  factionId String?
+  roleTag   String?
+
+  hp Int @default(3)
+  s  Int @default(5)
+  p  Int @default(5)
+  e  Int @default(5)
+  c  Int @default(5)
+  i  Int @default(5)
+  a  Int @default(5)
+  l  Int @default(5)
+
+  baseRating Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  faction      Faction?           @relation("TemplatesPrimaryFaction", fields: [factionId], references: [id])
+  options      UnitWeaponOption[]
+  startPerks   UnitStartPerk[]
+  UnitInstance UnitInstance[]
+
   @@index([factionId])
 }
 
-model WeaponSet {
-  id      String   @id @default(cuid())
-  name    String
-  weapons String[] // listy WeaponTemplate.id
+model UnitWeaponOption {
+  id        String   @id @default(cuid())
+  unitId    String
+  weapon1Id String
+  weapon2Id String?
+  costCaps  Int
+  rating    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unit         UnitTemplate    @relation(fields: [unitId], references: [id])
+  weapon1      WeaponTemplate  @relation("OptionWeapon1", fields: [weapon1Id], references: [id])
+  weapon2      WeaponTemplate? @relation("OptionWeapon2", fields: [weapon2Id], references: [id])
+  UnitInstance UnitInstance[]
+
+  @@unique([unitId, weapon1Id, weapon2Id])
+  @@index([weapon1Id])
+  @@index([weapon2Id])
 }
 
-model Perk {
-  id          String   @id @default(cuid())
-  name        String
-  description String
-  tags        String[]
+model UnitStartPerk {
+  id       String @id @default(cuid())
+  unitId   String
+  perkId   String
+  valueInt Int?
+
+  unit UnitTemplate @relation(fields: [unitId], references: [id])
+  perk Perk         @relation(fields: [perkId], references: [id])
+
+  @@unique([unitId, perkId])
+  @@index([perkId])
 }
 
+/**
+ * ============ INSTANCJE W ARMII ============
+ */
 model UnitInstance {
-  id            String  @id @default(cuid())
-  armyId        String
-  templateId    String
-  weaponSetId   String?
-  wounds        Int     @default(0)
-  present       Boolean @default(true)
-  photoPath     String?
-  chosenPerkIds String[] @default([])
-  upgradesCount Int     @default(0)
+  id               String   @id @default(cuid())
+  armyId           String
+  unitId           String
+  selectedOptionId String?
+  wounds           Int      @default(0)
+  present          Boolean  @default(true)
+  photoPath        String?
+  chosenPerkIds    String[] @default([])
+  upgradesCount    Int      @default(0)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  army       Army @relation(fields: [armyId], references: [id])
-  weapons    WeaponInstance[]
-  upgrades   StatUpgrade[]
+  army           Army              @relation(fields: [armyId], references: [id])
+  unit           UnitTemplate      @relation(fields: [unitId], references: [id])
+  weapons        WeaponInstance[]
+  upgrades       StatUpgrade[]
+  selectedOption UnitWeaponOption? @relation(fields: [selectedOptionId], references: [id])
 
   @@index([armyId])
-  @@index([templateId])
+  @@index([unitId])
+  @@index([selectedOptionId])
 }
 
 model WeaponInstance {
   id         String   @id @default(cuid())
   unitId     String
   templateId String
+  // "__profile:<profileId>" — można mieć wiele jednocześnie
   activeMods String[] @default([])
 
-  unit UnitInstance @relation(fields: [unitId], references: [id])
+  unit     UnitInstance   @relation(fields: [unitId], references: [id])
+  template WeaponTemplate @relation(fields: [templateId], references: [id])
 
   @@index([unitId])
   @@index([templateId])
@@ -239,7 +320,7 @@ model WeaponInstance {
 model StatUpgrade {
   id      String   @id @default(cuid())
   unitId  String
-  statKey String // "S","P","E","C","I","A","L","heart"
+  statKey String // "S","P","E","C","I","A","L","hp"
   delta   Int
   at      DateTime @default(now())
 
@@ -248,15 +329,47 @@ model StatUpgrade {
   @@index([unitId])
 }
 
-model ResourceChange {
-  id     String   @id @default(cuid())
-  armyId String
-  kind   String // "caps" | "parts" | "reach"
-  delta  Int
-  note   String?
-  at     DateTime @default(now())
+/**
+ * ============ GOALS & UPGRADE RULES ============
+ */
+model FactionGoalSet {
+  id        String   @id @default(cuid())
+  factionId String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  army Army @relation(fields: [armyId], references: [id])
+  faction Faction       @relation(fields: [factionId], references: [id])
+  goals   FactionGoal[]
 
-  @@index([armyId, kind, at])
+  @@index([factionId, name])
+}
+
+model FactionGoal {
+  id          String   @id @default(cuid())
+  setId       String
+  tier        Int
+  description String
+  target      Int
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  set FactionGoalSet @relation(fields: [setId], references: [id])
+
+  @@index([setId, tier, order])
+}
+
+model FactionUpgradeRule {
+  id             String   @id @default(cuid())
+  factionId      String
+  statKey        String // "hp","S","P","E","C","I","A","L"
+  ratingPerPoint Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  faction Faction @relation(fields: [factionId], references: [id])
+
+  @@unique([factionId, statKey])
+  @@index([factionId])
 }

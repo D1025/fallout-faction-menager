@@ -21,6 +21,7 @@ export default async function AdminHome() {
                 <div className="mt-4 grid gap-2">
                     <Link href="/admin/factions" className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">Frakcje</Link>
                     <Link href="/admin/templates" className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">Szablony jednostek</Link>
+                    <Link href="/admin/perks" className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">Perki</Link>
                     <Link href="/admin/weapons" className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">Broń i zestawy</Link>
                     <Link href="/admin/effects" className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">Efekty broni</Link>
                 </div>

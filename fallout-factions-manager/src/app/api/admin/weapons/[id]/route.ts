@@ -1,63 +1,106 @@
-import { prisma } from "@/server/prisma";
-import { auth } from "@/lib/authServer";
-import { WeaponUpsertSchema } from "@/lib/validation/weapon";
+import { prisma } from '@/server/prisma';
+import { auth } from '@/lib/authServer';
+import { z } from 'zod';
 
-export async function PATCH(req: Request, ctx: unknown) {
-    const { params } = ctx as { params: { id: string } };
+const EffectRef = z.object({ effectId: z.string(), valueInt: z.number().nullable().optional() });
+const ProfileInput = z.object({
+    order: z.number().int().min(0).default(0),
+    typeOverride: z.string().nullable().optional(),
+    testOverride: z.string().nullable().optional(),
+    partsOverride: z.number().int().nullable().optional(),
+    ratingDelta: z.number().int().nullable().optional(),
+    effects: z.array(EffectRef),
+});
+const WeaponUpsertSchema = z.object({
+    name: z.string().min(1),
+    imagePath: z.string().nullable().optional(),
+    notes: z.string().nullable().optional(),
+    baseType: z.string().default(''),
+    baseTest: z.string().default(''),
+    baseParts: z.number().int().nullable().optional(),
+    baseRating: z.number().int().nullable().optional(),
+    baseEffects: z.array(EffectRef).default([]),
+    profiles: z.array(ProfileInput).default([]),
+});
+
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: Request, ctx: Ctx) {
+    const { id } = await ctx.params;
     const session = await auth();
-    if (session?.user.role !== "ADMIN") return new Response(JSON.stringify({ error: "FORBIDDEN" }), { status: 403 });
+    if (session?.user.role !== 'ADMIN') return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
     const body = await req.json().catch(() => null);
     const parsed = WeaponUpsertSchema.safeParse(body);
     if (!parsed.success) {
-        return new Response(JSON.stringify({ error: "VALIDATION", details: parsed.error.flatten() }), { status: 400 });
+        return new Response(JSON.stringify({ error: 'VALIDATION', details: parsed.error.flatten() }), { status: 400 });
     }
-    const { name, notes, imagePath, profiles } = parsed.data;
+
+    const { name, imagePath, notes, baseType, baseTest, baseParts, baseRating, baseEffects, profiles } = parsed.data;
 
     const updated = await prisma.$transaction(async (tx) => {
-        await tx.weaponTemplate.update({ where: { id: params.id }, data: { name, notes: notes ?? null, imagePath: imagePath ?? null } });
+        await tx.weaponTemplate.update({
+            where: { id },
+            data: { name, imagePath: imagePath ?? null, notes: notes ?? null, baseType, baseTest, baseParts, baseRating },
+        });
 
-        // wyczyść stare profile + łączniki
-        const oldProfiles = await tx.weaponProfile.findMany({ where: { weaponId: params.id }, select: { id: true } });
-        await tx.weaponProfileEffect.deleteMany({ where: { profileId: { in: oldProfiles.map(p => p.id) } } });
-        await tx.weaponProfile.deleteMany({ where: { weaponId: params.id } });
-
-        // wstaw nowe
-        for (const p of profiles) {
-            const profile = await tx.weaponProfile.create({
-                data: { weaponId: params.id, type: p.type, test: p.test, parts: p.parts ?? null, rating: p.rating ?? null },
+        await tx.weaponBaseEffect.deleteMany({ where: { weaponId: id } });
+        if (baseEffects.length) {
+            await tx.weaponBaseEffect.createMany({
+                data: baseEffects.map((e) => ({ weaponId: id, effectId: e.effectId, valueInt: e.valueInt ?? null })),
             });
-            const all = [
-                ...p.weaponEffects.map(e => ({ ...e, profileId: profile.id })),
-                ...p.criticalEffects.map(e => ({ ...e, profileId: profile.id })),
-            ];
-            if (all.length) {
+        }
+
+        const oldProfiles = await tx.weaponProfile.findMany({ where: { weaponId: id }, select: { id: true } });
+        if (oldProfiles.length) {
+            await tx.weaponProfileEffect.deleteMany({ where: { profileId: { in: oldProfiles.map((p) => p.id) } } });
+            await tx.weaponProfile.deleteMany({ where: { weaponId: id } });
+        }
+
+        for (const p of profiles) {
+            const prof = await tx.weaponProfile.create({
+                data: {
+                    weaponId: id,
+                    order: p.order ?? 0,
+                    typeOverride: p.typeOverride ?? null,
+                    testOverride: p.testOverride ?? null,
+                    partsOverride: p.partsOverride ?? null,
+                    ratingDelta: p.ratingDelta ?? null,
+                },
+            });
+            if (p.effects.length) {
                 await tx.weaponProfileEffect.createMany({
-                    data: all.map(e => ({ profileId: e.profileId, effectId: e.effectId, valueInt: e.valueInt ?? null })),
+                    data: p.effects.map((e) => ({ profileId: prof.id, effectId: e.effectId, valueInt: e.valueInt ?? null })),
                 });
             }
         }
 
         return tx.weaponTemplate.findUnique({
-            where: { id: params.id },
-            include: { profiles: { include: { effects: { include: { effect: true } } } } },
+            where: { id },
+            include: {
+                baseEffects: { include: { effect: true } },
+                profiles: { include: { effects: { include: { effect: true } } }, orderBy: { order: 'asc' } },
+            },
         });
     });
 
     return new Response(JSON.stringify(updated), { status: 200 });
 }
 
-export async function DELETE(_req: Request, ctx: unknown) {
-    const { params } = ctx as { params: { id: string } };
+export async function DELETE(_req: Request, ctx: Ctx) {
+    const { id } = await ctx.params;
     const session = await auth();
-    if (session?.user.role !== "ADMIN") return new Response(JSON.stringify({ error: "FORBIDDEN" }), { status: 403 });
+    if (session?.user.role !== 'ADMIN') return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
-    const profileIds = (await prisma.weaponProfile.findMany({ where: { weaponId: params.id }, select: { id: true } })).map(p => p.id);
-    await prisma.$transaction([
-        prisma.weaponProfileEffect.deleteMany({ where: { profileId: { in: profileIds } } }),
-        prisma.weaponProfile.deleteMany({ where: { weaponId: params.id } }),
-        prisma.weaponTemplate.delete({ where: { id: params.id } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+        const profs = await tx.weaponProfile.findMany({ where: { weaponId: id }, select: { id: true } });
+        if (profs.length) {
+            await tx.weaponProfileEffect.deleteMany({ where: { profileId: { in: profs.map((p) => p.id) } } });
+            await tx.weaponProfile.deleteMany({ where: { weaponId: id } });
+        }
+        await tx.weaponBaseEffect.deleteMany({ where: { weaponId: id } });
+        await tx.weaponTemplate.delete({ where: { id } });
+    });
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }

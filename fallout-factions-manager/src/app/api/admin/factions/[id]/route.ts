@@ -2,12 +2,18 @@ import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { FactionUpsertSchema } from '@/lib/validation/faction';
 
-export async function PATCH(req: Request, ctx: unknown) {
-    const { params } = ctx as { params: { id: string } };
-    const id = params.id;
+export const runtime = 'nodejs';
+
+// W tej instalacji Next.js kontekst ma params jako Promise:
+type AsyncCtx = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: Request, ctx: AsyncCtx) {
+    const { id } = await ctx.params;
 
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    if (session?.user.role !== 'ADMIN') {
+        return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    }
 
     const body = await req.json().catch(() => null);
     const parsed = FactionUpsertSchema.safeParse(body);
@@ -18,6 +24,8 @@ export async function PATCH(req: Request, ctx: unknown) {
 
     const updated = await prisma.$transaction(async (tx) => {
         await tx.faction.update({ where: { id }, data: { name } });
+
+        // podmień limity 1:1
         await tx.factionLimit.deleteMany({ where: { factionId: id } });
         if (limits.length) {
             await tx.factionLimit.createMany({
@@ -30,23 +38,53 @@ export async function PATCH(req: Request, ctx: unknown) {
                 })),
             });
         }
-        return tx.faction.findUnique({ where: { id }, include: { limits: true } });
+
+        return tx.faction.findUnique({
+            where: { id },
+            include: { limits: true },
+        });
     });
 
     return new Response(JSON.stringify(updated), { status: 200 });
 }
 
-export async function DELETE(_req: Request, ctx: unknown) {
-    const { params } = ctx as { params: { id: string } };
-    const id = params.id;
+export async function DELETE(_req: Request, ctx: AsyncCtx) {
+    const { id } = await ctx.params;
 
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    if (session?.user.role !== 'ADMIN') {
+        return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
+    }
 
-    await prisma.$transaction([
-        prisma.factionLimit.deleteMany({ where: { factionId: id } }),
-        prisma.faction.delete({ where: { id } }),
+    // Bezpiecznik: jeśli frakcja w użyciu, zwróć 409
+    const [armies, templates] = await Promise.all([
+        prisma.army.count({ where: { factionId: id } }),
+        prisma.unitTemplate.count({ where: { factionId: id } }),
     ]);
+    if (armies > 0 || templates > 0) {
+        return new Response(
+            JSON.stringify({ error: 'Faction in use', armies, templates }),
+            { status: 409 },
+        );
+    }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    // Usuń powiązane encje (limits, goal sets/goals, upgrade rules), potem frakcję
+    await prisma.$transaction(async (tx) => {
+        await tx.factionLimit.deleteMany({ where: { factionId: id } });
+
+        const sets = await tx.factionGoalSet.findMany({
+            where: { factionId: id },
+            select: { id: true },
+        });
+        if (sets.length) {
+            await tx.factionGoal.deleteMany({ where: { setId: { in: sets.map((s) => s.id) } } });
+            await tx.factionGoalSet.deleteMany({ where: { factionId: id } });
+        }
+
+        await tx.factionUpgradeRule.deleteMany({ where: { factionId: id } });
+
+        await tx.faction.delete({ where: { id } });
+    });
+
+    return new Response(null, { status: 204 });
 }
