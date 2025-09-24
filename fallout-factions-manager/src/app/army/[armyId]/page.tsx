@@ -96,46 +96,49 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         // Bonus z ulepszeń (na SPECIAL i HP)
         const bonus: BonusMap = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const up of u.upgrades) {
-            if (up.statKey === 'hp') {
-                bonus.HP += up.delta;
-            } else if (isBonusKey(up.statKey)) {
-                bonus[up.statKey] += up.delta;
-            }
+            if (up.statKey === 'hp') bonus.HP += up.delta;
+            else if (isBonusKey(up.statKey)) bonus[up.statKey] += up.delta;
         }
 
-        // Tabela broni do kart
+        // >>> BROŃ: bogaty kształt dla dashboardu (base + override)
         const weapons = u.weapons.map((w) => {
             const t = weaponById.get(w.templateId);
-            const selected = new Set(w.activeMods.filter((m) => m.startsWith('__profile:')).map((m) => m.slice(10)));
 
-            // połącz bazowe efekty + z profili
-            const allEffects = new Map<string, { name: string; kind: 'WEAPON' | 'CRITICAL'; valueInt: number | null }>();
-            for (const be of t?.baseEffects ?? []) {
-                const key = `${be.effect.kind}:${be.effect.name}:${be.valueInt ?? ''}`;
-                allEffects.set(key, { name: be.effect.name, kind: be.effect.kind, valueInt: be.valueInt });
-            }
-            for (const p of t?.profiles ?? []) {
-                if (!selected.has(p.id)) continue;
-                for (const e of p.effects) {
-                    const key = `${e.effect.kind}:${e.effect.name}:${e.valueInt ?? ''}`;
-                    allEffects.set(key, { name: e.effect.name, kind: e.effect.kind, valueInt: e.valueInt });
-                }
-            }
-            const traits = [...allEffects.values()]
-                .filter((e) => e.kind === 'WEAPON')
-                .map((e) => `${e.name}${e.valueInt != null ? ` (${e.valueInt})` : ''}`);
-            const crits = [...allEffects.values()].filter((e) => e.kind === 'CRITICAL').map((e) => e.name);
+            const selectedProfileIds = w.activeMods
+                .filter((m) => m.startsWith('__profile:'))
+                .map((m) => m.slice(10));
 
-            // do wyświetlenia typ/test – ostatni zaznaczony profil (fallback: baza)
-            const selectedArr = [...selected];
-            const last = selectedArr.length ? t?.profiles.find((p) => p.id === selectedArr[selectedArr.length - 1]) : undefined;
+            const baseEffects =
+                (t?.baseEffects ?? []).map((be) => ({
+                    id: String(be.id ?? be.effectId),
+                    name: be.effect.name,
+                    kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
+                    valueInt: be.valueInt,
+                })) ?? [];
+
+            const profiles =
+                (t?.profiles ?? []).map((p) => ({
+                    id: p.id,
+                    typeOverride: p.typeOverride ?? null,
+                    testOverride: p.testOverride ?? null,
+                    effects: p.effects.map((e) => ({
+                        id: String(e.id ?? e.effectId),
+                        name: e.effect.name,
+                        kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
+                        valueInt: e.valueInt,
+                    })),
+                    // (opcjonalne) pola pomocnicze do tabeli, jeśli chcesz później je pokazać:
+                    parts: ('parts' in p ? (p as unknown as { parts: number | null }).parts : null) ?? null,
+                    rating: ('ratingDelta' in p ? (p as unknown as { ratingDelta: number | null }).ratingDelta : null) ?? null,
+                })) ?? [];
 
             return {
                 name: t?.name ?? `#${w.templateId.slice(0, 6)}`,
-                type: last?.typeOverride ?? t?.baseType ?? '—',
-                test: last?.testOverride ?? t?.baseTest ?? '—',
-                traits,
-                crits,
+                selectedProfileIds,
+                baseType: t?.baseType ?? '—',
+                baseTest: t?.baseTest ?? '—',
+                baseEffects,
+                profiles,
             };
         });
 
@@ -171,7 +174,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     armyName={army.name}
                     tier={army.tier}
                     factionName={army.faction.name}
-                    resources={{ caps: army.caps, parts: army.parts, reach: army.reach }}
+                    resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }} // + exp
                     units={uiUnits}
                     rating={armyRating}
                 />

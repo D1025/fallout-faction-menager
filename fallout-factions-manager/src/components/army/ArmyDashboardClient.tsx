@@ -5,7 +5,19 @@ import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Kind = 'caps' | 'parts' | 'reach';
+type Kind = 'caps' | 'parts' | 'reach' | 'exp';
+
+/* ==== typy broni zgodne z logiką override ==== */
+type EffectKind = 'WEAPON' | 'CRITICAL';
+type UIEffect = { id: string; name: string; valueInt: number | null; kind: EffectKind };
+type UIProfile = {
+    id: string;
+    typeOverride: string | null;
+    testOverride: string | null;
+    effects: UIEffect[];
+    parts?: number | null;
+    rating?: number | null;
+};
 
 type UnitListItem = {
     id: string;
@@ -19,10 +31,19 @@ type UnitListItem = {
     perkNames: string[];
     photoPath: string | null;
     rating: number;
-    weapons: { name: string; type: string; test: string; traits: string[]; crits: string[] }[];
+
+    weapons: {
+        name: string;
+        selectedProfileIds: string[];
+        baseType: string;
+        baseTest: string;
+        baseEffects: UIEffect[];
+        profiles: UIProfile[];
+    }[];
 };
 
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION';
+type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
 
 export default function ArmyDashboardClient({
                                                 armyId,
@@ -46,6 +67,8 @@ export default function ArmyDashboardClient({
     const [busy, setBusy] = useState<Kind | null>(null);
     const [adding, setAdding] = useState(false);
     const [filter, setFilter] = useState<RoleFilter>('ALL');
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [tab, setTab] = useState<TabKey>('OVERVIEW');
 
     useEffect(() => setTotals(resources), [resources]);
 
@@ -64,6 +87,24 @@ export default function ArmyDashboardClient({
             alert('Nie udało się zapisać zasobów');
         } finally {
             setBusy(null);
+        }
+    }
+
+    async function deleteUnit(unitId: string) {
+        const ok = typeof window !== 'undefined' ? window.confirm('Na pewno usunąć tę jednostkę z armii?') : false;
+        if (!ok) return;
+        setDeletingId(unitId);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/units/${unitId}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '');
+                throw new Error(txt || 'Request failed');
+            }
+            router.refresh();
+        } catch {
+            alert('Nie udało się usunąć jednostki');
+        } finally {
+            setDeletingId(null);
         }
     }
 
@@ -92,43 +133,109 @@ export default function ArmyDashboardClient({
         return groups.grunt;
     }, [filter, units, groups]);
 
-    /* ---------- wspólne klocki UI ---------- */
+    /* ---------- SPECIAL: identyczny kompakt jak w UnitClient ---------- */
 
-    function StatPill({ label, value, delta }: { label: string; value: number; delta: number }) {
-        const boosted = delta !== 0;
-        return (
-            <div className="flex h-16 w-[64px] flex-col items-center justify-center rounded-lg border border-zinc-800 bg-zinc-950">
-                <div className="text-[10px] font-semibold tracking-widest text-teal-200">{label}</div>
-                <div className="mt-0.5 tabular-nums text-sm text-zinc-100">{value}</div>
-                <div className="mt-0.5 min-h-[14px] text-[10px] leading-none">
-                    {boosted ? <span className="rounded bg-emerald-600/20 px-1 text-emerald-300">+{delta}</span> : <span className="opacity-0">+0</span>}
-                </div>
-            </div>
-        );
-    }
-
-    function StatInlineRow({
-                               base,
-                               bonus,
-                               maxHp,
-                           }: {
+    function SpecialCompact({
+                                base,
+                                bonus,
+                            }: {
         base: UnitListItem['base'];
         bonus: UnitListItem['bonus'];
-        maxHp: number;
     }) {
+        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', '♥'] as const;
+
         return (
-            <div className="overflow-x-auto">
-                <div className="flex min-w-[560px] gap-1">
-                    {(['S', 'P', 'E', 'C', 'I', 'A', 'L'] as const).map((k) => (
-                        <StatPill key={k} label={k} value={base[k] + bonus[k]} delta={bonus[k]} />
+            <div className="rounded-xl border border-zinc-800 overflow-hidden">
+                <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
+                    {HEAD.map((h) => (
+                        <div key={h} className="px-2 py-1 text-center">
+                            {h === '♥' ? 'HP' : h}
+                        </div>
                     ))}
-                    <StatPill label="HP" value={maxHp} delta={bonus.HP} />
+                </div>
+                <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
+                    {HEAD.map((h) => {
+                        const baseVal = h === '♥' ? base.hp : base[h as Exclude<typeof h, '♥'>];
+                        const finalVal =
+                            h === '♥'
+                                ? base.hp + bonus.HP
+                                : base[h as Exclude<typeof h, '♥'>] + bonus[h as Exclude<typeof h, '♥'>];
+                        const delta = finalVal - baseVal;
+                        return (
+                            <div key={h} className="px-2 py-1 text-center tabular-nums">
+                                <span className={delta !== 0 ? 'text-emerald-300 font-semibold' : ''}>{finalVal}</span>
+                                {delta !== 0 && <sup className="ml-0.5 align-super text-[10px] text-emerald-400">+{delta}</sup>}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
     }
 
-    function UnitRow({ u, armyId: aId }: { u: UnitListItem; armyId: string }) {
+    /* ---------- helper: format X -> valueInt ---------- */
+    function formatEffect(name: string, valueInt: number | null): string {
+        if (valueInt == null) return name;
+        const out = name.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
+        if (out !== name) return out;
+        return `${name} (${valueInt})`;
+    }
+
+    /* ---------- helper: wylicz finalne pola broni z multi-profilu ---------- */
+    function computeWeaponDisplay(w: UnitListItem['weapons'][number]) {
+        // znajdź OSTATNI wybrany profil, który MA override (ignoruj te z null)
+        const rev = [...w.selectedProfileIds].reverse();
+        const overId = rev.find((id) => {
+            const p = w.profiles.find((pp) => pp.id === id);
+            return Boolean(p && (p.typeOverride != null || p.testOverride != null));
+        });
+
+        const over = overId ? w.profiles.find((pp) => pp.id === overId) ?? null : null;
+
+        const type = over?.typeOverride ?? w.baseType;
+        const test = over?.testOverride ?? w.baseTest;
+
+        // zsumowane efekty (bazowe + z wybranych profili)
+        const agg = new Map<string, UIEffect>();
+        for (const e of w.baseEffects) {
+            const key = `${e.kind}:${e.name}:${e.valueInt ?? ''}`;
+            agg.set(key, e);
+        }
+        for (const pId of w.selectedProfileIds) {
+            const p = w.profiles.find((pp) => pp.id === pId);
+            if (!p) continue;
+            for (const e of p.effects) {
+                const key = `${e.kind}:${e.name}:${e.valueInt ?? ''}`;
+                agg.set(key, e);
+            }
+        }
+        const traitsText =
+            [...agg.values()]
+                .filter((e) => e.kind === 'WEAPON')
+                .map((e) => formatEffect(e.name, e.valueInt))
+                .join(', ') || '—';
+        const critsText =
+            [...agg.values()]
+                .filter((e) => e.kind === 'CRITICAL')
+                .map((e) => formatEffect(e.name, e.valueInt))
+                .join(', ') || '—';
+
+        return { type, test, traitsText, critsText };
+    }
+
+    /* ---------- Wiersz jednostki ---------- */
+
+    function UnitRow({
+                         u,
+                         armyId: aId,
+                         onDelete,
+                         deleting,
+                     }: {
+        u: UnitListItem;
+        armyId: string;
+        onDelete: () => void;
+        deleting: boolean;
+    }) {
         const [wounds, setWounds] = useState(u.wounds);
         const [absent, setAbsent] = useState(!u.present);
 
@@ -153,48 +260,90 @@ export default function ArmyDashboardClient({
         const maxHp = u.base.hp + u.bonus.HP;
 
         return (
-            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <Link
+                href={`/army/${aId}/unit/${u.id}`}
+                className="block max-w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-3"
+            >
                 <div className="flex items-center justify-between">
                     <div className="font-medium">{u.templateName}</div>
-                    <div className="text-xs text-zinc-400">
-                        Rating <span className="font-semibold text-zinc-200">{u.rating}</span>
+                    <div className="flex items-center gap-2">
+                        <div className="text-xs text-zinc-400">
+                            Rating <span className="font-semibold text-zinc-200">{u.rating}</span>
+                        </div>
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onDelete();
+                            }}
+                            disabled={deleting}
+                            className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
+                            aria-label="Usuń jednostkę"
+                            title="Usuń jednostkę"
+                        >
+                            {deleting ? 'Usuwanie…' : 'Usuń'}
+                        </button>
                     </div>
                 </div>
 
-                {/* SPECIAL — jedna linia, scrollek w środku karty */}
+                {/* SPECIAL — kompakt jak w UnitClient */}
                 <div className="mt-2">
-                    <StatInlineRow base={u.base} bonus={u.bonus} maxHp={maxHp} />
+                    <SpecialCompact base={u.base} bonus={u.bonus} />
                 </div>
 
-                {/* Broń — tabela w scrolldivie */}
+                {/* Broń — mobile <400px wertykalnie, >=400px tabela */}
                 <div className="mt-2 grid gap-2">
-                    {u.weapons.map((w, idx) => (
-                        <div key={idx} className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950">
-                            <table className="min-w-[560px] w-full text-sm">
-                                <thead>
-                                <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
-                                    <th className="px-2 py-1 text-left">Weapon</th>
-                                    <th className="px-2 py-1 text-left">Type</th>
-                                    <th className="px-2 py-1 text-left">Test</th>
-                                    <th className="px-2 py-1 text-left">Traits</th>
-                                    <th className="px-2 py-1 text-left">Critical Effect</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr className="border-t border-zinc-800">
-                                    <td className="px-2 py-1">{w.name}</td>
-                                    <td className="px-2 py-1">{w.type || '—'}</td>
-                                    <td className="px-2 py-1">{w.test || '—'}</td>
-                                    <td className="px-2 py-1 text-zinc-300">{w.traits.join(', ') || '—'}</td>
-                                    <td className="px-2 py-1 text-zinc-300">{w.crits.join(', ') || '—'}</td>
-                                </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    ))}
+                    {u.weapons.map((w, idx) => {
+                        const d = computeWeaponDisplay(w);
+                        return (
+                            <div key={idx} className="rounded-xl border border-zinc-800 bg-zinc-950">
+                                {/* < 400px: pionowy grid */}
+                                <div className="block min-[400px]:hidden">
+                                    {([
+                                        ['Weapon', w.name],
+                                        ['Type', d.type],
+                                        ['Test', d.test],
+                                        ['Traits', d.traitsText],
+                                        ['Critical Effect', d.critsText],
+                                    ] as const).map(([label, value]) => (
+                                        <div key={label} className="grid grid-cols-[36%_64%] border-t first:border-t-0 border-zinc-800">
+                                            <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
+                                                {label}
+                                            </div>
+                                            <div className="px-2 py-1 text-sm whitespace-normal break-words">{value}</div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* ≥ 400px: tabela */}
+                                <div className="hidden min-[400px]:block overflow-x-auto">
+                                    <table className="w-full table-auto text-sm">
+                                        <thead>
+                                        <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
+                                            <th className="px-2 py-1 text-left">Weapon</th>
+                                            <th className="px-2 py-1 text-left">Type</th>
+                                            <th className="px-2 py-1 text-left">Test</th>
+                                            <th className="px-2 py-1 text-left">Traits</th>
+                                            <th className="px-2 py-1 text-left">Critical Effect</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr className="border-t border-zinc-800 align-top">
+                                            <td className="px-2 py-1 whitespace-normal break-words">{w.name}</td>
+                                            <td className="px-2 py-1 whitespace-normal break-words">{d.type}</td>
+                                            <td className="px-2 py-1 whitespace-normal break-words">{d.test}</td>
+                                            <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">{d.traitsText}</td>
+                                            <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">{d.critsText}</td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
 
-                {/* Kontrolki — bez nawigacji w głąb po kliknięciu */}
+                {/* Kontrolki */}
                 <div className="mt-2 flex items-center justify-end gap-3">
                     <label
                         className="flex items-center gap-1 text-xs"
@@ -203,7 +352,11 @@ export default function ArmyDashboardClient({
                             e.stopPropagation();
                         }}
                     >
-                        <input type="checkbox" checked={absent} onChange={(e) => void savePresence(!e.target.checked)} />
+                        <input
+                            type="checkbox"
+                            checked={absent}
+                            onChange={(e) => void savePresence(!e.target.checked)}
+                        />
                         <span>Absent</span>
                     </label>
 
@@ -231,6 +384,14 @@ export default function ArmyDashboardClient({
         );
     }
 
+    /* ====== Ikony (proste emoji, zero zależności) ====== */
+    const ICON: Record<Kind, string> = {
+        caps: '🪙',
+        parts: '🧩',
+        exp: '⭐',
+        reach: 'REACH',
+    };
+
     return (
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
             {/* META */}
@@ -243,88 +404,163 @@ export default function ArmyDashboardClient({
                 </div>
             </div>
 
-            {/* FILTER */}
-            <div className="mt-3 flex gap-2">
-                {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION'] as RoleFilter[]).map((f) => (
+            {/* TABS */}
+            <div className="mt-3 grid grid-cols-4 gap-2">
+                {([
+                    ['OVERVIEW', 'Przegląd'],
+                    ['EDIT', 'Edycja zasobów'],
+                    ['TASKS', 'Zadania'],
+                    ['TURF', 'Home Turf'],
+                ] as [TabKey, string][]).map(([k, label]) => (
                     <button
-                        key={f}
-                        onClick={() => setFilter(f)}
+                        key={k}
+                        onClick={() => setTab(k)}
                         className={
-                            'h-9 flex-1 rounded-xl border text-xs font-medium ' +
-                            (filter === f ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                            'h-10 rounded-xl border text-xs font-medium ' +
+                            (tab === k ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                         }
                     >
-                        {f}
+                        {label}
                     </button>
                 ))}
             </div>
 
-            {/* ZASOBY */}
-            <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
-                <div className="mb-2 flex items-center justify-between">
-                    <div className="text-sm font-medium">Zasoby</div>
-                    <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                        Dodaj jednostkę
-                    </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                    {(['caps', 'parts', 'reach'] as const).map((k) => (
-                        <div key={k} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
-                            <div className="text-[10px] uppercase text-zinc-400">{k}</div>
-                            <div className="mt-2 flex min-w-0 items-center gap-2">
-                                <button
-                                    className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
-                                    onClick={() => void setValue(k, totals[k] - 1)}
-                                    disabled={busy === k}
-                                    aria-label="minus jeden"
-                                >
-                                    −
-                                </button>
-                                <input
-                                    inputMode="numeric"
-                                    value={totals[k]}
-                                    onChange={(e) => setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))}
-                                    onBlur={(e) => void setValue(k, n(e.target.value, totals[k]))}
-                                    className="h-10 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg"
-                                />
-                                <button
-                                    className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
-                                    onClick={() => void setValue(k, totals[k] + 1)}
-                                    disabled={busy === k}
-                                    aria-label="plus jeden"
-                                >
-                                    +
-                                </button>
-                            </div>
-
-                            <div className="mt-2 grid grid-cols-4 gap-1">
-                                {[-10, -5, +5, +10].map((d) => (
-                                    <button
-                                        key={d}
-                                        className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 text-xs active:scale-95 disabled:opacity-50"
-                                        onClick={() => void setValue(k, Math.max(0, totals[k] + d))}
-                                        disabled={busy === k}
-                                    >
-                                        {d > 0 ? `+${d}` : d}
-                                    </button>
-                                ))}
-                            </div>
+            {/* OVERVIEW */}
+            {tab === 'OVERVIEW' && (
+                <>
+                    {/* Zasoby – jedna linia (read-only) */}
+                    <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                            <div className="text-sm font-medium">Zasoby</div>
+                            <button
+                                onClick={() => setAdding(true)}
+                                className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
+                            >
+                                Dodaj jednostkę
+                            </button>
                         </div>
-                    ))}
-                </div>
-            </section>
+                        <div className="flex items-center gap-2 overflow-x-auto">
+                            {(['caps', 'parts', 'exp', 'reach'] as Kind[]).map((k) => (
+                                <div
+                                    key={k}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
+                                    title={k.toUpperCase()}
+                                >
+                                    <span className="text-base">{ICON[k]}</span>
+                                    <span className="tabular-nums font-semibold">{totals[k]}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
 
-            {/* JEDNOSTKI */}
-            <section className="mt-4">
-                <div className="text-sm font-medium">Jednostki</div>
-                <div className="mt-2 grid gap-2">
-                    {filtered.map((u) => (
-                        <UnitRow key={u.id} u={u} armyId={armyId} />
-                    ))}
-                    {filtered.length === 0 && <div className="text-sm text-zinc-500">Brak jednostek dla filtra</div>}
-                </div>
-            </section>
+                    {/* FILTER */}
+                    <div className="mt-3 flex gap-2">
+                        {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION'] as RoleFilter[]).map((f) => (
+                            <button
+                                key={f}
+                                onClick={() => setFilter(f)}
+                                className={
+                                    'h-9 flex-1 rounded-xl border text-xs font-medium ' +
+                                    (filter === f
+                                        ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                        : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                }
+                            >
+                                {f}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* JEDNOSTKI */}
+                    <section className="mt-4">
+                        <div className="text-sm font-medium">Jednostki</div>
+                        <div className="mt-2 grid gap-2">
+                            {filtered.map((u) => (
+                                <UnitRow
+                                    key={u.id}
+                                    u={u}
+                                    armyId={armyId}
+                                    deleting={deletingId === u.id}
+                                    onDelete={() => void deleteUnit(u.id)}
+                                />
+                            ))}
+                            {filtered.length === 0 && <div className="text-sm text-zinc-500">Brak jednostek dla filtra</div>}
+                        </div>
+                    </section>
+                </>
+            )}
+
+            {/* EDIT RESOURCES */}
+            {tab === 'EDIT' && (
+                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="mb-2 text-sm font-medium">Edycja zasobów</div>
+
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {(['caps', 'parts', 'exp', 'reach'] as const).map((k) => (
+                            <div key={k} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                <div className="flex items-center gap-2 text-[10px] uppercase text-zinc-400">
+                                    <span className="text-sm">{ICON[k]}</span>
+                                    <span>{k}</span>
+                                </div>
+                                <div className="mt-2 flex min-w-0 items-center gap-2">
+                                    <button
+                                        className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
+                                        onClick={() => void setValue(k, totals[k] - 1)}
+                                        disabled={busy === k}
+                                        aria-label="minus jeden"
+                                    >
+                                        −
+                                    </button>
+                                    <input
+                                        inputMode="numeric"
+                                        value={totals[k]}
+                                        onChange={(e) =>
+                                            setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))
+                                        }
+                                        onBlur={(e) => void setValue(k, n(e.target.value, totals[k]))}
+                                        className="h-10 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg"
+                                    />
+                                    <button
+                                        className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
+                                        onClick={() => void setValue(k, totals[k] + 1)}
+                                        disabled={busy === k}
+                                        aria-label="plus jeden"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+
+                                <div className="mt-2 grid grid-cols-4 gap-1">
+                                    {[-10, -5, +5, +10].map((d) => (
+                                        <button
+                                            key={d}
+                                            className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 text-xs active:scale-95 disabled:opacity-50"
+                                            onClick={() => void setValue(k, Math.max(0, totals[k] + d))}
+                                            disabled={busy === k}
+                                        >
+                                            {d > 0 ? `+${d}` : d}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* TASKS (placeholder – zrobimy później) */}
+            {tab === 'TASKS' && (
+                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-400">
+                    (Zadania) – w przygotowaniu…
+                </section>
+            )}
+
+            {/* HOME TURF (placeholder) */}
+            {tab === 'TURF' && (
+                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-400">
+                    (Home Turf) – w przygotowaniu…
+                </section>
+            )}
 
             {adding && <AddUnitSheet armyId={armyId} onClose={() => { setAdding(false); router.refresh(); }} />}
         </main>

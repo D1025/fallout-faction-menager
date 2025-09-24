@@ -55,6 +55,12 @@ model Army {
   caps  Int @default(0)
   parts Int @default(0)
   reach Int @default(0)
+  exp   Int @default(0)
+
+  // << NOWE >>
+  activeGoalSetId String?
+  activeGoalSet   FactionGoalSet? @relation(fields: [activeGoalSetId], references: [id])
+  goalProgress    ArmyGoalProgress[]
 
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
@@ -66,6 +72,22 @@ model Army {
   updatedAt DateTime @updatedAt
 
   shares ArmyShare[]
+}
+
+model ArmyGoalProgress {
+  id      String   @id @default(cuid())
+  armyId  String
+  goalId  String
+  ticks   Int      @default(0)   // ile “dongli” odklikanie
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  army Army         @relation(fields: [armyId], references: [id])
+  goal FactionGoal  @relation(fields: [goalId], references: [id])
+
+  @@unique([armyId, goalId])
+  @@index([armyId])
+  @@index([goalId])
 }
 
 model ArmyShare {
