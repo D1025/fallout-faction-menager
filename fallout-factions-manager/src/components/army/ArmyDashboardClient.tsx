@@ -1,4 +1,3 @@
-// src/components/army/ArmyDashboardClient.tsx
 'use client';
 
 import Link from 'next/link';
@@ -45,10 +44,27 @@ type UnitListItem = {
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION';
 type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
 
+/* ====== Goals API ====== */
+type Goal = {
+    id: string;
+    tier: 1 | 2 | 3;
+    description: string;
+    target: number;
+    order: number;
+    ticks: number;
+};
+type GoalsResponse = {
+    armyId: string;
+    currentTier: number;
+    set: { id: string; name: string } | null;
+    goals: Goal[];
+};
+
 export default function ArmyDashboardClient({
                                                 armyId,
                                                 armyName,
                                                 tier,
+                                                factionId,                 // <<<<<< DODANE
                                                 factionName,
                                                 resources,
                                                 units,
@@ -57,6 +73,7 @@ export default function ArmyDashboardClient({
     armyId: string;
     armyName: string;
     tier: number;
+    factionId: string;         // <<<<<< DODANE
     factionName: string;
     resources: Record<Kind, number>;
     units: UnitListItem[];
@@ -148,16 +165,16 @@ export default function ArmyDashboardClient({
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {HEAD.map((h) => (
-                        <div key={h} className="px-2 py-1 text-center">{h === '♥' ? 'HP' : h}</div>
+                        <div key={h} className="px-2 py-1 text-center">
+                            {h === '♥' ? 'HP' : h}
+                        </div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
                     {HEAD.map((h) => {
                         const baseVal = h === '♥' ? base.hp : base[h as Exclude<typeof h, '♥'>];
                         const finalVal =
-                            h === '♥'
-                                ? base.hp + bonus.HP
-                                : base[h as Exclude<typeof h, '♥'>] + bonus[h as Exclude<typeof h, '♥'>];
+                            h === '♥' ? base.hp + bonus.HP : base[h as Exclude<typeof h, '♥'>] + bonus[h as Exclude<typeof h, '♥'>];
                         const delta = finalVal - baseVal;
                         return (
                             <div key={h} className="px-2 py-1 text-center tabular-nums">
@@ -165,9 +182,7 @@ export default function ArmyDashboardClient({
                   {finalVal}
                 </span>
                                 {delta !== 0 && (
-                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>
-                                        {sign(delta)}
-                                    </sup>
+                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>{sign(delta)}</sup>
                                 )}
                             </div>
                         );
@@ -261,10 +276,7 @@ export default function ArmyDashboardClient({
         const maxHp = u.base.hp + u.bonus.HP;
 
         return (
-            <Link
-                href={`/army/${aId}/unit/${u.id}`}
-                className="block max-w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-3"
-            >
+            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
                 <div className="flex items-center justify-between">
                     <div className="font-medium">{u.templateName}</div>
                     <div className="flex items-center gap-2">
@@ -348,11 +360,7 @@ export default function ArmyDashboardClient({
                             e.stopPropagation();
                         }}
                     >
-                        <input
-                            type="checkbox"
-                            checked={absent}
-                            onChange={(e) => void savePresence(!e.target.checked)}
-                        />
+                        <input type="checkbox" checked={absent} onChange={(e) => void savePresence(!e.target.checked)} />
                         <span>Absent</span>
                     </label>
 
@@ -413,7 +421,7 @@ export default function ArmyDashboardClient({
         }
     }
 
-    // Lazy load po wejściu w zakładkę TURF
+    // Lazy load TURF
     useEffect(() => {
         if (tab === 'TURF') void loadTurf();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -473,6 +481,73 @@ export default function ArmyDashboardClient({
         }
     }
 
+    /* ====== TASKS (Goals) – stan i metody ====== */
+    const [goalsSet, setGoalsSet] = useState<{ id: string; name: string } | null>(null);
+    const [currentTier, setCurrentTier] = useState<number>(tier);
+    const [goals, setGoals] = useState<Goal[]>([]);
+    const [loadingGoals, setLoadingGoals] = useState(false);
+    const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
+
+    async function loadGoals() {
+        setLoadingGoals(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/goals`, { cache: 'no-store' });
+            if (!res.ok) throw new Error();
+            const data = (await res.json()) as GoalsResponse;
+            setGoalsSet(data.set);
+            setCurrentTier(data.currentTier);
+            setGoals(data.goals ?? []);
+        } catch {
+            // noop
+        } finally {
+            setLoadingGoals(false);
+        }
+    }
+
+    // Lazy load TASKS
+    useEffect(() => {
+        if (tab === 'TASKS') void loadGoals();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab]);
+
+    async function setGoalTicks(goalId: string, next: number) {
+        const g = goals.find((x) => x.id === goalId);
+        if (!g) return;
+        const clamped = Math.max(0, Math.min(g.target, next));
+        if (clamped === g.ticks) return;
+
+        setUpdatingGoalId(goalId);
+        // optimistic UI
+        setGoals((arr) => arr.map((x) => (x.id === goalId ? { ...x, ticks: clamped } : x)));
+        try {
+            const res = await fetch(`/api/armies/${armyId}/goals/${goalId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ticks: clamped }),
+            });
+            if (!res.ok) throw new Error();
+        } catch {
+            // rollback
+            setGoals((arr) => (g ? arr.map((x) => (x.id === goalId ? { ...x, ticks: g.ticks } : x)) : arr));
+            alert('Nie udało się zapisać postępu celu');
+        } finally {
+            setUpdatingGoalId(null);
+        }
+    }
+
+    const goalsByTier = useMemo(() => {
+        const map: Record<1 | 2 | 3, Goal[]> = { 1: [], 2: [], 3: [] };
+        for (const g of goals) map[g.tier].push(g);
+        for (const t of [1, 2, 3] as const) map[t].sort((a, b) => a.order - b.order);
+        return map;
+    }, [goals]);
+
+    function doneInTier(t: 1 | 2 | 3) {
+        const arr = goalsByTier[t];
+        if (arr.length === 0) return 0;
+        return arr.filter((g) => g.ticks >= g.target).length;
+    }
+
     return (
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
             {/* META */}
@@ -513,20 +588,13 @@ export default function ArmyDashboardClient({
                     <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
                         <div className="mb-2 flex items-center justify-between">
                             <div className="text-sm font-medium">Zasoby</div>
-                            <button
-                                onClick={() => setAdding(true)}
-                                className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
-                            >
+                            <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
                                 Dodaj jednostkę
                             </button>
                         </div>
                         <div className="flex items-center gap-2 overflow-x-auto">
                             {(['caps', 'parts', 'exp', 'reach'] as Kind[]).map((k) => (
-                                <div
-                                    key={k}
-                                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm"
-                                    title={k.toUpperCase()}
-                                >
+                                <div key={k} className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" title={k.toUpperCase()}>
                                     <span className="text-base">{ICON[k]}</span>
                                     <span className="tabular-nums font-semibold">{totals[k]}</span>
                                 </div>
@@ -542,9 +610,7 @@ export default function ArmyDashboardClient({
                                 onClick={() => setFilter(f)}
                                 className={
                                     'h-9 flex-1 rounded-xl border text-xs font-medium ' +
-                                    (filter === f
-                                        ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                        : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                    (filter === f ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                                 }
                             >
                                 {f}
@@ -557,13 +623,7 @@ export default function ArmyDashboardClient({
                         <div className="text-sm font-medium">Jednostki</div>
                         <div className="mt-2 grid gap-2">
                             {filtered.map((u) => (
-                                <UnitRow
-                                    key={u.id}
-                                    u={u}
-                                    armyId={armyId}
-                                    deleting={deletingId === u.id}
-                                    onDelete={() => void deleteUnit(u.id)}
-                                />
+                                <UnitRow key={u.id} u={u} armyId={armyId} deleting={deletingId === u.id} onDelete={() => void deleteUnit(u.id)} />
                             ))}
                             {filtered.length === 0 && <div className="text-sm text-zinc-500">Brak jednostek dla filtra</div>}
                         </div>
@@ -595,9 +655,7 @@ export default function ArmyDashboardClient({
                                     <input
                                         inputMode="numeric"
                                         value={totals[k]}
-                                        onChange={(e) =>
-                                            setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))
-                                        }
+                                        onChange={(e) => setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))}
                                         onBlur={(e) => void setValue(k, n(e.target.value, totals[k]))}
                                         className="h-10 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg"
                                     />
@@ -629,10 +687,97 @@ export default function ArmyDashboardClient({
                 </section>
             )}
 
-            {/* TASKS (placeholder) */}
+            {/* TASKS – trackowanie postępu celów */}
             {tab === 'TASKS' && (
-                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-400">
-                    (Zadania) – w przygotowaniu…
+                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div className="mb-1 flex items-center justify-between">
+                        <div className="text-sm font-medium">Zadania</div>
+                        <button
+                            onClick={() => void loadGoals()}
+                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
+                            aria-label="Odśwież cele"
+                            title="Odśwież"
+                        >
+                            Odśwież
+                        </button>
+                    </div>
+
+                    {loadingGoals && <div className="text-xs text-zinc-400">Ładowanie…</div>}
+
+                    {!loadingGoals && !goalsSet && (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                            Brak aktywnego zestawu zadań dla tej armii.
+                        </div>
+                    )}
+
+                    {!loadingGoals && goalsSet && (
+                        <>
+                            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
+                                <div>
+                                    Zestaw: <span className="font-semibold text-zinc-200">{goalsSet.name}</span>
+                                </div>
+                                <div className="mt-1">
+                                    Aktualny tier armii: <span className="font-semibold text-zinc-200">T{currentTier}</span>
+                                </div>
+                                <div className="mt-2 flex gap-2 text-[11px] text-zinc-400">
+                                    {[1, 2, 3].map((t) => (
+                                        <span key={t} className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5">
+                      T{t}: {doneInTier(t as 1 | 2 | 3)}/{goalsByTier[t as 1 | 2 | 3].length} ukończonych
+                    </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {[1, 2, 3].map((t) => {
+                                const arr = goalsByTier[t as 1 | 2 | 3];
+                                if (arr.length === 0) return null;
+                                return (
+                                    <div key={t} className="mt-4">
+                                        <div className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-400">TIER {t}</div>
+                                        <div className="grid gap-2">
+                                            {arr.map((g) => {
+                                                const filled = g.ticks;
+                                                const total = g.target;
+                                                return (
+                                                    <div key={g.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm text-zinc-100">{g.description}</div>
+                                                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                                    {Array.from({ length: total }, (_, i) => {
+                                                                        const val = i + 1; // 1..target
+                                                                        const active = filled >= val;
+                                                                        return (
+                                                                            <button
+                                                                                key={i}
+                                                                                onClick={() => void setGoalTicks(g.id, active && filled === val ? val - 1 : val)}
+                                                                                disabled={updatingGoalId === g.id}
+                                                                                className={
+                                                                                    'h-6 w-6 rounded-full border text-xs tabular-nums ' +
+                                                                                    (active ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200' : 'border-zinc-700 bg-zinc-900 text-zinc-400')
+                                                                                }
+                                                                                title={active ? `Cofnij do ${val - 1}` : `Ustaw na ${val}`}
+                                                                                aria-label={active ? `Cofnij do ${val - 1}` : `Ustaw na ${val}`}
+                                                                            >
+                                                                                {val}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                            <div className="shrink-0 text-xs text-zinc-400">
+                                                                {filled}/{total}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </>
+                    )}
                 </section>
             )}
 
@@ -685,10 +830,7 @@ export default function ArmyDashboardClient({
 
                         <div className="mt-2 grid gap-2">
                             {facilities.map((f) => (
-                                <div
-                                    key={f.id}
-                                    className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2"
-                                >
+                                <div key={f.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2">
                                     <div className="text-sm">{f.name}</div>
                                     <button
                                         onClick={() => void deleteFacility(f.id)}
@@ -701,15 +843,13 @@ export default function ArmyDashboardClient({
                                     </button>
                                 </div>
                             ))}
-                            {facilities.length === 0 && (
-                                <div className="text-sm text-zinc-500">Brak facilities — dodaj pierwsze powyżej.</div>
-                            )}
+                            {facilities.length === 0 && <div className="text-sm text-zinc-500">Brak facilities — dodaj pierwsze powyżej.</div>}
                         </div>
                     </div>
                 </section>
             )}
 
-            {adding && <AddUnitSheet armyId={armyId} onClose={() => { setAdding(false); router.refresh(); }} />}
+            {adding && <AddUnitSheet armyId={armyId} factionId={factionId} onClose={() => { setAdding(false); router.refresh(); }} />}
         </main>
     );
 }
@@ -720,6 +860,7 @@ type UITemplate = {
     id: string;
     name: string;
     roleTag: string | null;
+    factionId: string | null; // <<<<<< DODANE: potrzebne do filtra
     options: {
         id: string;
         costCaps: number;
@@ -731,7 +872,7 @@ type UITemplate = {
     }[];
 };
 
-function AddUnitSheet({ armyId, onClose }: { armyId: string; onClose: () => void }) {
+function AddUnitSheet({ armyId, factionId, onClose }: { armyId: string; factionId: string; onClose: () => void }) {
     const [list, setList] = useState<UITemplate[]>([]);
     const [q, setQ] = useState('');
     const [selT, setSelT] = useState<string | null>(null);
@@ -741,18 +882,17 @@ function AddUnitSheet({ armyId, onClose }: { armyId: string; onClose: () => void
     useEffect(() => {
         void (async () => {
             try {
-                const res = await fetch('/api/unit-templates', { cache: 'no-store' });
+                const res = await fetch(`/api/unit-templates?factionId=${encodeURIComponent(factionId)}`, { cache: 'no-store' });
                 if (res.ok) setList((await res.json()) as UITemplate[]);
             } catch {
                 // noop
             }
         })();
-    }, []);
+    }, [factionId]);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
-        if (!s) return list;
-        return list.filter((t) => t.name.toLowerCase().includes(s));
+        return s ? list.filter(t => t.name.toLowerCase().includes(s)) : list;
     }, [q, list]);
 
     const selected = list.find((t) => t.id === selT) ?? null;

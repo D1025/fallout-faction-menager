@@ -6,11 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p 3000",
-    "prisma:deploy": "prisma generate && prisma migrate deploy && prisma db seed",
+
     "prisma:generate": "prisma generate",
+    "prisma:db:push": "prisma db push",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "seed": "prisma generate && prisma migrate deploy && prisma db seed",
-    "start:docker": "prisma generate && prisma migrate deploy && next start -p 3000"
+
+    "seed": "prisma db seed",
+
+    "start:docker": "echo \"DATABASE_URL=$DATABASE_URL\" && prisma generate && prisma db push && prisma db seed && next start -p 3000"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",

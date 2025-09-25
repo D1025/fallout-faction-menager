@@ -1,22 +1,26 @@
+# ---------- deps ----------
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 
+# ---------- build ----------
 FROM node:22-alpine AS build
 WORKDIR /app
+RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Dobrze mieć też generowanie w build (np. dla typegenów),
-# ale kluczowe będzie to w warstwie RUN poniżej.
 RUN npx prisma generate
 RUN npm run build
 
+# ---------- run ----------
 FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
-# app (build) i deps
+RUN apk add --no-cache openssl
+
 COPY --from=build /app/.next ./.next
 COPY --from=deps /app/node_modules ./node_modules
 COPY package*.json ./
@@ -25,7 +29,6 @@ COPY package*.json ./
 COPY prisma ./prisma
 COPY public ./public
 
-# ⬇️ KLUCZOWE: wygeneruj klienta we FINALNYM obrazie (musl)
 RUN npx prisma generate
 
 EXPOSE 3000

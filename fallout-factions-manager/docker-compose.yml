@@ -1,20 +1,15 @@
-services:
-  web:
-    build: .
-    ports: ["3000:3000"]
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-    command: "npm run start:docker"
+version: "3.9"
 
+services:
   db:
     image: postgres:16-alpine
+    env_file: .env
     environment:
       POSTGRES_USER: root_admin
       POSTGRES_PASSWORD: ${PG_ROOT_PASSWORD}
       POSTGRES_DB: fallout
-    ports: ["5432:5432"]
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d
@@ -23,5 +18,22 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: "npm run start:docker"
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
+
 volumes:
   pgdata:

@@ -165,6 +165,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 <ArmyDashboardClient
                     armyId={army.id}
                     armyName={army.name}
+                    factionId={army.factionId}
                     tier={army.tier}
                     factionName={army.faction.name}
                     resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}

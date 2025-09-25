@@ -1,9 +1,18 @@
+import { NextRequest } from 'next/server';
 import { prisma } from '@/server/prisma';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+    const { searchParams } = new URL(req.url);
+    const factionId = searchParams.get('factionId');
+
+    const where = factionId
+        ? { OR: [{ factionId }, { factionId: null }] } // tylko z danej frakcji + ogólne
+        : undefined;
+
     const rows = await prisma.unitTemplate.findMany({
+        where,
         include: {
             options: {
                 include: {
@@ -19,6 +28,7 @@ export async function GET() {
         id: t.id,
         name: t.name,
         roleTag: t.roleTag,
+        factionId: t.factionId, // zwracamy dla kompletności
         options: t.options.map(o => ({
             id: o.id,
             costCaps: o.costCaps,
