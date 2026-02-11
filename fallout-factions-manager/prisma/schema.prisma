@@ -65,6 +65,10 @@ model Army {
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
+  // Subfrakcja jest opcjonalna: null = "czysta" frakcja (standard)
+  subfactionId String?
+  subfaction   Subfaction? @relation(fields: [subfactionId], references: [id])
+
   faction Faction        @relation(fields: [factionId], references: [id])
   units   UnitInstance[]
 
@@ -112,11 +116,14 @@ model Faction {
   name String @unique
 
   limits        FactionLimit[]
-  unitTemplates UnitTemplate[] @relation("TemplatesPrimaryFaction")
+  // unitTemplates: teraz przez M:N (UnitTemplateFaction)
+  unitTemplates UnitTemplateFaction[]
   armies        Army[]
 
   goalSets     FactionGoalSet[]
   upgradeRules FactionUpgradeRule[]
+
+  subfactions Subfaction[]
 }
 
 model FactionLimit {
@@ -157,6 +164,10 @@ model WeaponTemplate {
   profiles         WeaponProfile[]
   optionsAsWeapon1 UnitWeaponOption[] @relation("OptionWeapon1")
   optionsAsWeapon2 UnitWeaponOption[] @relation("OptionWeapon2")
+
+  // subfrakcje: allow/deny
+  subfactionAllows SubfactionWeaponAllow[]
+  subfactionDenies SubfactionWeaponDeny[]
 
   instances WeaponInstance[]
 }
@@ -232,16 +243,20 @@ model Perk {
   updatedAt     DateTime     @updatedAt
 
   startOnUnits UnitStartPerk[]
+  chosenOnUnits UnitChosenPerk[]
 }
 
 /**
  * ============ SZABLONY JEDNOSTEK ============
  */
 model UnitTemplate {
-  id        String  @id @default(cuid())
-  name      String
-  factionId String?
-  roleTag   String?
+  id   String @id @default(cuid())
+  name String
+
+  // globalny template = dostępny dla wszystkich frakcji
+  isGlobal Boolean @default(false)
+
+  roleTag String?
 
   hp Int @default(3)
   s  Int @default(5)
@@ -257,30 +272,52 @@ model UnitTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  faction      Faction?           @relation("TemplatesPrimaryFaction", fields: [factionId], references: [id])
+  // M:N frakcje
+  factions UnitTemplateFaction[]
+
   options      UnitWeaponOption[]
   startPerks   UnitStartPerk[]
   UnitInstance UnitInstance[]
 
-  @@index([factionId])
+  // subfrakcje: allow/deny
+  subfactionAllows SubfactionUnitAllow[]
+  subfactionDenies SubfactionUnitDeny[]
+
+  @@index([isGlobal])
 }
 
+model UnitTemplateFaction {
+  id         String @id @default(cuid())
+  unitId     String
+  factionId  String
+
+  unit    UnitTemplate @relation(fields: [unitId], references: [id])
+  faction Faction      @relation(fields: [factionId], references: [id])
+
+  @@unique([unitId, factionId])
+  @@index([factionId])
+  @@index([unitId])
+}
+
+// =====================================================
+//  Jednostki: warianty uzbrojenia, perki startowe, instancje w armii
+// =====================================================
+
 model UnitWeaponOption {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   unitId    String
   weapon1Id String
   weapon2Id String?
-  costCaps  Int
+  costCaps  Int    @default(0)
   rating    Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  unit         UnitTemplate    @relation(fields: [unitId], references: [id])
-  weapon1      WeaponTemplate  @relation("OptionWeapon1", fields: [weapon1Id], references: [id])
-  weapon2      WeaponTemplate? @relation("OptionWeapon2", fields: [weapon2Id], references: [id])
-  UnitInstance UnitInstance[]
+  unit    UnitTemplate   @relation(fields: [unitId], references: [id])
+  weapon1 WeaponTemplate @relation("OptionWeapon1", fields: [weapon1Id], references: [id])
+  weapon2 WeaponTemplate? @relation("OptionWeapon2", fields: [weapon2Id], references: [id])
 
-  @@unique([unitId, weapon1Id, weapon2Id])
+  selectedBy UnitInstance[] @relation("SelectedOption")
+
+  @@index([unitId])
   @@index([weapon1Id])
   @@index([weapon2Id])
 }
@@ -296,34 +333,48 @@ model UnitStartPerk {
 
   @@unique([unitId, perkId])
   @@index([perkId])
+  @@index([unitId])
 }
 
-/**
- * ============ INSTANCJE W ARMII ============
- */
 model UnitInstance {
-  id               String   @id @default(cuid())
-  armyId           String
-  unitId           String
-  selectedOptionId String?
-  wounds           Int      @default(0)
-  present          Boolean  @default(true)
-  photoPath        String?
-  chosenPerkIds    String[] @default([])
-  upgradesCount    Int      @default(0)
+  id         String   @id @default(cuid())
+  armyId     String
+  unitId     String
+  optionId   String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  wounds     Int      @default(0)
+  present    Boolean  @default(true)
+  photoPath  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  army           Army              @relation(fields: [armyId], references: [id])
-  unit           UnitTemplate      @relation(fields: [unitId], references: [id])
-  weapons        WeaponInstance[]
-  upgrades       StatUpgrade[]
-  selectedOption UnitWeaponOption? @relation(fields: [selectedOptionId], references: [id])
+  army           Army           @relation(fields: [armyId], references: [id])
+  unit           UnitTemplate   @relation(fields: [unitId], references: [id])
+  selectedOption UnitWeaponOption? @relation("SelectedOption", fields: [optionId], references: [id])
+
+  // wybrane perki na instancji (bez upgrade'ów SPECIAL)
+  chosenPerks UnitChosenPerk[]
+
+  upgrades StatUpgrade[]
+  weapons  WeaponInstance[]
 
   @@index([armyId])
   @@index([unitId])
-  @@index([selectedOptionId])
+  @@index([optionId])
+}
+
+model UnitChosenPerk {
+  id       String @id @default(cuid())
+  unitId   String
+  perkId   String
+  valueInt Int?
+
+  unit UnitInstance @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  perk Perk         @relation(fields: [perkId], references: [id])
+
+  @@unique([unitId, perkId])
+  @@index([perkId])
+  @@index([unitId])
 }
 
 model WeaponInstance {
@@ -419,3 +470,71 @@ model HomeFacility {
 
   @@index([turfId])
 }
+
+model Subfaction {
+  id        String   @id @default(cuid())
+  factionId String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  faction Faction @relation(fields: [factionId], references: [id])
+  armies  Army[]
+
+  unitAllows   SubfactionUnitAllow[]
+  unitDenies   SubfactionUnitDeny[]
+  weaponAllows SubfactionWeaponAllow[]
+  weaponDenies SubfactionWeaponDeny[]
+
+  @@unique([factionId, name])
+  @@index([factionId])
+}
+
+model SubfactionUnitAllow {
+  id           String @id @default(cuid())
+  subfactionId String
+  unitId       String
+
+  subfaction Subfaction   @relation(fields: [subfactionId], references: [id])
+  unit       UnitTemplate @relation(fields: [unitId], references: [id])
+
+  @@unique([subfactionId, unitId])
+  @@index([unitId])
+}
+
+model SubfactionUnitDeny {
+  id           String @id @default(cuid())
+  subfactionId String
+  unitId       String
+
+  subfaction Subfaction   @relation(fields: [subfactionId], references: [id])
+  unit       UnitTemplate @relation(fields: [unitId], references: [id])
+
+  @@unique([subfactionId, unitId])
+  @@index([unitId])
+}
+
+model SubfactionWeaponAllow {
+  id           String @id @default(cuid())
+  subfactionId String
+  weaponId     String
+
+  subfaction Subfaction    @relation(fields: [subfactionId], references: [id])
+  weapon     WeaponTemplate @relation(fields: [weaponId], references: [id])
+
+  @@unique([subfactionId, weaponId])
+  @@index([weaponId])
+}
+
+model SubfactionWeaponDeny {
+  id           String @id @default(cuid())
+  subfactionId String
+  weaponId     String
+
+  subfaction Subfaction    @relation(fields: [subfactionId], references: [id])
+  weapon     WeaponTemplate @relation(fields: [weaponId], references: [id])
+
+  @@unique([subfactionId, weaponId])
+  @@index([weaponId])
+}
+

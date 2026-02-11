@@ -10,7 +10,8 @@ type FormStartPerk = { perkId: string; valueInt: number | null };
 type FormState = {
     id?: string;
     name: string;
-    factionId: string | null;
+    isGlobal: boolean;
+    factionIds: string[];
     roleTag: string | null;
 
     hp: number;
@@ -36,7 +37,8 @@ export function AdminUnitTemplatesClient({
     function blankForm(): FormState {
         return {
             name: '',
-            factionId: null,
+            isGlobal: false,
+            factionIds: [],
             roleTag: null,
             hp: 3,
             s: 5, p: 5, e: 5, c: 5, i: 5, a: 5, l: 5,
@@ -77,6 +79,10 @@ export function AdminUnitTemplatesClient({
         if (!form.name.trim()) { alert('Podaj nazwę jednostki'); return; }
         const optErr = validateOptions();
         if (optErr) { alert(optErr); return; }
+        if (!form.isGlobal && form.factionIds.length === 0) {
+            alert('Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.');
+            return;
+        }
 
         setSaving(true);
         try {
@@ -98,8 +104,8 @@ export function AdminUnitTemplatesClient({
                 body: JSON.stringify(payload),
             });
             if (!res.ok) {
-                const payload = await res.json().catch(async()=>({status:res.status, text:await res.text()}));
-                alert('Błąd zapisu: ' + JSON.stringify(payload));
+                const pld = await res.json().catch(async()=>({status:res.status, text:await res.text()}));
+                alert('Błąd zapisu: ' + JSON.stringify(pld));
                 return;
             }
             await reload();
@@ -139,6 +145,13 @@ export function AdminUnitTemplatesClient({
 
     const weaponName = (id?: string | null) => weapons.find(w=>w.id===id)?.name ?? '—';
 
+    function toggleFaction(id: string) {
+        setForm((f) => {
+            const has = f.factionIds.includes(id);
+            return { ...f, factionIds: has ? f.factionIds.filter((x) => x !== id) : [...f.factionIds, id] };
+        });
+    }
+
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100 p-3 max-w-screen-sm mx-auto">
             <h1 className="text-lg font-semibold">Jednostki</h1>
@@ -150,7 +163,11 @@ export function AdminUnitTemplatesClient({
                         <button
                             className="w-full text-left"
                             onClick={()=> setForm({
-                                id: u.id, name: u.name, factionId: u.factionId, roleTag: u.roleTag,
+                                id: u.id,
+                                name: u.name,
+                                isGlobal: u.isGlobal,
+                                factionIds: u.factionIds,
+                                roleTag: u.roleTag,
                                 hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
                                 baseRating: u.baseRating,
                                 options: u.options.map(o=> ({
@@ -166,7 +183,7 @@ export function AdminUnitTemplatesClient({
                                 <div>
                                     <div className="font-medium">{u.name}</div>
                                     <div className="mt-1 text-xs text-zinc-400">
-                                        HP {u.hp} • S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
+                                        {u.isGlobal ? 'GLOBAL' : (u.factionIds.length ? `Frakcje: ${u.factionIds.length}` : 'Brak frakcji')} • HP {u.hp} • S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
                                     </div>
                                 </div>
                                 <div className="text-xs text-zinc-400">{u.options.length} pakiet(y)</div>
@@ -194,12 +211,42 @@ export function AdminUnitTemplatesClient({
                 <input value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
 
-                <label className="block mt-2 text-xs text-zinc-400">Frakcja</label>
-                <select value={form.factionId ?? ''} onChange={e=>setForm({...form, factionId: e.target.value || null})}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm">
-                    <option value="">GLOBAL (ogólnodostępna)</option>
-                    {factions.map(f=> <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
+                <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={form.isGlobal}
+                            onChange={(e) => setForm({ ...form, isGlobal: e.target.checked })}
+                        />
+                        <span className="font-medium">GLOBAL (dostępna dla wszystkich frakcji)</span>
+                    </label>
+
+                    {!form.isGlobal && (
+                        <div className="mt-2">
+                            <div className="text-xs text-zinc-400">Przypisz do frakcji (wiele)</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {factions.map((f) => {
+                                    const active = form.factionIds.includes(f.id);
+                                    return (
+                                        <button
+                                            key={f.id}
+                                            type="button"
+                                            onClick={() => toggleFaction(f.id)}
+                                            className={
+                                                'h-9 rounded-xl border px-3 text-xs font-medium ' +
+                                                (active
+                                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                            }
+                                        >
+                                            {f.name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 <label className="block mt-2 text-xs text-zinc-400">Tag roli (opcjonalnie)</label>
                 <input value={form.roleTag ?? ''} onChange={e=>setForm({...form, roleTag: e.target.value || null})}
@@ -319,8 +366,11 @@ export function AdminUnitTemplatesClient({
                             className="flex-1 h-10 rounded-xl border border-zinc-700">
                         Wyczyść
                     </button>
-                    <button onClick={()=>void save()} disabled={saving}
-                            className="flex-1 h-10 rounded-xl bg-emerald-500 text-emerald-950 font-semibold disabled:opacity-50">
+                    <button
+                        disabled={saving}
+                        onClick={() => void save()}
+                        className="flex-1 h-10 rounded-xl bg-emerald-500 text-emerald-950 font-semibold disabled:opacity-50"
+                    >
                         {saving ? 'Zapisywanie…' : 'Zapisz'}
                     </button>
                 </div>

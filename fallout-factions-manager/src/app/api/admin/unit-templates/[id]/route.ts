@@ -5,6 +5,50 @@ import { z } from "zod";
 
 export const runtime = "nodejs";
 
+type UnitTemplateFactionDelegate = {
+    deleteMany(args: { where: { unitId: string } }): Promise<unknown>;
+    createMany(args: { data: Array<{ unitId: string; factionId: string }>; skipDuplicates?: boolean }): Promise<unknown>;
+};
+
+type UnitTemplateDelegate = {
+    update(args: {
+        where: { id: string };
+        data: {
+            name: string;
+            isGlobal: boolean;
+            roleTag: string | null;
+            hp: number;
+            s: number; p: number; e: number; c: number; i: number; a: number; l: number;
+            baseRating: number | null;
+        };
+    }): Promise<unknown>;
+    delete(args: { where: { id: string } }): Promise<unknown>;
+};
+
+type UnitWeaponOptionDelegate = {
+    deleteMany(args: { where: { unitId: string } }): Promise<unknown>;
+    createMany(args: { data: Array<{ unitId: string; weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null }> }): Promise<unknown>;
+};
+
+type UnitStartPerkDelegate = {
+    deleteMany(args: { where: { unitId: string } }): Promise<unknown>;
+    createMany(args: { data: Array<{ unitId: string; perkId: string; valueInt: number | null }> }): Promise<unknown>;
+};
+
+type UnitInstanceDelegate = { count(args: { where: { unitId: string } }): Promise<number> };
+
+type Tx = {
+    unitTemplate: UnitTemplateDelegate;
+    unitTemplateFaction: UnitTemplateFactionDelegate;
+    unitWeaponOption: UnitWeaponOptionDelegate;
+    unitStartPerk: UnitStartPerkDelegate;
+};
+
+const p = prisma as unknown as {
+    unitInstance: UnitInstanceDelegate;
+    $transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+};
+
 const OptionSchema = z.object({
     weapon1Id: z.string().min(1),
     weapon2Id: z.string().min(1).nullable().optional(),
@@ -17,7 +61,8 @@ const StartPerkSchema = z.object({
 });
 const UnitTemplateInput = z.object({
     name: z.string().min(1),
-    factionId: z.string().min(1).nullable(),
+    isGlobal: z.boolean().optional().default(false),
+    factionIds: z.array(z.string().min(1)).optional().default([]),
     roleTag: z.string().min(1).nullable().optional(),
     hp: z.number().int().min(1),
     s: z.number().int(), p: z.number().int(), e: z.number().int(),
@@ -25,6 +70,10 @@ const UnitTemplateInput = z.object({
     baseRating: z.number().int().nullable().optional(),
     options: z.array(OptionSchema).min(1),
     startPerks: z.array(StartPerkSchema).optional().default([]),
+}).superRefine((v, ctx) => {
+    if (!v.isGlobal && v.factionIds.length === 0) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['factionIds'], message: 'Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.' });
+    }
 });
 
 type AsyncCtx = { params: Promise<{ id: string }> };
@@ -42,24 +91,38 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     }
     const v = parsed.data;
 
-    await prisma.$transaction(async (tx) => {
+    await p.$transaction(async (tx) => {
         await tx.unitTemplate.update({
             where: { id },
             data: {
                 name: v.name,
-                factionId: v.factionId,
+                isGlobal: v.isGlobal,
                 roleTag: v.roleTag ?? null,
                 hp: v.hp,
-                s: v.s, p: v.p, e: v.e, c: v.c, i: v.i, a: v.a, l: v.l,
+                s: v.s,
+                p: v.p,
+                e: v.e,
+                c: v.c,
+                i: v.i,
+                a: v.a,
+                l: v.l,
                 baseRating: v.baseRating ?? null,
             },
         });
 
-        // wyczyść istniejące opcje i zapisz nowe (wprost z weapon1/weapon2)
-        await tx.unitWeaponOption.deleteMany({ where: { unitId: id } });
+        // frakcje (M:N)
+        await tx.unitTemplateFaction.deleteMany({ where: { unitId: id } });
+        if (!v.isGlobal && v.factionIds.length) {
+            await tx.unitTemplateFaction.createMany({
+                data: v.factionIds.map((factionId) => ({ unitId: id, factionId })),
+                skipDuplicates: true,
+            });
+        }
 
+        // opcje broni
+        await tx.unitWeaponOption.deleteMany({ where: { unitId: id } });
         await tx.unitWeaponOption.createMany({
-            data: v.options.map(opt => ({
+            data: v.options.map((opt) => ({
                 unitId: id,
                 weapon1Id: opt.weapon1Id,
                 weapon2Id: opt.weapon2Id ?? null,
@@ -72,8 +135,10 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
         await tx.unitStartPerk.deleteMany({ where: { unitId: id } });
         if (v.startPerks.length > 0) {
             await tx.unitStartPerk.createMany({
-                data: v.startPerks.map(sp => ({
-                    unitId: id, perkId: sp.perkId, valueInt: sp.valueInt ?? null,
+                data: v.startPerks.map((sp) => ({
+                    unitId: id,
+                    perkId: sp.perkId,
+                    valueInt: sp.valueInt ?? null,
                 })),
             });
         }
@@ -88,12 +153,13 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
     const session = await auth();
     if (session?.user.role !== "ADMIN") return new Response("FORBIDDEN", { status: 403 });
 
-    const inUse = await prisma.unitInstance.count({ where: { unitId: id } });
+    const inUse = await p.unitInstance.count({ where: { unitId: id } });
     if (inUse > 0) {
         return new Response(JSON.stringify({ error: "Unit template is used by existing armies" }), { status: 409 });
     }
 
-    await prisma.$transaction(async (tx) => {
+    await p.$transaction(async (tx) => {
+        await tx.unitTemplateFaction.deleteMany({ where: { unitId: id } });
         await tx.unitWeaponOption.deleteMany({ where: { unitId: id } });
         await tx.unitStartPerk.deleteMany({ where: { unitId: id } });
         await tx.unitTemplate.delete({ where: { id } });

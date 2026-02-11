@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 /* ===== Types ===== */
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null };
@@ -70,6 +71,7 @@ async function putUpgrades(factionId: string, rules: UpgradeRule[]): Promise<voi
 
 /* ===== Komponent ===== */
 export function FactionsClient({ initialFactions }: { initialFactions: UIFaction[] }) {
+    const router = useRouter();
     const [q, setQ] = useState('');
     const [factions, setFactions] = useState<UIFaction[]>(initialFactions);
     const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
@@ -83,7 +85,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
     function openCreate() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '', target: 0, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
         );
         const blank: UIFaction = {
             id: 'NEW',
@@ -152,14 +154,17 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                     onSaved={(saved) => {
                         upsertLocalFaction(saved);
                         setEditor(null);
+                        router.refresh();
                     }}
                     onDeleted={(id) => {
                         removeLocalFaction(id);
                         setEditor(null);
+                        router.refresh();
                     }}
                     onDeleteRequest={async (id) => {
                         if (!confirm('Na pewno usunąć frakcję? Operacja nieodwracalna.')) return;
                         await deleteFaction(id);
+                        router.refresh();
                     }}
                     saving={savingAll}
                     onSaveAll={async (draft) => {
@@ -333,7 +338,7 @@ function EditorSheet({
     /* === ZESTAWY ZADAŃ === */
     function addGoalSet() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '', target: 0, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
         );
         setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Zestaw ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
     }

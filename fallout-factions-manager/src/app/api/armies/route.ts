@@ -10,6 +10,8 @@ const CreateArmySchema = z.object({
     tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     // NOWE: goalSetId z frontu (opcjonalne, bo bezpieczeństwo)
     goalSetId: z.string().optional().nullable(),
+    // NOWE: subfrakcja jest opcjonalna
+    subfactionId: z.string().optional().nullable(),
 });
 
 export async function POST(request: NextRequest) {
@@ -24,7 +26,23 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: parsed.error.format() }, { status: 400 });
     }
 
-    const { name, factionId, tier, goalSetId } = parsed.data;
+    const { name, factionId, tier, goalSetId, subfactionId } = parsed.data;
+
+    // jeżeli podano subfactionId – sprawdź, czy istnieje i należy do frakcji
+    let finalSubfactionId: string | null = null;
+    if (subfactionId) {
+        const sf = await prisma.subfaction.findUnique({
+            where: { id: subfactionId },
+            select: { id: true, factionId: true },
+        });
+        if (!sf) {
+            return NextResponse.json({ error: 'SUBFACTION_NOT_FOUND' }, { status: 400 });
+        }
+        if (sf.factionId !== factionId) {
+            return NextResponse.json({ error: 'SUBFACTION_NOT_IN_FACTION' }, { status: 400 });
+        }
+        finalSubfactionId = sf.id;
+    }
 
     // jeśli podano goalSetId – sprawdź, czy istnieje i należy do wybranej frakcji
     let activeGoalSetId: string | null = null;
@@ -50,6 +68,7 @@ export async function POST(request: NextRequest) {
             tier,
             ownerId: session.user.id,
             activeGoalSetId, // <<<<<<<<<< tu zapisujemy
+            subfactionId: finalSubfactionId,
         },
         select: { id: true, activeGoalSetId: true },
     });

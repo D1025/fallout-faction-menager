@@ -69,6 +69,7 @@ export default function ArmyDashboardClient({
                                                 resources,
                                                 units,
                                                 rating,
+                                                subfactionId,
                                             }: {
     armyId: string;
     armyName: string;
@@ -78,6 +79,7 @@ export default function ArmyDashboardClient({
     resources: Record<Kind, number>;
     units: UnitListItem[];
     rating: number;
+    subfactionId?: string | null;
 }) {
     const router = useRouter();
     const [totals, setTotals] = useState(resources);
@@ -256,21 +258,39 @@ export default function ArmyDashboardClient({
         const [absent, setAbsent] = useState(!u.present);
 
         async function savePresence(nextPresent: boolean) {
+            const prev = absent;
             setAbsent(!nextPresent);
-            await fetch(`/api/units/${u.id}/presence`, {
+            const res = await fetch(`/api/units/${u.id}/presence`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ present: nextPresent }),
-            }).catch(() => {});
+            }).catch(() => null);
+
+            if (!res || !res.ok) {
+                setAbsent(prev);
+                alert('Nie udało się zapisać obecności.');
+                return;
+            }
+
+            router.refresh();
         }
 
         async function saveWounds(next: number) {
+            const prev = wounds;
             setWounds(next);
-            await fetch(`/api/units/${u.id}/wounds`, {
+            const res = await fetch(`/api/units/${u.id}/wounds`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ wounds: next }),
-            }).catch(() => {});
+            }).catch(() => null);
+
+            if (!res || !res.ok) {
+                setWounds(prev);
+                alert('Nie udało się zapisać ran.');
+                return;
+            }
+
+            router.refresh();
         }
 
         const maxHp = u.base.hp + u.bonus.HP;
@@ -849,7 +869,17 @@ export default function ArmyDashboardClient({
                 </section>
             )}
 
-            {adding && <AddUnitSheet armyId={armyId} factionId={factionId} onClose={() => { setAdding(false); router.refresh(); }} />}
+            {adding && (
+                <AddUnitSheet
+                    armyId={armyId}
+                    factionId={factionId}
+                    subfactionId={subfactionId ?? null}
+                    onClose={() => {
+                        setAdding(false);
+                        router.refresh();
+                    }}
+                />
+            )}
         </main>
     );
 }
@@ -872,7 +902,17 @@ type UITemplate = {
     }[];
 };
 
-function AddUnitSheet({ armyId, factionId, onClose }: { armyId: string; factionId: string; onClose: () => void }) {
+function AddUnitSheet({
+    armyId,
+    factionId,
+    subfactionId,
+    onClose,
+}: {
+    armyId: string;
+    factionId: string;
+    subfactionId: string | null;
+    onClose: () => void;
+}) {
     const [list, setList] = useState<UITemplate[]>([]);
     const [q, setQ] = useState('');
     const [selT, setSelT] = useState<string | null>(null);
@@ -882,13 +922,15 @@ function AddUnitSheet({ armyId, factionId, onClose }: { armyId: string; factionI
     useEffect(() => {
         void (async () => {
             try {
-                const res = await fetch(`/api/unit-templates?factionId=${encodeURIComponent(factionId)}`, { cache: 'no-store' });
+                const qs = new URLSearchParams({ factionId });
+                if (subfactionId) qs.set('subfactionId', subfactionId);
+                const res = await fetch(`/api/unit-templates?${qs.toString()}`, { cache: 'no-store' });
                 if (res.ok) setList((await res.json()) as UITemplate[]);
             } catch {
                 // noop
             }
         })();
-    }, [factionId]);
+    }, [factionId, subfactionId]);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();

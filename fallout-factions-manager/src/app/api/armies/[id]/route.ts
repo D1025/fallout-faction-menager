@@ -3,6 +3,35 @@ import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
+
+type UnitInstanceTx = {
+    create(args: { data: { armyId: string; unitId: string; optionId: string | null; wounds: number; present: boolean }; select: { id: true } }): Promise<{ id: string }>;
+    findUnique(args: { where: { id: string }; include: { weapons: true; upgrades: true } }): Promise<unknown>;
+};
+
+type UnitWeaponOptionDelegate = {
+    findUnique(args: { where: { id: string }; select: { id: true; unitId: true; weapon1Id: true; weapon2Id: true } }): Promise<
+        | { id: string; unitId: string; weapon1Id: string; weapon2Id: string | null }
+        | null
+    >;
+};
+
+type WeaponInstanceTx = {
+    createMany(args: { data: Array<{ unitId: string; templateId: string; activeMods: string[] }> }): Promise<unknown>;
+};
+
+type Tx = {
+    unitInstance: UnitInstanceTx;
+    weaponInstance: WeaponInstanceTx;
+};
+
+type PrismaLike = {
+    unitWeaponOption: UnitWeaponOptionDelegate;
+    $transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+};
+
+const p = prisma as unknown as PrismaLike;
+
 type AsyncCtx = { params: Promise<{ id: string }> };
 
 const CreateUnitSchema = z.object({
@@ -51,7 +80,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     if (!can) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
     // pobierz opcję i zweryfikuj przynależność do template
-    const option = await prisma.unitWeaponOption.findUnique({
+    const option = await p.unitWeaponOption.findUnique({
         where: { id: optionId },
         select: {
             id: true,
@@ -76,22 +105,18 @@ export async function POST(req: Request, ctx: AsyncCtx) {
         return new Response(JSON.stringify({ error: 'Selected option has no weapons' }), { status: 400 });
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-        // utwórz UnitInstance
+    const created = await p.$transaction(async (tx) => {
         const unit = await tx.unitInstance.create({
             data: {
                 armyId,
                 unitId: unitTemplateId,
-                selectedOptionId: option.id,
+                optionId: option.id,
                 wounds: 0,
                 present: true,
-                chosenPerkIds: [],
-                upgradesCount: 0,
             },
             select: { id: true },
         });
 
-        // dodaj WeaponInstance dla każdej broni z opcji
         await tx.weaponInstance.createMany({
             data: weaponIds.map((wid) => ({
                 unitId: unit.id,

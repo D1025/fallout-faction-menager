@@ -6,6 +6,11 @@ export const runtime = 'nodejs';
 
 // W tej instalacji Next.js kontekst ma params jako Promise:
 type AsyncCtx = { params: Promise<{ id: string }> };
+type UnitTemplateFactionDelegate = {
+    count(args: { where: { factionId: string } }): Promise<number>;
+};
+
+const p = prisma as unknown as { unitTemplateFaction: UnitTemplateFactionDelegate };
 
 export async function PATCH(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
@@ -59,7 +64,7 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
     // Bezpiecznik: jeśli frakcja w użyciu, zwróć 409
     const [armies, templates] = await Promise.all([
         prisma.army.count({ where: { factionId: id } }),
-        prisma.unitTemplate.count({ where: { factionId: id } }),
+        p.unitTemplateFaction.count({ where: { factionId: id } }),
     ]);
     if (armies > 0 || templates > 0) {
         return new Response(

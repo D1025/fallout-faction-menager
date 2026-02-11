@@ -20,23 +20,45 @@ export type WeaponDTO = { id: string; name: string };
 export type UnitTemplateDTO = {
     id: string;
     name: string;
-    factionId: string | null;
+    isGlobal: boolean;
+    factionIds: string[];
     roleTag: string | null;
 
     hp: number;
     s: number; p: number; e: number; c: number; i: number; a: number; l: number;
     baseRating: number | null;
 
-    // podgląd opcji: każda wskazuje 1–2 bronie
     options: Array<{ weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null }>;
     startPerks: Array<{ perkId: string; valueInt: number | null }>;
 };
 
+type RawTemplate = {
+    id: string;
+    name: string;
+    isGlobal: boolean;
+    roleTag: string | null;
+    hp: number;
+    s: number; p: number; e: number; c: number; i: number; a: number; l: number;
+    baseRating: number | null;
+    options: Array<{ weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null }>;
+    startPerks: Array<{ perkId: string; valueInt: number | null }>;
+    factions: Array<{ factionId: string }>;
+};
+
+type UnitTemplateDelegate = {
+    findMany(args: {
+        include: { options: true; startPerks: true, factions: true };
+        orderBy: Array<{ name: 'asc' | 'desc' }>;
+    }): Promise<RawTemplate[]>;
+};
+
+const p = prisma as unknown as { unitTemplate: UnitTemplateDelegate };
+
 export default async function TemplatesAdminPage() {
     const [rawTemplates, factions, perks, weapons] = await Promise.all([
-        prisma.unitTemplate.findMany({
-            include: { options: true, startPerks: true },
-            orderBy: [{ factionId: 'asc' }, { name: 'asc' }],
+        p.unitTemplate.findMany({
+            include: { options: true, startPerks: true, factions: true },
+            orderBy: [{ name: 'asc' }],
         }),
         prisma.faction.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         prisma.perk.findMany({
@@ -46,21 +68,24 @@ export default async function TemplatesAdminPage() {
         prisma.weaponTemplate.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ]);
 
-    const templates: UnitTemplateDTO[] = rawTemplates.map(t => ({
-        id: t.id,
-        name: t.name,
-        factionId: t.factionId ?? null,
-        roleTag: t.roleTag ?? null,
-        hp: t.hp, s: t.s, p: t.p, e: t.e, c: t.c, i: t.i, a: t.a, l: t.l,
-        baseRating: t.baseRating ?? null,
-        options: t.options.map(o => ({
-            weapon1Id: o.weapon1Id,
-            weapon2Id: o.weapon2Id ?? null,
-            costCaps: o.costCaps,
-            rating: o.rating ?? null
-        })),
-        startPerks: t.startPerks.map(sp => ({ perkId: sp.perkId, valueInt: sp.valueInt ?? null })),
-    }));
+    const templates: UnitTemplateDTO[] = rawTemplates
+        .map((t) => ({
+            id: t.id,
+            name: t.name,
+            isGlobal: t.isGlobal,
+            factionIds: t.factions.map((x) => x.factionId),
+            roleTag: t.roleTag ?? null,
+            hp: t.hp, s: t.s, p: t.p, e: t.e, c: t.c, i: t.i, a: t.a, l: t.l,
+            baseRating: t.baseRating ?? null,
+            options: t.options.map((o) => ({
+                weapon1Id: o.weapon1Id,
+                weapon2Id: o.weapon2Id ?? null,
+                costCaps: o.costCaps,
+                rating: o.rating ?? null,
+            })),
+            startPerks: t.startPerks.map((sp) => ({ perkId: sp.perkId, valueInt: sp.valueInt ?? null })),
+        }))
+        .sort((a, b) => (a.isGlobal === b.isGlobal ? a.name.localeCompare(b.name) : a.isGlobal ? -1 : 1));
 
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 
 type FactionDTO = {
     id: string;
@@ -13,6 +13,8 @@ type FactionDTO = {
         goals: { tier: 1 | 2 | 3; description: string; target: number; order: number }[];
     }[];
 };
+
+type SubfactionDTO = { id: string; name: string; factionId: string };
 
 export default function CreateArmySheet({ factions }: { factions: FactionDTO[] }) {
     const [open, setOpen] = useState(false);
@@ -40,6 +42,10 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
     const [tier, setTier] = useState<1 | 2 | 3>(1);
 
     const [selectedFactionId, setSelectedFactionId] = useState<string | null>(null);
+    const [selectedSubfactionId, setSelectedSubfactionId] = useState<string | null>(null);
+    const [subfactions, setSubfactions] = useState<SubfactionDTO[]>([]);
+    const [subBusy, setSubBusy] = useState(false);
+
     const [selectedGoalSetId, setSelectedGoalSetId] = useState<string | null>(null);
     const [expandedGoalSetId, setExpandedGoalSetId] = useState<string | null>(null);
 
@@ -48,14 +54,49 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
         [selectedFactionId, factions]
     );
 
-    // teraz wymagamy zarówno frakcji jak i goal setu
-    const can = name.trim().length >= 3 && !!selectedFaction && !!selectedGoalSetId;
-
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
         if (!s) return factions;
         return factions.filter((f) => f.name.toLowerCase().includes(s));
     }, [q, factions]);
+
+    useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            if (!selectedFactionId) {
+                setSubfactions([]);
+                setSelectedSubfactionId(null);
+                return;
+            }
+            setSubBusy(true);
+            try {
+                const res = await fetch(`/api/subfactions?factionId=${encodeURIComponent(selectedFactionId)}`, {
+                    cache: 'no-store',
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const rows = (await res.json()) as SubfactionDTO[];
+                if (!cancelled) {
+                    setSubfactions(rows);
+                    // domyślnie: brak subfrakcji (czysta frakcja)
+                    setSelectedSubfactionId(null);
+                }
+            } catch {
+                if (!cancelled) {
+                    setSubfactions([]);
+                    setSelectedSubfactionId(null);
+                }
+            } finally {
+                if (!cancelled) setSubBusy(false);
+            }
+        }
+        void load();
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedFactionId]);
+
+    // teraz wymagamy nazwy + frakcji + goal setu; subfrakcja jest opcjonalna
+    const can = name.trim().length >= 3 && !!selectedFaction && !!selectedGoalSetId;
 
     async function createArmy() {
         const res = await fetch('/api/armies', {
@@ -65,7 +106,8 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                 name: name.trim(),
                 factionId: selectedFaction!.id,
                 tier,
-                goalSetId: selectedGoalSetId, // <<<<<<<<<<<<<<<<<<<<<< wysyłamy do backendu
+                goalSetId: selectedGoalSetId,
+                subfactionId: selectedSubfactionId, // <<<<<< NOWE
             }),
         });
         if (!res.ok) {
@@ -125,8 +167,11 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
             </span>
                         <span>•</span>
                         <span>
-              Frakcja:{' '}
-                            <span className="text-zinc-200 font-medium">{selectedFaction?.name ?? '—'}</span>
+              Frakcja: <span className="text-zinc-200 font-medium">{selectedFaction?.name ?? '—'}</span>
+            </span>
+                        <span>•</span>
+                        <span>
+              Subfrakcja: <span className="text-zinc-200 font-medium">{subfactions.find(s => s.id === selectedSubfactionId)?.name ?? 'brak'}</span>
             </span>
                     </div>
                 </header>
@@ -138,22 +183,69 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                     )}
 
                     {step === 'FACTION' && (
-                        <FactionStep
-                            factions={filtered}
-                            q={q}
-                            onSearch={setQ}
-                            selectedFactionId={selectedFactionId}
-                            onSelectFaction={(fid) => {
-                                setSelectedFactionId(fid);
-                                const first = factions.find((f) => f.id === fid)?.goalSets[0]?.id ?? null;
-                                setSelectedGoalSetId(first);
-                                setExpandedGoalSetId(null);
-                            }}
-                            selectedGoalSetId={selectedGoalSetId}
-                            onSelectGoalSet={setSelectedGoalSetId}
-                            expandedGoalSetId={expandedGoalSetId}
-                            setExpandedGoalSetId={setExpandedGoalSetId}
-                        />
+                        <>
+                            <FactionStep
+                                factions={filtered}
+                                q={q}
+                                onSearch={setQ}
+                                selectedFactionId={selectedFactionId}
+                                onSelectFaction={(fid) => {
+                                    setSelectedFactionId(fid);
+                                    const first = factions.find((f) => f.id === fid)?.goalSets[0]?.id ?? null;
+                                    setSelectedGoalSetId(first);
+                                    setExpandedGoalSetId(null);
+                                }}
+                                selectedGoalSetId={selectedGoalSetId}
+                                onSelectGoalSet={setSelectedGoalSetId}
+                                expandedGoalSetId={expandedGoalSetId}
+                                setExpandedGoalSetId={setExpandedGoalSetId}
+                            />
+
+                            {/* Subfrakcja (opcjonalnie) */}
+                            {selectedFaction && (
+                                <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                                    <div className="text-xs font-semibold text-zinc-200">Subfrakcja (opcjonalnie)</div>
+                                    <div className="mt-1 text-[11px] text-zinc-400">
+                                        Brak wyboru = czysta frakcja. Subfrakcje mogą dodawać lub blokować dostęp do jednostek i uzbrojenia.
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <button
+                                            onClick={() => setSelectedSubfactionId(null)}
+                                            className={
+                                                'h-9 rounded-xl border px-3 text-xs font-medium ' +
+                                                (selectedSubfactionId == null
+                                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                            }
+                                        >
+                                            Brak subfrakcji
+                                        </button>
+                                        {subfactions.map((s) => (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => setSelectedSubfactionId(s.id)}
+                                                className={
+                                                    'h-9 rounded-xl border px-3 text-xs font-medium ' +
+                                                    (selectedSubfactionId === s.id
+                                                        ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                                        : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                                }
+                                            >
+                                                {s.name}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {subBusy && (
+                                        <div className="mt-2 text-[11px] text-zinc-500">Wczytuję listę subfrakcji…</div>
+                                    )}
+                                    {!subBusy && subfactions.length === 0 && (
+                                        <div className="mt-2 text-[11px] text-zinc-500">Dla tej frakcji nie zdefiniowano subfrakcji.</div>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 
