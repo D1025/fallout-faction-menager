@@ -4,7 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { FactionsClient, type Faction as UIFaction } from '@/components/FactionsClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default async function Page() {
     // Pobierz frakcje + limity z DB; w razie błędu pokaż pustą listę (UI się załaduje)
@@ -34,9 +34,8 @@ export default async function Page() {
     }
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title="Frakcje" backHref="/" />
+        <MobilePageShell title="Frakcje" backHref="/">
             <FactionsClient initialFactions={factions} />
-        </div>
+        </MobilePageShell>
     );
 }

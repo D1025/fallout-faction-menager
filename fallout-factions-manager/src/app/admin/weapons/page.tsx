@@ -4,7 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { AdminWeaponsClient } from '@/components/AdminWeaponsClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default async function WeaponsAdminPage() {
     const raw = await prisma.weaponTemplate.findMany({
@@ -64,12 +64,8 @@ export default async function WeaponsAdminPage() {
     }));
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title="Broń (admin)" backHref="/admin" />
-
-            <main className="app-shell">
-                <AdminWeaponsClient initial={list} />
-            </main>
-        </div>
+        <MobilePageShell title="Broń (admin)" backHref="/admin">
+            <AdminWeaponsClient initial={list} />
+        </MobilePageShell>
     );
 }
