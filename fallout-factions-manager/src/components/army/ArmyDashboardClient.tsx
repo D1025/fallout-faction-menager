@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Drawer } from 'antd';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
 
 type Kind = 'caps' | 'parts' | 'reach' | 'exp';
@@ -100,6 +101,7 @@ export default function ArmyDashboardClient({
     const [hideInactive, setHideInactive] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [tab, setTab] = useState<TabKey>('OVERVIEW');
+    const [filterSheetOpen, setFilterSheetOpen] = useState(false);
 
     useEffect(() => setTotals(resources), [resources]);
 
@@ -434,7 +436,7 @@ export default function ArmyDashboardClient({
         }
 
         return (
-            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden vault-panel p-3">
+            <Link href={`/army/${aId}/unit/${u.id}`} className="block min-h-11 max-w-full overflow-hidden vault-panel p-3">
                 <div className="flex items-center justify-between">
                     <div className="font-medium">{u.templateName}</div>
                     <div className="flex items-center gap-2">
@@ -791,7 +793,7 @@ export default function ArmyDashboardClient({
                         key={k}
                         onClick={() => setTab(k)}
                         className={
-                            'h-10 rounded-xl border text-xs font-medium ' +
+                            'h-11 rounded-xl border text-xs font-medium ' +
                             (tab === k ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                         }
                     >
@@ -807,7 +809,7 @@ export default function ArmyDashboardClient({
                     <section className="mt-3 vault-panel p-3">
                         <div className="mb-2 flex items-center justify-between">
                             <div className="text-sm font-medium">Zasoby</div>
-                            <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
+                            <button onClick={() => setAdding(true)} className="min-h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs">
                                 Dodaj jednostkę
                             </button>
                         </div>
@@ -821,28 +823,43 @@ export default function ArmyDashboardClient({
                         </div>
                     </section>
 
-                    {/* FILTER */}
-                    <div className="mt-3 flex gap-2">
-                        {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => setFilter(f)}
-                                className={
-                                    'h-9 flex-1 rounded-xl border text-xs font-medium ' +
-                                    (filter === f ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
-                                }
-                            >
-                                {f}
-                            </button>
-                        ))}
+                    <div className="mt-3">
+                        <button
+                            type="button"
+                            onClick={() => setFilterSheetOpen(true)}
+                            className="flex min-h-11 w-full items-center justify-between rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-left text-xs"
+                        >
+                            <span>Filtry listy jednostek</span>
+                            <span className="text-zinc-400">{filter}{hideInactive ? ' • aktywne only' : ''}</span>
+                        </button>
                     </div>
 
-                    <div className="mt-2 grid grid-cols-1 gap-2">
-                        <label className="flex items-center gap-2 vault-panel px-3 py-2 text-xs text-zinc-200">
-                            <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
-                            <span>Chowaj nieaktywne (absent / dead)</span>
-                        </label>
-                    </div>
+                    <Drawer
+                        title="Filtry i sortowanie"
+                        placement="bottom"
+                        height="70vh"
+                        open={filterSheetOpen}
+                        onClose={() => setFilterSheetOpen(false)}
+                    >
+                        <div className="grid grid-cols-1 gap-2">
+                            {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
+                                <button
+                                    key={f}
+                                    onClick={() => setFilter(f)}
+                                    className={
+                                        'h-11 rounded-xl border text-xs font-medium ' +
+                                        (filter === f ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                    }
+                                >
+                                    {f}
+                                </button>
+                            ))}
+                            <label className="flex min-h-11 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
+                                <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
+                                <span>Chowaj nieaktywne (absent / dead)</span>
+                            </label>
+                        </div>
+                    </Drawer>
 
                     {/* JEDNOSTKI */}
                     <section className="mt-4">
@@ -920,7 +937,7 @@ export default function ArmyDashboardClient({
                         <div className="text-sm font-medium">Zadania</div>
                         <button
                             onClick={() => void loadGoals()}
-                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
+                            className="min-h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs"
                             aria-label="Odśwież cele"
                             title="Odśwież"
                         >
