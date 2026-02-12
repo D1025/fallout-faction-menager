@@ -41,7 +41,7 @@ export default async function Page() {
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="min-h-dvh">
             <AppHeader title="Frakcje (admin)" backHref="/admin" />
             <FactionsClient initialFactions={factions} />
         </div>

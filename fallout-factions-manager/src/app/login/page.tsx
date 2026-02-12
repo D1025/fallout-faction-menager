@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
     return (
-        <Suspense fallback={<div className="min-h-dvh grid place-items-center bg-zinc-950 text-zinc-100">Ładowanie…</div>}>
+        <Suspense fallback={<div className="min-h-dvh grid place-items-center">Ładowanie…</div>}>
             <LoginForm />
         </Suspense>
     );
@@ -26,25 +26,26 @@ function LoginForm() {
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100 grid place-items-center px-4">
-            <div className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
-                <div className="text-lg font-semibold">Zaloguj się</div>
-                <p className="mt-1 text-sm text-zinc-400">Podaj nick, żeby wejść.</p>
-                <form onSubmit={submit} className="mt-4 grid gap-3">
-                    <label className="grid gap-1">
-                        <span className="text-xs text-zinc-400">Nick</span>
+        <div className="min-h-dvh grid place-items-center px-4">
+            <div className="vault-panel w-full max-w-sm p-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-300">Fallout Factions</p>
+                <h1 className="mt-2 text-xl font-semibold">🎮 Panel dowódcy</h1>
+                <p className="mt-1 text-sm vault-muted">Wpisz nick, aby uruchomić tracker armii na telefonie.</p>
+                <form onSubmit={submit} className="mt-5 grid gap-3">
+                    <label className="grid gap-1.5">
+                        <span className="text-xs vault-muted">Nick gracza</span>
                         <input
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="np. Overseer"
-                            className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+                            className="h-11 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm outline-none focus:border-emerald-400"
                         />
                     </label>
                     <button
                         disabled={name.trim().length < 2}
-                        className="h-11 rounded-2xl bg-emerald-500 text-emerald-950 font-semibold disabled:opacity-40 active:scale-[0.99]"
+                        className="h-11 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-40"
                     >
-                        Wejdź
+                        🔐 Wejdź do aplikacji
                     </button>
                 </form>
             </div>

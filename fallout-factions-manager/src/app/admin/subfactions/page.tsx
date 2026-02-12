@@ -89,9 +89,9 @@ export default async function AdminSubfactionsPage() {
     }));
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="min-h-dvh">
             <AppHeader title="Subfrakcje (admin)" backHref="/admin" />
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
             </main>
         </div>

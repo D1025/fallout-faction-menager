@@ -9,7 +9,7 @@ export function SignOutButton() {
             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs active:scale-[0.98]"
             title="Wyloguj"
         >
-            Wyloguj
+            🚪 Wyloguj
         </button>
     );
 }
