@@ -71,17 +71,51 @@ type GoalsResponse = {
     goals: Goal[];
 };
 
-export default function ArmyDashboardClient({
-                                                armyId,
-                                                armyName,
-                                                tier,
-                                                factionId,                 // <<<<<< DODANE
-                                                factionName,
-                                                resources,
-                                                units,
-                                                rating,
-                                                subfactionId,
-                                            }: {
+export function ArmyDashboardClient({
+    armyId,
+    armyName,
+    tier,
+    factionId,                 // <<<<<< DODANE
+    factionName,
+    resources,
+    units,
+    rating,
+    subfactionId,
+}: {
+    armyId: string;
+    armyName: string;
+    tier: number;
+    factionId: string;         // <<<<<< DODANE
+    factionName: string;
+    resources: Record<Kind, number>;
+    units: UnitListItem[];
+    rating: number;
+    subfactionId?: string | null;
+}) {
+    return <ArmyDashboardClientInner
+        armyId={armyId}
+        armyName={armyName}
+        tier={tier}
+        factionId={factionId}
+        factionName={factionName}
+        resources={resources}
+        units={units}
+        rating={rating}
+        subfactionId={subfactionId}
+    />;
+}
+
+function ArmyDashboardClientInner({
+    armyId,
+    armyName,
+    tier,
+    factionId,                 // <<<<<< DODANE
+    factionName,
+    resources,
+    units,
+    rating,
+    subfactionId,
+}: {
     armyId: string;
     armyName: string;
     tier: number;

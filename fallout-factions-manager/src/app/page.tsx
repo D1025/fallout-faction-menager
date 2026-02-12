@@ -8,8 +8,8 @@ import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
-import CreateArmySheet from '@/components/home/CreateArmySheet';
-import HomeArmiesTabs from '@/components/home/HomeArmiesTabs';
+import { CreateArmySheet } from '@/components/home/CreateArmySheet';
+import { HomeArmiesTabs } from '@/components/home/HomeArmiesTabs';
 
 type ArmyMeta = {
   id: string;

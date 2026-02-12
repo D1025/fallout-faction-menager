@@ -16,7 +16,11 @@ type FactionDTO = {
 
 type SubfactionDTO = { id: string; name: string; factionId: string };
 
-export default function CreateArmySheet({ factions }: { factions: FactionDTO[] }) {
+export function CreateArmySheet(props: { factions: FactionDTO[] }) {
+    return <CreateArmySheetDefault {...props} />;
+}
+
+export default function CreateArmySheetDefault({ factions }: { factions: FactionDTO[] }) {
     const [open, setOpen] = useState(false);
     return (
         <>

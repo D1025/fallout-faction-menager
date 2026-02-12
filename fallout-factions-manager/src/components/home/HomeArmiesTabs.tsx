@@ -308,7 +308,7 @@ function hasActiveFilters(state: UiState): boolean {
     );
 }
 
-export default function HomeArmiesTabs({
+export function HomeArmiesTabs({
     myArmies,
     shared,
     children,
@@ -629,4 +629,3 @@ export default function HomeArmiesTabs({
         </div>
     );
 }
-

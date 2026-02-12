@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
-import ArmyDashboardClient from '@/components/army/ArmyDashboardClient';
+import { ArmyDashboardClient } from '@/components/army/ArmyDashboardClient';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
