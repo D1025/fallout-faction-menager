@@ -323,12 +323,24 @@ export function HomeArmiesTabs({
 
     const initialFromUrl = useMemo(() => readInitialState(new URLSearchParams(sp.toString())), [sp]);
 
+    // IMPORTANT: initial state musi być deterministyczny dla SSR + first client render.
+    // Nie czytamy localStorage w initializerze, bo to powoduje hydration mismatch.
     const [state, setState] = useState<UiState>(() => {
-        // URL ma priorytet; jeśli pusty (bez query) — próbujemy localStorage
-        const fromLs = typeof window !== 'undefined' ? loadFromLocalStorage() : null;
         const hasAnyQuery = sp.toString().length > 0;
-        return hasAnyQuery ? initialFromUrl : fromLs ?? initialFromUrl;
+        return hasAnyQuery ? initialFromUrl : initialFromUrl;
     });
+
+    const [hydrated, setHydrated] = useState(false);
+
+    // Po mount: jeśli URL jest pusty, możemy wczytać preferencje z localStorage.
+    useEffect(() => {
+        setHydrated(true);
+        const hasAnyQuery = sp.toString().length > 0;
+        if (hasAnyQuery) return;
+        const fromLs = loadFromLocalStorage();
+        if (fromLs) setState(fromLs);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // sync: jeśli user wklei link z query — przejmujemy
     useEffect(() => {
@@ -340,12 +352,14 @@ export function HomeArmiesTabs({
 
     // persist -> URL + LS (debounce minimalny)
     useEffect(() => {
+        // przed hydracją nie zapisujemy nic (żeby nie nadpisać LS). SSR też tu nie wejdzie.
+        if (!hydrated) return;
         saveToLocalStorage(state);
         const next = writeStateToParams(state);
         const href = next.toString() ? `${pathname}?${next.toString()}` : pathname;
         router.replace(href, { scroll: false });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [state]);
+    }, [state, hydrated]);
 
     const factions = useMemo(() => {
         const all = [...myArmies, ...shared.map((s) => s.army)].map((a) => a.factionName);
@@ -382,11 +396,12 @@ export function HomeArmiesTabs({
 
     // jeśli są aktywne filtry, a panel nieustawiony — otwórz
     useEffect(() => {
+        if (!hydrated) return;
         if (state.filtersOpen === undefined && hasActiveFilters(state)) {
             setState((s) => ({ ...s, filtersOpen: true }));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [hydrated]);
 
     return (
         <div className="pt-3">
