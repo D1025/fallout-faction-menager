@@ -1,0 +1,31 @@
+import { theme, type ThemeConfig } from 'antd';
+
+export const falloutTheme: ThemeConfig = {
+  algorithm: theme.darkAlgorithm,
+  token: {
+    colorPrimary: '#e1b447',
+    colorInfo: '#7fd37d',
+    colorSuccess: '#6bc17d',
+    colorWarning: '#d89f3f',
+    colorError: '#ff6b6b',
+    colorBgBase: '#0f1318',
+    colorBgLayout: '#0b0f14',
+    colorBgContainer: '#161d25',
+    colorBgElevated: '#1b232d',
+    colorBorder: '#2c3642',
+    colorText: '#f3f7ed',
+    colorTextSecondary: '#b8c4b4',
+    colorTextTertiary: '#8e9a8d',
+    borderRadius: 12,
+    borderRadiusLG: 16,
+    borderRadiusSM: 10,
+    controlHeight: 42,
+    controlHeightLG: 48,
+    controlHeightSM: 36,
+    sizeStep: 4,
+    sizeUnit: 4,
+    fontFamily: 'Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    fontSize: 15,
+    lineHeight: 1.45,
+  },
+};

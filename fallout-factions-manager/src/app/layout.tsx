@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { ConfigProvider } from 'antd';
+import { falloutTheme } from '@/lib/ui/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -13,7 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pl">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ConfigProvider theme={falloutTheme}>{children}</ConfigProvider>
+      </body>
     </html>
   );
 }
