@@ -1,38 +1,57 @@
 'use client';
 
+import { Avatar, Button, Card, Flex, Layout, List, Space, Tag, Typography } from 'antd';
+
 export function RosterClient(props: {
     armyId: string;
     armyName: string;
-    units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string|null }[];
+    units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string | null }[];
 }) {
     return (
-        <div className="min-h-dvh">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
-                <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
-                    <a href={`/army/${props.armyId}`} className="text-sm text-zinc-300">←</a>
-                    <div className="text-base font-semibold">Roster: {props.armyName}</div>
-                    <span className="w-6" />
-                </div>
-            </header>
+        <Layout style={{ minHeight: '100dvh' }}>
+            <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
+                <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto' }}>
+                    <Button type="link" href={`/army/${props.armyId}`}>
+                        ←
+                    </Button>
+                    <Typography.Title level={5} style={{ margin: 0 }}>
+                        Roster: {props.armyName}
+                    </Typography.Title>
+                    <span style={{ width: 24 }} />
+                </Flex>
+            </Layout.Header>
 
-            <main className="app-shell">
-                <div className="mt-3 grid gap-2">
-                    {props.units.map(u => (
-                        <a key={u.id} href={`/army/${props.armyId}/unit/${u.id}`} className="flex items-center gap-3 vault-panel p-3 active:scale-[0.99]">
-                            <div className="h-12 w-12 rounded-xl bg-zinc-800 grid place-items-center text-zinc-300">{u.photoPath ? '🖼️' : u.name.slice(0,2)}</div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                    <div className="font-medium">{u.name}</div>
-                                    <div className="text-xs text-zinc-400">{u.present ? 'obecny' : 'rezerwa'}</div>
-                                </div>
-                                <div className="text-xs text-zinc-400">Rany: {u.wounds}/4 • Broń: {u.weaponsCount} • Ulepszenia: {u.upgradesCount}</div>
-                            </div>
-                        </a>
-                    ))}
-                </div>
+            <Layout.Content style={{ maxWidth: 560, width: '100%', margin: '12px auto', paddingInline: 12 }}>
+                <Card size="small">
+                    <List
+                        dataSource={props.units}
+                        renderItem={(u) => (
+                            <List.Item>
+                                <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%' }}>
+                                    <Flex align="center" gap={12}>
+                                        <Avatar shape="square" size={48}>
+                                            {u.photoPath ? '🖼️' : u.name.slice(0, 2)}
+                                        </Avatar>
+                                        <Space direction="vertical" size={0} style={{ flex: 1 }}>
+                                            <Flex justify="space-between" align="center">
+                                                <Typography.Text strong>{u.name}</Typography.Text>
+                                                <Tag color={u.present ? 'green' : 'default'}>{u.present ? 'obecny' : 'rezerwa'}</Tag>
+                                            </Flex>
+                                            <Typography.Text type="secondary">
+                                                Rany: {u.wounds}/4 • Broń: {u.weaponsCount} • Ulepszenia: {u.upgradesCount}
+                                            </Typography.Text>
+                                        </Space>
+                                    </Flex>
+                                </a>
+                            </List.Item>
+                        )}
+                    />
+                </Card>
 
-                <a href={`/army/${props.armyId}/roster/add`} className="fixed bottom-5 right-5 grid h-14 w-14 place-items-center rounded-full bg-emerald-500 text-2xl text-emerald-950 shadow-lg active:scale-95">＋</a>
-            </main>
-        </div>
+                <Button type="primary" shape="circle" size="large" href={`/army/${props.armyId}/roster/add`} style={{ position: 'fixed', right: 20, bottom: 20 }}>
+                    ＋
+                </Button>
+            </Layout.Content>
+        </Layout>
     );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from 'antd';
 import { useRouter } from 'next/navigation';
 
 export function BackButton({
@@ -22,15 +23,8 @@ export function BackButton({
     }
 
     return (
-        <button
-            type="button"
-            onClick={goBack}
-            className={className ?? 'inline-flex items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100'}
-            aria-label={label}
-            title={label}
-        >
-            <span aria-hidden>◀</span>
-            <span>{label}</span>
-        </button>
+        <Button type="default" size="small" onClick={goBack} className={className} aria-label={label} title={label}>
+            ◀ {label}
+        </Button>
     );
 }

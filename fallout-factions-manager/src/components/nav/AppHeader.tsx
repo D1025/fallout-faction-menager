@@ -1,6 +1,7 @@
 'use client';
 
 import type React from 'react';
+import { Flex, Layout, Typography } from 'antd';
 import { BackButton } from '@/components/nav/BackButton';
 
 export function AppHeader({
@@ -13,14 +14,14 @@ export function AppHeader({
     right?: React.ReactNode;
 }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
-            <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
-                <div className="min-w-0">{backHref ? <BackButton fallbackHref={backHref} /> : <div className="w-[64px]" />}</div>
-                <div className="min-w-0 flex-1 px-2 text-center">
-                    <div className="truncate text-sm font-semibold uppercase tracking-[0.12em] text-amber-300">{title}</div>
-                </div>
-                <div className="min-w-0 text-right">{right ?? <div className="w-[64px]" />}</div>
-            </div>
-        </header>
+        <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
+            <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto', width: '100%' }}>
+                <div style={{ minWidth: 64 }}>{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
+                <Typography.Text strong style={{ flex: 1, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.12em' }}>
+                    {title}
+                </Typography.Text>
+                <div style={{ minWidth: 64, textAlign: 'right' }}>{right}</div>
+            </Flex>
+        </Layout.Header>
     );
 }
