@@ -38,7 +38,7 @@ function LoginForm() {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="np. Overseer"
-                            className="h-11 vault-input px-3 text-sm outline-none focus:border-emerald-400"
+                            className="h-11 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm outline-none focus:border-emerald-400"
                         />
                     </label>
                     <button

@@ -12,7 +12,9 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 html,
 body {
@@ -38,30 +40,14 @@ body {
 }
 
 .vault-panel {
-  border: 1px solid #303742;
-  background: linear-gradient(180deg, #131922 0%, #10161f 100%);
-  border-radius: 14px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  border: 1px solid #2a2f37;
+  background: #11161d;
+  border-radius: 16px;
 }
 
-.vault-input {
-  border: 1px solid #3a414b;
-  background: #0d131b;
-  border-radius: 10px;
+.vault-muted {
+  color: #9ca3af;
 }
-
-.vault-input:focus,
-.vault-input:focus-visible {
-  outline: none;
-  border-color: #d3a94f;
-  box-shadow: 0 0 0 2px rgba(211, 169, 79, 0.2);
-}
-
-button, [role="button"] {
-  touch-action: manipulation;
-}
-
-.vault-muted { color: #9ca3af; }
 
 @media (max-width: 420px) {
   .app-shell {
