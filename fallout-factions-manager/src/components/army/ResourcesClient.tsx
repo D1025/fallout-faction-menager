@@ -1,8 +1,11 @@
 'use client';
 
+import { Button, Card, Flex, Layout, List, Space, Typography } from 'antd';
 import { useState } from 'react';
 
-type Kind = 'caps'|'parts'|'reach';
+type Kind = 'caps' | 'parts' | 'reach';
+
+const resourceKinds: Kind[] = ['caps', 'parts', 'reach'];
 
 export function ResourcesClient(props: {
     armyId: string;
@@ -13,55 +16,72 @@ export function ResourcesClient(props: {
     const [totals, setTotals] = useState(props.totals);
 
     async function change(kind: Kind, delta: number, note?: string) {
-        setTotals(t => ({ ...t, [kind]: (t[kind] ?? 0) + delta }));
+        setTotals((t) => ({ ...t, [kind]: (t[kind] ?? 0) + delta }));
         await fetch(`/api/resources/${props.armyId}`, {
-            method: 'POST', headers: { 'Content-Type':'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ kind, delta, note }),
         });
     }
 
     return (
-        <div className="min-h-dvh">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
-                <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
-                    <a href={`/army/${props.armyId}`} className="text-sm text-zinc-300">←</a>
-                    <div className="text-base font-semibold">Zasoby: {props.armyName}</div>
-                    <span className="w-6" />
-                </div>
-            </header>
+        <Layout style={{ minHeight: '100dvh' }}>
+            <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
+                <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto' }}>
+                    <Button type="link" href={`/army/${props.armyId}`}>
+                        ←
+                    </Button>
+                    <Typography.Title level={5} style={{ margin: 0 }}>
+                        Zasoby: {props.armyName}
+                    </Typography.Title>
+                    <span style={{ width: 24 }} />
+                </Flex>
+            </Layout.Header>
 
-            <main className="app-shell">
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                    {(['caps','parts','reach'] as const).map(k => (
-                        <div key={k} className="vault-panel p-3 text-center">
-                            <div className="text-xs text-zinc-400">{k.toUpperCase()}</div>
-                            <div className="text-lg font-semibold">{totals[k] ?? 0}</div>
-                            <div className="mt-2 flex gap-1">
-                                {[+1,+5,+10].map(n => (
-                                    <button key={n} onClick={() => change(k, n)} className="flex-1 rounded-lg bg-zinc-800 py-1 text-sm active:scale-95">+{n}</button>
-                                ))}
-                            </div>
-                            <div className="mt-1 flex gap-1">
-                                {[-1,-5,-10].map(n => (
-                                    <button key={n} onClick={() => change(k, n)} className="flex-1 rounded-lg bg-zinc-800 py-1 text-sm active:scale-95">{n}</button>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <section className="mt-5 vault-panel p-3">
-                    <div className="text-sm font-medium mb-2">Historia</div>
-                    <div className="grid gap-1">
-                        {props.history.map(h => (
-                            <div key={h.id} className="flex justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-                                <div className="text-zinc-300">{h.kind.toUpperCase()} {h.delta>0?`+${h.delta}`:h.delta}</div>
-                                <div className="text-xs text-zinc-500">{new Date(h.at).toLocaleString()}</div>
-                            </div>
+            <Layout.Content style={{ maxWidth: 560, width: '100%', margin: '12px auto', paddingInline: 12 }}>
+                <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                    <Flex gap={8} wrap>
+                        {resourceKinds.map((k) => (
+                            <Card key={k} size="small" style={{ flex: 1, minWidth: 150 }}>
+                                <Typography.Text type="secondary">{k.toUpperCase()}</Typography.Text>
+                                <Typography.Title level={4} style={{ marginTop: 4 }}>
+                                    {totals[k] ?? 0}
+                                </Typography.Title>
+                                <Flex gap={4}>
+                                    {[1, 5, 10].map((n) => (
+                                        <Button key={n} size="small" onClick={() => change(k, n)}>
+                                            +{n}
+                                        </Button>
+                                    ))}
+                                </Flex>
+                                <Flex gap={4} style={{ marginTop: 4 }}>
+                                    {[-1, -5, -10].map((n) => (
+                                        <Button key={n} size="small" onClick={() => change(k, n)}>
+                                            {n}
+                                        </Button>
+                                    ))}
+                                </Flex>
+                            </Card>
                         ))}
-                    </div>
-                </section>
-            </main>
-        </div>
+                    </Flex>
+
+                    <Card title="Historia" size="small">
+                        <List
+                            dataSource={props.history}
+                            renderItem={(h) => (
+                                <List.Item>
+                                    <Flex justify="space-between" style={{ width: '100%' }}>
+                                        <Typography.Text>
+                                            {h.kind.toUpperCase()} {h.delta > 0 ? `+${h.delta}` : h.delta}
+                                        </Typography.Text>
+                                        <Typography.Text type="secondary">{new Date(h.at).toLocaleString()}</Typography.Text>
+                                    </Flex>
+                                </List.Item>
+                            )}
+                        />
+                    </Card>
+                </Space>
+            </Layout.Content>
+        </Layout>
     );
 }
