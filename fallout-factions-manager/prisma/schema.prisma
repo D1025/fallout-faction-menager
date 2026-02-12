@@ -32,6 +32,28 @@ enum PerkBehavior {
   COMPANION_BEAST
 }
 
+enum UnitTemplateTag {
+  CHAMPION
+  GRUNT
+  COMPANION
+  LEGENDS
+}
+
+enum StatKeySpecial {
+  S
+  P
+  E
+  C
+  I
+  A
+  L
+}
+
+enum PerkCategory {
+  REGULAR
+  AUTOMATRON
+}
+
 /**
  * ============ UŻYTKOWNICY / ARMIE ============
  */
@@ -236,13 +258,24 @@ model Perk {
   id            String       @id @default(cuid())
   name          String
   description   String
+
+  // kategoria perka: zwykły vs automatronowy
+  category      PerkCategory @default(REGULAR)
+
+  // wymagania na SPECIAL jednostki (opcjonalne)
+  statKey       StatKeySpecial?
+  minValue      Int?         // null = brak wymagań; w praktyce używamy >=
+
+  // perk wrodzony: nie powinien być dodawany w armii, tylko przypinany w template
+  isInnate      Boolean      @default(false)
+
   requiresValue Boolean      @default(false)
   startAllowed  Boolean      @default(false)
   behavior      PerkBehavior @default(NONE)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  startOnUnits UnitStartPerk[]
+  startOnUnits  UnitStartPerk[]
   chosenOnUnits UnitChosenPerk[]
 }
 
@@ -253,10 +286,15 @@ model UnitTemplate {
   id   String @id @default(cuid())
   name String
 
+
   // globalny template = dostępny dla wszystkich frakcji
   isGlobal Boolean @default(false)
 
-  roleTag String?
+  // predefiniowana rola/jakość jednostki (do filtrowania i limitów)
+  roleTag UnitTemplateTag?
+
+  // dodatkowy tag: czy ten template może być leaderm (nie wyklucza roleTag)
+  isLeader Boolean @default(false)
 
   hp Int @default(3)
   s  Int @default(5)
@@ -345,6 +383,9 @@ model UnitInstance {
   wounds     Int      @default(0)
   present    Boolean  @default(true)
   photoPath  String?
+  photoBytes Bytes?
+  photoMime  String?
+  photoEtag  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -357,6 +398,9 @@ model UnitInstance {
 
   upgrades StatUpgrade[]
   weapons  WeaponInstance[]
+
+  // oznaczenie lidera tymczasowego w armii
+  temporaryLeader Boolean @default(false)
 
   @@index([armyId])
   @@index([unitId])
@@ -442,7 +486,7 @@ model FactionUpgradeRule {
   statKey        String // "hp","S","P","E","C","I","A","L"
   ratingPerPoint Int
   createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime @default(now())
 
   faction Faction @relation(fields: [factionId], references: [id])
 

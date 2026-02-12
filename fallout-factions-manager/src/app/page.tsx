@@ -6,6 +6,16 @@ import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import CreateArmySheet from '@/components/home/CreateArmySheet';
+import HomeArmiesTabs from '@/components/home/HomeArmiesTabs';
+
+type ArmyMeta = {
+  id: string;
+  name: string;
+  tier: number;
+  factionName: string;
+  subfactionName: string | null;
+  rating: number;
+};
 
 export default async function Home() {
   const session = await auth();
@@ -29,11 +39,9 @@ export default async function Home() {
     );
   }
 
-  let myArmies:
-      | { id: string; name: string; tier: number }[]
-      | [] = [];
+  let myArmies: ArmyMeta[] = [];
   let shared:
-      | { id: string; perm: 'READ' | 'WRITE'; army: { id: string; name: string; tier: number } }[]
+      | { id: string; perm: 'READ' | 'WRITE'; army: ArmyMeta }[]
       | [] = [];
   let factions: {
     id: string;
@@ -47,11 +55,35 @@ export default async function Home() {
       prisma.army.findMany({
         where: { ownerId: userId },
         orderBy: { updatedAt: 'desc' },
-        select: { id: true, name: true, tier: true },
+        include: {
+          faction: { select: { name: true } },
+          units: {
+            include: {
+              unit: true,
+              upgrades: true,
+              weapons: true,
+              selectedOption: true,
+            },
+          },
+        },
       }),
       prisma.armyShare.findMany({
         where: { userId },
-        include: { army: { select: { id: true, name: true, tier: true } } },
+        include: {
+          army: {
+            include: {
+              faction: { select: { name: true } },
+              units: {
+                include: {
+                  unit: true,
+                  upgrades: true,
+                  weapons: true,
+                  selectedOption: true,
+                },
+              },
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.faction.findMany({
@@ -63,8 +95,103 @@ export default async function Home() {
       }),
     ]);
 
-    myArmies = armies;
-    shared = sharedRows;
+    // subfrakcje po id -> nazwa (bez typowanej relacji w Prisma klient)
+    const subIds = Array.from(new Set([
+      ...armies.map((a) => (a as unknown as { subfactionId?: string | null }).subfactionId ?? null),
+      ...sharedRows.map((s) => (s.army as unknown as { subfactionId?: string | null }).subfactionId ?? null),
+    ].filter((x): x is string => Boolean(x))));
+
+    const subRows = subIds.length
+      ? await prisma.$queryRaw<{ id: string; name: string }[]>`SELECT id, name FROM "Subfaction" WHERE id = ANY(${subIds}::text[])`
+      : [];
+    const subById = new Map<string, string>(subRows.map((s: { id: string; name: string }) => [s.id, s.name]));
+
+    // rules do ratingu
+    const allFactionIds = Array.from(new Set([
+      ...armies.map((a) => a.factionId),
+      ...sharedRows.map((s) => s.army.factionId),
+    ]));
+    const rules = allFactionIds.length
+      ? await prisma.factionUpgradeRule.findMany({
+          where: { factionId: { in: allFactionIds } },
+          select: { factionId: true, statKey: true, ratingPerPoint: true },
+        })
+      : [];
+    const ruleByFaction = new Map<string, Map<string, number>>();
+    for (const r of rules) {
+      if (!ruleByFaction.has(r.factionId)) ruleByFaction.set(r.factionId, new Map());
+      ruleByFaction.get(r.factionId)!.set(r.statKey, r.ratingPerPoint);
+    }
+
+    // profile ratingDelta do broni
+    const allTemplateIds = Array.from(new Set([
+      ...armies.flatMap((a) => a.units.flatMap((u) => u.weapons.map((w) => w.templateId))),
+      ...sharedRows.flatMap((s) => s.army.units.flatMap((u) => u.weapons.map((w) => w.templateId))),
+    ]));
+
+    const templates = allTemplateIds.length
+      ? await prisma.weaponTemplate.findMany({
+          where: { id: { in: allTemplateIds } },
+          include: { profiles: true },
+        })
+      : [];
+    const weaponById = new Map(templates.map((t) => [t.id, t] as const));
+
+    function calcArmyRating(army: typeof armies[number]): number {
+      const ruleByKey = ruleByFaction.get(army.factionId) ?? new Map<string, number>();
+
+      return army.units.reduce((sum: number, u) => {
+        const baseFromTemplate = u.unit.baseRating ?? 0;
+        const optionRating = u.selectedOption?.rating ?? 0;
+
+        const weaponDelta = u.weapons.reduce((acc: number, w) => {
+          const t = weaponById.get(w.templateId);
+          if (!t) return acc;
+          const selected = new Set(w.activeMods.filter((m) => m.startsWith('__profile:')).map((m) => m.slice(10)));
+          const pSum = t.profiles.reduce((a: number, p) => (selected.has(p.id) ? a + (p.ratingDelta ?? 0) : a), 0);
+          return acc + pSum;
+        }, 0);
+
+        const statsDelta = u.upgrades.reduce((acc: number, up) => {
+          if (up.delta <= 0) return acc;
+          const key = up.statKey === 'hp' ? 'hp' : up.statKey;
+          const per = ruleByKey.get(key) ?? 0;
+          return acc + up.delta * per;
+        }, 0);
+
+        return sum + baseFromTemplate + optionRating + weaponDelta + statsDelta;
+      }, 0);
+    }
+
+    myArmies = armies.map((a) => {
+      const subId = (a as unknown as { subfactionId?: string | null }).subfactionId ?? null;
+      return {
+        id: a.id,
+        name: a.name,
+        tier: a.tier,
+        factionName: a.faction.name,
+        subfactionName: subId ? (subById.get(subId) ?? null) : null,
+        rating: calcArmyRating(a),
+      };
+    });
+
+    shared = sharedRows.map((s) => {
+      const a = s.army;
+      const subId = (a as unknown as { subfactionId?: string | null }).subfactionId ?? null;
+      return {
+        id: s.id,
+        perm: (s.perm === 'WRITE' ? 'WRITE' : 'READ') as 'READ' | 'WRITE',
+        army: {
+          id: a.id,
+          name: a.name,
+          tier: a.tier,
+          factionName: a.faction.name,
+          subfactionName: subId ? (subById.get(subId) ?? null) : null,
+          rating: calcArmyRating(a as typeof armies[number]),
+        },
+      };
+    });
+
     factions = factionRows.map(f => ({
       id: f.id,
       name: f.name,
@@ -108,58 +235,9 @@ export default async function Home() {
         </header>
 
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
-          <section className="mt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-medium">Moje drużyny</div>
-              <CreateArmySheet factions={factions} />
-            </div>
-            <div className="grid gap-2">
-              {myArmies.map((a) => (
-                  <Link
-                      key={a.id}
-                      href={`/army/${a.id}`}   // <-- tu zmiana (było /unit)
-                      className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{a.name}</div>
-                      <div className="text-xs text-zinc-400">T{a.tier}</div>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-500">tap, aby zarządzać</div>
-                  </Link>
-              ))}
-              {myArmies.length === 0 && (
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-400">
-                    Nie masz jeszcze drużyn. Kliknij „Dodaj nową”.
-                  </div>
-              )}
-            </div>
-          </section>
-
-          <section className="mt-5">
-            <div className="mb-2 text-sm font-medium">Udostępnione dla mnie</div>
-            <div className="grid gap-2">
-              {shared.map((s) => (
-                  <Link
-                      key={s.id}
-                      href={`/army/${s.army.id}`}  // <-- tu zmiana (było /unit)
-                      className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="font-medium">{s.army.name}</div>
-                      <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px]">
-                    {s.perm === 'READ' ? 'tylko odczyt' : 'współpraca'}
-                  </span>
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-400">T{s.army.tier}</div>
-                  </Link>
-              ))}
-              {shared.length === 0 && (
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-400">
-                    Nikt jeszcze nic Ci nie udostępnił.
-                  </div>
-              )}
-            </div>
-          </section>
+          <HomeArmiesTabs myArmies={myArmies} shared={shared}>
+            <CreateArmySheet factions={factions} />
+          </HomeArmiesTabs>
         </main>
       </div>
   );

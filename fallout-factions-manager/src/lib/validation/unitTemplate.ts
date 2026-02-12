@@ -13,10 +13,12 @@ export const LoadoutSchema = z.object({
     rating: z.number().int().nullable().optional(),
 });
 
+const UnitTemplateTagSchema = z.enum(['CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS']);
+
 export const UnitTemplateUpsertSchema = z.object({
     name: z.string().trim().min(2),
     factionId: z.string().nullable().optional(), // null = global
-    roleTag: z.string().trim().optional().nullable(),
+    roleTag: UnitTemplateTagSchema.optional().nullable(),
     // Statystyki bazowe profilu jednostki:
     hp: z.number().int().min(1).max(8),
     s: z.number().int().min(1).max(10),

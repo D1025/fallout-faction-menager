@@ -10,13 +10,16 @@ type UnitTemplateFactionDelegate = {
     createMany(args: { data: Array<{ unitId: string; factionId: string }>; skipDuplicates?: boolean }): Promise<unknown>;
 };
 
+type UnitTemplateTag = 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
+
 type UnitTemplateDelegate = {
     update(args: {
         where: { id: string };
         data: {
             name: string;
             isGlobal: boolean;
-            roleTag: string | null;
+            roleTag: UnitTemplateTag | null;
+            isLeader: boolean;
             hp: number;
             s: number; p: number; e: number; c: number; i: number; a: number; l: number;
             baseRating: number | null;
@@ -59,11 +62,14 @@ const StartPerkSchema = z.object({
     perkId: z.string().min(1),
     valueInt: z.number().int().nullable().optional(),
 });
+const UnitTemplateTagSchema = z.enum(['CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS']);
+
 const UnitTemplateInput = z.object({
     name: z.string().min(1),
     isGlobal: z.boolean().optional().default(false),
     factionIds: z.array(z.string().min(1)).optional().default([]),
-    roleTag: z.string().min(1).nullable().optional(),
+    roleTag: UnitTemplateTagSchema.nullable().optional(),
+    isLeader: z.boolean().optional().default(false),
     hp: z.number().int().min(1),
     s: z.number().int(), p: z.number().int(), e: z.number().int(),
     c: z.number().int(), i: z.number().int(), a: z.number().int(), l: z.number().int(),
@@ -98,6 +104,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
                 name: v.name,
                 isGlobal: v.isGlobal,
                 roleTag: v.roleTag ?? null,
+                isLeader: v.isLeader,
                 hp: v.hp,
                 s: v.s,
                 p: v.p,

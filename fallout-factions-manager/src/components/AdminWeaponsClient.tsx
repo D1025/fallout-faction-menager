@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 
 /* ===== Typy słownika efektów ===== */
 export type EffectKind = 'WEAPON' | 'CRITICAL';
@@ -64,6 +65,8 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     const [effects, setEffects] = useState<DictEffect[]>([]);
     const [list, setList] = useState<WeaponListItem[]>(initial ?? []);
     const [saving, setSaving] = useState(false);
+    const [uploadingImg, setUploadingImg] = useState(false);
+    const [imgPick, setImgPick] = useState<File | null>(null);
 
     const [form, setForm] = useState<WeaponForm>({
         name: '',
@@ -204,6 +207,50 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         await reload();
     }
 
+    async function uploadWeaponImageBlob(blob: Blob): Promise<void> {
+        setUploadingImg(true);
+        try {
+            const file = new File([blob], 'weapon.jpg', { type: blob.type || 'image/jpeg' });
+            const fd = new FormData();
+            fd.set('file', file);
+            const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+            if (!res.ok) {
+                const txt = await res.text().catch(() => '');
+                alert('Upload nieudany: ' + (txt || 'błąd serwera'));
+                return;
+            }
+            const json = (await res.json().catch(() => null)) as { path?: string } | null;
+            if (!json?.path) {
+                alert('Upload nieudany: brak ścieżki pliku w odpowiedzi');
+                return;
+            }
+            setForm((f) => ({ ...f, imagePath: json.path }));
+        } catch (e: unknown) {
+            alert('Nie udało się wgrać obrazka: ' + (e instanceof Error ? e.message : String(e)));
+        } finally {
+            setUploadingImg(false);
+            setImgPick(null);
+        }
+    }
+
+    // zmieniamy: uploadWeaponImage(file) -> tylko waliduje i otwiera cropper
+    async function uploadWeaponImage(file: File): Promise<void> {
+        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!allowed.includes(file.type)) {
+            alert('Obsługiwane formaty: JPG/PNG/WebP');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            alert('Plik za duży. Wybierz obraz do 10MB.');
+            return;
+        }
+        setImgPick(file);
+    }
+
+    function clearWeaponImage(): void {
+        setForm((f) => ({ ...f, imagePath: null }));
+    }
+
     return (
         <div className="space-y-4">
             {/* Lista */}
@@ -274,12 +321,59 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     )}
                 </div>
 
-                <label className="mt-2 block text-xs text-zinc-400">Nazwa</label>
+                <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
                 <input
-                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                     value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                 />
+
+                <label className="block mt-3 text-xs text-zinc-400">Obrazek (opcjonalnie)</label>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
+                        {uploadingImg ? 'Wysyłanie…' : (form.imagePath ? 'Zmień obrazek' : 'Dodaj obrazek')}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={uploadingImg}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0] ?? null;
+                                e.currentTarget.value = '';
+                                if (!file) return;
+                                void uploadWeaponImage(file);
+                            }}
+                        />
+                    </label>
+
+                    {form.imagePath && (
+                        <>
+                            <a
+                                href={form.imagePath}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-emerald-300 underline"
+                                title={form.imagePath}
+                            >
+                                Podgląd
+                            </a>
+                            <button
+                                type="button"
+                                onClick={clearWeaponImage}
+                                className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200"
+                            >
+                                Usuń
+                            </button>
+                        </>
+                    )}
+                </div>
+
+                {form.imagePath && (
+                    <div className="mt-2 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={form.imagePath} alt="" className="h-40 w-full object-cover" loading="lazy" />
+                    </div>
+                )}
 
                 {/* Baza */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
@@ -457,6 +551,17 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     </button>
                 </div>
             </div>
+
+            {imgPick && (
+                <PhotoCropperModal
+                    file={imgPick}
+                    targetSize={400}
+                    maxBytes={10 * 1024 * 1024}
+                    disableCompression
+                    onCancel={() => setImgPick(null)}
+                    onConfirm={(blob) => void uploadWeaponImageBlob(blob)}
+                />
+            )}
         </div>
     );
 }

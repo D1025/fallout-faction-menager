@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { UnitClient } from '@/components/army/UnitClient';
+import { BackButton } from '@/components/nav/BackButton';
 
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -17,10 +18,29 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         where: { id: unitId },
         include: {
             unit: {
-                select: { id: true, name: true, roleTag: true, hp: true, s: true, p: true, e: true, c: true, i: true, a: true, l: true, baseRating: true },
+                select: {
+                    id: true,
+                    name: true,
+                    roleTag: true,
+                    isLeader: true,
+                    hp: true,
+                    s: true,
+                    p: true,
+                    e: true,
+                    c: true,
+                    i: true,
+                    a: true,
+                    l: true,
+                    baseRating: true,
+                    startPerks: { select: { perk: { select: { id: true, name: true, description: true, isInnate: true } } } },
+                },
             },
             upgrades: true,
             weapons: true,
+            chosenPerks: {
+                select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true } } },
+                orderBy: { perkId: 'asc' },
+            },
         },
     });
     if (!unit) return <div className="p-4 text-red-300">Nie znaleziono jednostki.</div>;
@@ -53,6 +73,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 rating: p.ratingDelta ?? null,
                 effects: p.effects.map((e) => ({
                     id: e.effectId,
+                    effectId: e.effectId,
                     name: e.effect.name,
                     kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: e.valueInt,
@@ -66,6 +87,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             baseEffects:
                 t?.baseEffects.map((be) => ({
                     id: be.effectId,
+                    effectId: be.effectId,
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
@@ -89,11 +111,11 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         <div className="min-h-dvh bg-zinc-950 text-zinc-100">
             <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
                 <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <a href={`/army/${unit.armyId}`} className="text-sm text-zinc-300">
-                        ← Wróć
-                    </a>
-                    <div className="text-base font-semibold">{unit.unit?.name ?? unit.id.slice(0, 6)}</div>
-                    <div className="text-xs text-zinc-400">&nbsp;</div>
+                    <BackButton fallbackHref={`/army/${unit.armyId}`} />
+                    <div className="min-w-0 flex-1 px-2 text-center">
+                        <div className="truncate text-base font-semibold">{unit.unit?.name ?? unit.id.slice(0, 6)}</div>
+                    </div>
+                    <div className="w-[64px]" />
                 </div>
             </header>
 
@@ -103,8 +125,11 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     armyId={unit.armyId}
                     name={unit.unit?.name ?? unit.id.slice(0, 6)}
                     roleTag={unit.unit?.roleTag ?? null}
+                    isLeader={Boolean((unit.unit as unknown as { isLeader?: boolean }).isLeader ?? false)}
+                    temporaryLeader={Boolean((unit as unknown as { temporaryLeader?: boolean }).temporaryLeader ?? false)}
                     present={unit.present}
                     wounds={unit.wounds}
+                    photoPath={unit.photoPath ?? null}
                     special={special}
                     upgrades={unit.upgrades.map((u) => ({
                         id: u.id,
@@ -113,6 +138,25 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         at: u.at.toISOString(),
                     }))}
                     weapons={weapons}
+                    startPerkNames={unit.unit?.startPerks?.map((sp) => sp.perk.name) ?? []}
+                    ownedPerks={[
+                        // startowe perki z templatu (zwykle INNATE)
+                        ...(unit.unit?.startPerks ?? []).map((sp) => ({
+                            id: sp.perk.id,
+                            name: sp.perk.name,
+                            description: sp.perk.description ?? '',
+                            isInnate: Boolean(sp.perk.isInnate ?? true),
+                        })),
+                        // perki wybrane w armii
+                        ...unit.chosenPerks.map((cp) => ({
+                            id: cp.perk.id,
+                            name: cp.perk.name,
+                            description: cp.perk.description ?? '',
+                            isInnate: Boolean(cp.perk.isInnate ?? false),
+                        })),
+                    ]
+                        // deduplikacja po id perka
+                        .filter((p, idx, arr) => arr.findIndex((x) => x.id === p.id) === idx)}
                 />
             </main>
         </div>

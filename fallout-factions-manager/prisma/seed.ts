@@ -236,7 +236,7 @@ async function upsertUnitTemplate(
     name: string,
     data: {
         factionId: string | null;
-        roleTag?: string | null;
+        roleTag?: 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS' | null;
         baseRating?: number | null;
         hp?: number; s?: number; p?: number; e?: number; c?: number; i?: number; a?: number; l?: number;
     }
@@ -267,6 +267,48 @@ async function upsertUnitOption(
     });
 }
 
+/* ========================== PERKS ========================== */
+
+type PerkSpec = {
+    name: string;
+    description: string;
+    category?: 'REGULAR' | 'AUTOMATRON';
+};
+
+async function ensurePerk(spec: PerkSpec) {
+    const existing = await prisma.perk.findFirst({ where: { name: spec.name } });
+    if (existing) {
+        return prisma.perk.update({
+            where: { id: existing.id },
+            data: {
+                description: spec.description,
+                isInnate: true,
+                category: spec.category ?? 'REGULAR',
+            },
+        });
+    }
+    return prisma.perk.create({
+        data: {
+            name: spec.name,
+            description: spec.description,
+            isInnate: true,
+            category: spec.category ?? 'REGULAR',
+            requiresValue: false,
+            startAllowed: false,
+            behavior: 'NONE',
+        },
+    });
+}
+
+function uniqByName(perks: PerkSpec[]): PerkSpec[] {
+    const m = new Map<string, PerkSpec>();
+    for (const p of perks) {
+        const key = p.name.trim().toUpperCase();
+        if (!m.has(key)) m.set(key, { ...p, name: p.name.trim() });
+    }
+    return [...m.values()];
+}
+
 /* ========================== MAIN ========================== */
 
 async function main(): Promise<void> {
@@ -279,6 +321,51 @@ async function main(): Promise<void> {
     /* 1) ADMIN */
     const admin = await ensureAdminUser('admin');
     console.log('Admin:', admin.name);
+
+    /* 1b) PERKI (wbudowane, INNATE) */
+    const PERKS: PerkSpec[] = uniqByName([
+        { name: 'EYE CATCHING', description: 'This model always counts as being Wide Open.' },
+        { name: 'FLIGHT', description: 'This model is unaffected by the Proximity of Enemy models and can take the Get Moving Action while Engaged. This model does not count vertical movement towards its total allowed when climbing, and is always considered to have an Agility greater than the elevation difference when dropping from a Terrain Feature.' },
+        { name: 'HARDY', description: 'This model cannot Suffer Fatigue. It can still Take Fatigue by performing Actions or other effects.' },
+        { name: 'KABOOM!', description: 'This model gains the following Uranium Fever Action. Action: Uranium Fever (Unengaged/Engaged): All models (Friendly and Enemy) within 3” Suffer sufficient Harm to reach their Harm Limit. This model is Incapacitated. This model does not roll on the Aftermath Table; it just rolls on the Serious Injury Table.' },
+        { name: 'KEEP UP!', description: 'After a Friendly Champion model in Base contact completes a Back Off or Get Moving Action, this model may move into Base contact with that Friendly Champion model.' },
+        { name: 'MACHINE', description: 'This model always Passes any Confusion Test it is required to make. When this model is Incapacitated, it does not trigger Confusion Tests for other models. In addition, Chems cannot be used on this model, and it is unaffected by the Poison (X) and Tranquilize (X) Critical Effects. This model is unaffected by Radiation Tokens.' },
+        { name: 'MAKING A WITHDRAWAL', description: 'When this model would cause an Enemy model to Suffer an Injury or Harm, the opposing player may reduce their Stash by 5 Caps per Injury and Harm. For every 5 Caps removed, this model’s crew gains 5 Caps and the Enemy model Suffers one less Injury or Harm, as appropriate.' },
+        { name: 'MIND CONTROL', description: 'This model can make an Open Fire Actions using weapons carried by an Enemy model within its Control Area. Visibility is checked from the Enemy model with the weapon being used by the model with the Mind Control Perk. During this Open Fire Action, this model uses its own Luck statistic and the appropriate Test statistic value from the Enemy model. Weapons with the One & Done Trait cannot be used via this Perk.' },
+
+        { name: 'ALL THE TOYS', description: 'When taking the Crew Training Story Action with this model, you spend Parts rather than XP to purchase Upgrades. This model gains Automatron Perks rather than regular Perks.', category: 'REGULAR' },
+
+        { name: "ATOM'S GLOW", description: 'When this model makes an attack against an Enemy model, and either this model or the Target are within 3” of a Radiation Token, treat this model’s Luck as being 1 higher.' },
+        { name: 'BEAST', description: 'This model can’t become a crew’s Leader, nor gain new Perks.' },
+        { name: 'BURLY', description: 'This model’s Harm Limit is 4 instead of 3.' },
+        { name: 'BURROWING', description: 'This model is unaffected by the proximity of Enemy models and also can move through all Terrain features as long as they do not Climb at any point during that movement.' },
+        { name: 'DISPOSABLE', description: 'This model does not cause Confusion Tests when removed from the Battlefield.' },
+        { name: 'MYTHICAL', description: 'At the start of each Round, this model Takes 2 Fatigue. When this model becomes Confused as a result of Failing a Confusion Test, its controller does not have to choose between Flee or Take Fatigue. Instead it must Take Fatigue if it is able to do so. If it is unable to Take Fatigue, no additional effects happen.' },
+        { name: 'NATURAL LEADER', description: 'This model automatically Passes Confusion Tests. When making an Intelligence Test for a Friendly model within this model’s Control Area, you can choose to use this model’s Intelligence value instead of the model’s own value. When choosing a Leader at the start of a game, this model must be chosen if possible. If there is more than one model with this Perk in the crew, the player must choose one of them.' },
+        { name: 'OFFERINGS', description: 'This model gains the following additional option when taking the Rummage Action: Find Offerings: Recover Fatigue from a Friendly Holy Mothman model. Discard the results of the two dice used.' },
+        { name: 'OMENS', description: 'Enemy models within this model’s Control Area treat all tests as Unlucky.' },
+        { name: 'OUTSIDER', description: 'This model’s weapons cannot be modified using the Modify Weapons Story Action or Upgraded using the Crew Training Story Action. This model does not count toward or affect any Crew Limits. If this model is a Champion, it does not allow a crew to take 5 more Grunts. In addition, the model does not count as a Friendly model for the purposes of Confusion Tests.' },
+        { name: 'POINT BLANK', description: 'This model can take the Open Fire Action while Engaged.' },
+        { name: 'POWER ARMOR', description: 'This model gains the following benefits: This model cannot Suffer Fatigue (can still Take Fatigue). This model’s Harm Limit is 4 instead of 3. This model is unaffected by Radiation Tokens.' },
+        { name: 'POWER OF PRAYER', description: 'If a Friendly model is within this model’s Control Area, treat it as having the Rad Resistant Perk.' },
+        { name: 'PRAISE BE!', description: 'While this model is on the Battlefield, the Mythical Innate Perk makes models Take 1 Fatigue rather than Take 2 Fatigue. If a Friendly model chooses Find Offerings as part of a Rummage Action while within this model’s Control Area, do not remove the Search Token.' },
+        { name: 'PROGRAMMED', description: 'This model cannot be a crew Leader, nor take the Crew Training Story Action. It also cannot gain Perks or Experience.' },
+        { name: 'PROVE YOUR WORTH', description: 'Friendly Grunt models within this model’s Control Area gain the Bullet Magnet Perk. If a model has the Unassuming Perk, it cannot gain the Bullet Magnet Perk.' },
+        { name: 'SELF-DESTRUCT', description: 'When this model is Incapacitated, each other model within 3” of it Suffers 1 Harm.' },
+        { name: "SIC 'EM", description: 'When a Friendly model makes a Get Moving Action, this model can be given Movement Orders even if it is not within the Active model’s Control Area. All other restrictions still apply.' },
+        { name: 'STEALTH BOY', description: 'This model may not be Targeted by Ranged Attacks unless it is within Perception range of the Attacking model.' },
+        { name: 'STICKY FINGERS', description: 'When this model makes the Rummage Action to Find a Chem, after adding a Chem to the Crew Roster, they may add a second Chem with a Cap cost no greater than the total result of the two rolled dice.' },
+        { name: 'SURVIVALIST', description: 'Whenever this model would Suffer Harm from an attack, and there is another Friendly model within 3” that has no Harm, the Friendly model may Suffer that Harm instead.' },
+        { name: 'SWARM', description: 'When this model is taken as a Companion, you may add up to three models to your crew, instead of one, adding the Rating of each individual Companion to your Champion’s Rating.' },
+        { name: 'TRY OUTS', description: 'When this model makes an Attack Action, increase its Strength and Agility statistics by 2 if this model has line of sight to a Friendly Leader model.' },
+        { name: 'VISIONS', description: 'At the beginning of this model’s first Activation of the Round, you may choose for it to Take Fatigue. If it does, place a Radiation Token anywhere on the Battlefield that is not within 3” of a Search Token, a model, Objective Token, or another Radiation Token.' },
+        { name: 'KNOW YOUR ENEMY (FACTION)', description: 'When creating the Dice Pool for an Attack Action against an Enemy model from X Faction, this model gains 1 Bonus Dice. If a model gains this Perk, their controller picks the applicable Faction at that time.' },
+        { name: 'PERSONAL STASH', description: 'If a crew has one or more models with this Perk (who are not Absent), when purchasing Common Chems, reduce their costs by 3 Caps.' },
+        { name: 'V.A.T.S.', description: 'After declaring an Attack Action with this model, but before creating the Dice Pool, you may declare the number of Hits you expect to roll. During the Remove Duds step, if your declared number matches the number of Hits left in the Pool, then each Hit counts as 2 Hits instead.' },
+    ]);
+
+    await Promise.all(PERKS.map(ensurePerk));
+    console.log(`Perks seeded: ${PERKS.length}`);
 
     /* 2) EFEKTY BRONI */
     const EFFECTS: EffectSpec[] = [
@@ -471,21 +558,21 @@ async function main(): Promise<void> {
     /* 5) UNIT TEMPLATES + opcje broni */
     const vaultSecurity = await upsertUnitTemplate('Vault Security', {
         factionId: vaultDwellers.id,
-        roleTag: 'TROOPER',
+        roleTag: 'GRUNT',
         baseRating: 2,
         hp: 4, s: 6, p: 5, e: 5, c: 5, i: 5, a: 5, l: 5,
     });
 
     const raiderScavver = await upsertUnitTemplate('Raider Scavver', {
         factionId: raiders.id,
-        roleTag: 'RAIDER',
+        roleTag: 'GRUNT',
         baseRating: 1,
         hp: 3, s: 5, p: 5, e: 4, c: 5, i: 4, a: 6, l: 5,
     });
 
     const raiderHunter = await upsertUnitTemplate('Raider Hunter', {
         factionId: raiders.id,
-        roleTag: 'SCOUT',
+        roleTag: 'CHAMPION',
         baseRating: 2,
         hp: 3, s: 5, p: 6, e: 4, c: 5, i: 5, a: 6, l: 5,
     });

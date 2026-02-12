@@ -2,9 +2,9 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import Link from "next/link";
 import { prisma } from "@/server/prisma";
 import { AdminUnitTemplatesClient } from "@/components/AdminUnitTemplatesClient";
+import { AppHeader } from '@/components/nav/AppHeader';
 
 /** DTO do komponentu klientowego */
 export type FactionDTO = { id: string; name: string };
@@ -14,15 +14,20 @@ export type PerkDTO = {
     requiresValue: boolean;
     startAllowed: boolean;
     behavior: "NONE" | "COMPANION_ROBOT" | "COMPANION_BEAST";
+    isInnate: boolean;
+    category: 'REGULAR' | 'AUTOMATRON';
 };
 export type WeaponDTO = { id: string; name: string };
+
+export type UnitTemplateTag = 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
 
 export type UnitTemplateDTO = {
     id: string;
     name: string;
     isGlobal: boolean;
     factionIds: string[];
-    roleTag: string | null;
+    roleTag: UnitTemplateTag | null;
+    isLeader: boolean;
 
     hp: number;
     s: number; p: number; e: number; c: number; i: number; a: number; l: number;
@@ -36,7 +41,8 @@ type RawTemplate = {
     id: string;
     name: string;
     isGlobal: boolean;
-    roleTag: string | null;
+    roleTag: UnitTemplateTag | null;
+    isLeader?: boolean;
     hp: number;
     s: number; p: number; e: number; c: number; i: number; a: number; l: number;
     baseRating: number | null;
@@ -54,19 +60,50 @@ type UnitTemplateDelegate = {
 
 const p = prisma as unknown as { unitTemplate: UnitTemplateDelegate };
 
+type PerkRow = {
+    id: string;
+    name: string;
+    requiresValue: boolean;
+    startAllowed: boolean;
+    behavior: "NONE" | "COMPANION_ROBOT" | "COMPANION_BEAST";
+    isInnate?: boolean;
+    category?: 'REGULAR' | 'AUTOMATRON';
+};
+
 export default async function TemplatesAdminPage() {
-    const [rawTemplates, factions, perks, weapons] = await Promise.all([
+    const [rawTemplates, factions, perksRaw, weapons] = await Promise.all([
         p.unitTemplate.findMany({
             include: { options: true, startPerks: true, factions: true },
             orderBy: [{ name: 'asc' }],
         }),
         prisma.faction.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-        prisma.perk.findMany({
-            select: { id: true, name: true, requiresValue: true, startAllowed: true, behavior: true },
+        (prisma.perk.findMany({
             orderBy: [{ behavior: 'asc' }, { name: 'asc' }],
-        }),
+        }) as unknown as Promise<PerkRow[]>),
         prisma.weaponTemplate.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
     ]);
+
+    const perks: PerkDTO[] = perksRaw
+        .map((x) => ({
+            id: x.id,
+            name: x.name,
+            requiresValue: Boolean(x.requiresValue),
+            startAllowed: Boolean(x.startAllowed),
+            behavior: x.behavior,
+            isInnate: Boolean(x.isInnate ?? false),
+            category: (x.category ?? 'REGULAR') as 'REGULAR' | 'AUTOMATRON',
+        }))
+        .sort((a, b) =>
+            a.category === b.category
+                ? a.isInnate === b.isInnate
+                    ? a.behavior === b.behavior
+                        ? a.name.localeCompare(b.name)
+                        : a.behavior.localeCompare(b.behavior)
+                    : a.isInnate
+                        ? -1
+                        : 1
+                : a.category.localeCompare(b.category)
+        );
 
     const templates: UnitTemplateDTO[] = rawTemplates
         .map((t) => ({
@@ -75,6 +112,7 @@ export default async function TemplatesAdminPage() {
             isGlobal: t.isGlobal,
             factionIds: t.factions.map((x) => x.factionId),
             roleTag: t.roleTag ?? null,
+            isLeader: Boolean((t as unknown as { isLeader?: boolean }).isLeader ?? false),
             hp: t.hp, s: t.s, p: t.p, e: t.e, c: t.c, i: t.i, a: t.a, l: t.l,
             baseRating: t.baseRating ?? null,
             options: t.options.map((o) => ({
@@ -89,17 +127,12 @@ export default async function TemplatesAdminPage() {
 
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <div className="text-base font-semibold">Szablony jednostek (admin)</div>
-                    <Link href="/admin" className="text-sm text-zinc-300">← Wróć</Link>
-                </div>
-            </header>
+            <AppHeader title="Szablony jednostek (admin)" backHref="/admin" />
             <main className="mx-auto max-w-screen-sm px-3 pb-24">
                 <AdminUnitTemplatesClient
                     initial={templates}
                     factions={factions.map(f => ({ id: f.id, name: f.name ?? "" }))}
-                    perks={perks as PerkDTO[]}
+                    perks={perks}
                     weapons={weapons as WeaponDTO[]}
                 />
             </main>

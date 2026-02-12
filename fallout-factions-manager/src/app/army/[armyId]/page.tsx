@@ -4,6 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import ArmyDashboardClient from '@/components/army/ArmyDashboardClient';
+import { AppHeader } from '@/components/nav/AppHeader';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;
@@ -20,7 +21,11 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             faction: { select: { id: true, name: true } },
             units: {
                 include: {
-                    unit: true,
+                    unit: {
+                        include: {
+                            startPerks: { include: { perk: { select: { name: true } } } },
+                        },
+                    },
                     upgrades: true,
                     weapons: true,
                     selectedOption: true,
@@ -105,6 +110,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             const baseEffects =
                 (t?.baseEffects ?? []).map((be) => ({
                     id: String(be.id ?? be.effectId),
+                    effectId: be.effectId,
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
@@ -117,6 +123,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     testOverride: p.testOverride ?? null,
                     effects: p.effects.map((e) => ({
                         id: String(e.id ?? e.effectId),
+                        effectId: e.effectId,
                         name: e.effect.name,
                         kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                         valueInt: e.valueInt,
@@ -139,41 +146,35 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             id: u.id,
             templateName: u.unit.name,
             roleTag: u.unit.roleTag,
+            isLeader: (u.unit as unknown as { isLeader?: boolean }).isLeader ?? false,
+            temporaryLeader: (u as unknown as { temporaryLeader?: boolean }).temporaryLeader ?? false,
             base,
             bonus,
             wounds: u.wounds,
             present: u.present,
             upgradesCount: u.upgrades.length,
             perkNames: [],
+            startPerkNames: u.unit.startPerks.map((sp) => sp.perk.name),
             photoPath: u.photoPath ?? null,
             rating: unitRating(u),
             weapons,
         };
     });
 
-    const armyRating = uiUnits.reduce((a, u) => a + u.rating, 0);
-
     return (
         <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <div className="text-base font-semibold">Armia</div>
-                </div>
-            </header>
-
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <ArmyDashboardClient
-                    armyId={army.id}
-                    armyName={army.name}
-                    factionId={army.factionId}
-                    subfactionId={army.subfactionId}
-                    tier={army.tier}
-                    factionName={army.faction.name}
-                    resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
-                    units={uiUnits}
-                    rating={armyRating}
-                />
-            </main>
+            <AppHeader title={army.name} backHref="/" />
+            <ArmyDashboardClient
+                armyId={army.id}
+                armyName={army.name}
+                tier={army.tier}
+                factionId={army.faction.id}
+                factionName={army.faction.name}
+                resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
+                units={uiUnits}
+                rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
+                subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
+            />
         </div>
     );
 }

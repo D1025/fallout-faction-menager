@@ -1,0 +1,6 @@
+-- Add PerkCategory (REGULAR/AUTOMATRON)
+
+CREATE TYPE "PerkCategory" AS ENUM ('REGULAR', 'AUTOMATRON');
+
+ALTER TABLE "Perk"
+    ADD COLUMN "category" "PerkCategory" NOT NULL DEFAULT 'REGULAR';

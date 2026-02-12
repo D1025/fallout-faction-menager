@@ -4,9 +4,10 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { FactionsClient, type UIFaction } from '@/components/FactionsClient';
+import { AppHeader } from '@/components/nav/AppHeader';
 
 export default async function Page() {
-    let factions: UIFaction[] = [];
+    let factions: UIFaction[];
     try {
         const rows = await prisma.faction.findMany({
             include: {
@@ -39,5 +40,10 @@ export default async function Page() {
         factions = [];
     }
 
-    return <FactionsClient initialFactions={factions} />;
+    return (
+        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+            <AppHeader title="Frakcje (admin)" backHref="/admin" />
+            <FactionsClient initialFactions={factions} />
+        </div>
+    );
 }

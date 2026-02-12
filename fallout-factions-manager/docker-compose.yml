@@ -31,6 +31,8 @@ services:
       - "3000:3000"
     environment:
       NODE_ENV: production
+    volumes:
+      - ./public/uploads:/app/public/uploads
     restart: unless-stopped
 
 volumes:

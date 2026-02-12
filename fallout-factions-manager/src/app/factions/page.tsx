@@ -4,10 +4,11 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { FactionsClient, type Faction as UIFaction } from '@/components/FactionsClient';
+import { AppHeader } from '@/components/nav/AppHeader';
 
 export default async function Page() {
     // Pobierz frakcje + limity z DB; w razie błędu pokaż pustą listę (UI się załaduje)
-    let factions: UIFaction[] = [];
+    let factions: UIFaction[];
     try {
         const rows = await prisma.faction.findMany({
             include: { limits: true },
@@ -32,5 +33,10 @@ export default async function Page() {
         factions = [];
     }
 
-    return <FactionsClient initialFactions={factions} />;
+    return (
+        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+            <AppHeader title="Frakcje" backHref="/" />
+            <FactionsClient initialFactions={factions} />
+        </div>
+    );
 }

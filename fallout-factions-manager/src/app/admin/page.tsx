@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import Link from "next/link";
 import { auth } from "@/lib/authServer";
+import { BackButton } from '@/components/nav/BackButton';
 
 export default async function AdminHome() {
     const session = await auth();
@@ -13,7 +14,7 @@ export default async function AdminHome() {
             <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
                 <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
                     <div className="text-base font-semibold">Panel admina</div>
-                    <Link href="/" className="text-sm text-zinc-300">← Wróć</Link>
+                    <BackButton fallbackHref="/" />
                 </div>
             </header>
 

@@ -1,18 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { FactionDTO, PerkDTO, WeaponDTO, UnitTemplateDTO } from '@/app/admin/templates/page';
 
 /** Opcja: 1–2 bronie + koszt + (opcjonalny) rating */
 type FormOption = { weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null };
 type FormStartPerk = { perkId: string; valueInt: number | null };
 
+type UnitTemplateTag = 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
+
 type FormState = {
     id?: string;
     name: string;
     isGlobal: boolean;
     factionIds: string[];
-    roleTag: string | null;
+    roleTag: UnitTemplateTag | null;
+    isLeader: boolean;
 
     hp: number;
     s: number; p: number; e: number; c: number; i: number; a: number; l: number;
@@ -34,12 +37,41 @@ export function AdminUnitTemplatesClient({
     const [form, setForm] = useState<FormState>(blankForm());
     const [saving, setSaving] = useState(false);
 
+    // picker startowych perków
+    const [perkQ, setPerkQ] = useState('');
+    const [perkCategory, setPerkCategory] = useState<'ALL' | 'REGULAR' | 'AUTOMATRON'>('ALL');
+    const [perkInnate, setPerkInnate] = useState<'ALL' | 'INNATE' | 'NON_INNATE'>('ALL');
+
+    const perkById = useMemo(() => new Map(perks.map((p) => [p.id, p])), [perks]);
+
+    const filteredPerks = useMemo(() => {
+        const q = perkQ.trim().toLowerCase();
+        return perks
+            .filter((p) => {
+                if (perkCategory !== 'ALL' && p.category !== perkCategory) return false;
+                if (perkInnate === 'INNATE' && !p.isInnate) return false;
+                if (perkInnate === 'NON_INNATE' && p.isInnate) return false;
+                if (!q) return true;
+                return p.name.toLowerCase().includes(q);
+            })
+            .slice(0, 60);
+    }, [perks, perkQ, perkCategory, perkInnate]);
+
+    const pickedSet = useMemo(() => new Set(form.startPerks.map((x) => x.perkId).filter(Boolean)), [form.startPerks]);
+
+    function addStartPerk(perkId: string) {
+        if (!perkId) return;
+        if (pickedSet.has(perkId)) return;
+        setForm((f) => ({ ...f, startPerks: [...f.startPerks, { perkId, valueInt: null }] }));
+    }
+
     function blankForm(): FormState {
         return {
             name: '',
             isGlobal: false,
             factionIds: [],
             roleTag: null,
+            isLeader: false,
             hp: 3,
             s: 5, p: 5, e: 5, c: 5, i: 5, a: 5, l: 5,
             baseRating: null,
@@ -88,20 +120,22 @@ export function AdminUnitTemplatesClient({
         try {
             const url = form.id ? `/api/admin/unit-templates/${form.id}` : `/api/admin/unit-templates`;
             const method: 'POST' | 'PATCH' = form.id ? 'PATCH' : 'POST';
-            const payload = {
-                ...form,
-                // upewniamy się, że null trafia jako null (a nie pusty string)
-                options: form.options.map(o => ({
-                    weapon1Id: o.weapon1Id,
-                    weapon2Id: o.weapon2Id || null,
-                    costCaps: o.costCaps,
-                    rating: o.rating ?? null,
-                })),
-            };
+
             const res = await fetch(url, {
                 method,
-                headers: {'Content-Type':'application/json'},
-                body: JSON.stringify(payload),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: form.name,
+                    isGlobal: form.isGlobal,
+                    factionIds: form.factionIds,
+                    roleTag: form.roleTag,
+                    isLeader: form.isLeader,
+                    hp: form.hp,
+                    s: form.s, p: form.p, e: form.e, c: form.c, i: form.i, a: form.a, l: form.l,
+                    baseRating: form.baseRating,
+                    options: form.options,
+                    startPerks: form.startPerks,
+                }),
             });
             if (!res.ok) {
                 const pld = await res.json().catch(async()=>({status:res.status, text:await res.text()}));
@@ -168,6 +202,7 @@ export function AdminUnitTemplatesClient({
                                 isGlobal: u.isGlobal,
                                 factionIds: u.factionIds,
                                 roleTag: u.roleTag,
+                                isLeader: Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false),
                                 hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
                                 baseRating: u.baseRating,
                                 options: u.options.map(o=> ({
@@ -196,8 +231,13 @@ export function AdminUnitTemplatesClient({
                                 </div>
                             )}
                         </button>
-                    </div>
-                ))}
+                        {(u as unknown as { isLeader?: boolean }).isLeader ? (
+                            <div className="mt-2 text-[11px] text-sky-200">
+                                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold">LEADER</span>
+                            </div>
+                        ) : null}
+                     </div>
+                 ))}
             </div>
 
             {/* FORMULARZ */}
@@ -249,9 +289,24 @@ export function AdminUnitTemplatesClient({
                 </div>
 
                 <label className="block mt-2 text-xs text-zinc-400">Tag roli (opcjonalnie)</label>
-                <input value={form.roleTag ?? ''} onChange={e=>setForm({...form, roleTag: e.target.value || null})}
-                       placeholder="np. CHAMPION / LEADER / GRUNT"
-                       className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
+                <select
+                    value={form.roleTag ?? ''}
+                    onChange={(e) => setForm({ ...form, roleTag: (e.target.value || null) as UnitTemplateTag | null })}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                >
+                    <option value="">(brak)</option>
+                    <option value="CHAMPION">CHAMPION</option>
+                    <option value="GRUNT">GRUNT</option>
+                    <option value="COMPANION">COMPANION</option>
+                    <option value="LEGENDS">LEGENDS</option>
+                </select>
+
+                <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                    <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={form.isLeader} onChange={(e) => setForm({ ...form, isLeader: e.target.checked })} />
+                        <span className="font-medium">LEADER (ten template może być liderem)</span>
+                    </label>
+                </div>
 
                 {/* SPECIAL + HP */}
                 <div className="mt-3 grid grid-cols-4 gap-2">
@@ -334,31 +389,177 @@ export function AdminUnitTemplatesClient({
 
                 {/* Startowe perki (opcjonalnie) */}
                 <div className="mt-4">
-                    <div className="text-xs text-zinc-400 mb-1">Startowe perki (opcjonalnie)</div>
-                    {form.startPerks.map((sp,i)=>{
-                        const perk = perks.find(p=>p.id===sp.perkId);
-                        return (
-                            <div key={i} className="mb-2 grid grid-cols-5 gap-2 items-center">
-                                <select value={sp.perkId} onChange={e=>setForm(f=>({...f, startPerks: f.startPerks.map((x,idx)=> idx===i ? {...x, perkId:e.target.value} : x)}))}
-                                        className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm">
-                                    <option value="">— wybierz —</option>
-                                    {perks.map(p=> <option key={p.id} value={p.id}>{p.name}</option>)}
-                                </select>
-                                {perk?.requiresValue ? (
-                                    <input inputMode="numeric" placeholder="X" value={sp.valueInt ?? ''} onChange={e=>setForm(f=>({...f, startPerks: f.startPerks.map((x,idx)=> idx===i ? {...x, valueInt:nOrNull(e.target.value)} : x)}))}
-                                           className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
-                                ) : <div className="text-xs text-zinc-500">—</div>}
-                                <button className="text-xs text-red-300"
-                                        onClick={()=> setForm(f=>({...f, startPerks: f.startPerks.filter((_,idx)=> idx!==i)}))}>
-                                    Usuń
+                    <div className="text-xs text-zinc-400 mb-2">Startowe perki (opcjonalnie)</div>
+
+                    {/* Picker */}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                        <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+                            <span className="text-zinc-400">🔎</span>
+                            <input
+                                value={perkQ}
+                                onChange={(e) => setPerkQ(e.target.value)}
+                                className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                placeholder="Szukaj perka…"
+                            />
+                            {perkQ ? (
+                                <button type="button" onClick={() => setPerkQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800" aria-label="Wyczyść">
+                                    ✕
                                 </button>
+                            ) : null}
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-[10px] text-zinc-400">Kategoria</label>
+                                <select
+                                    value={perkCategory}
+                                    onChange={(e) => setPerkCategory(e.target.value as 'ALL' | 'REGULAR' | 'AUTOMATRON')}
+                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                >
+                                    <option value="ALL">Wszystkie</option>
+                                    <option value="REGULAR">Regular</option>
+                                    <option value="AUTOMATRON">Automatron</option>
+                                </select>
                             </div>
-                        );
-                    })}
-                    <button onClick={()=> setForm(f=>({...f, startPerks: [...f.startPerks, { perkId:'', valueInt:null }] }))}
-                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
-                        Dodaj startowy perk
-                    </button>
+                            <div>
+                                <label className="block text-[10px] text-zinc-400">Typ</label>
+                                <select
+                                    value={perkInnate}
+                                    onChange={(e) => setPerkInnate(e.target.value as 'ALL' | 'INNATE' | 'NON_INNATE')}
+                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                >
+                                    <option value="ALL">Wszystkie</option>
+                                    <option value="INNATE">Tylko INNATE</option>
+                                    <option value="NON_INNATE">Tylko nie-INNATE</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-zinc-800">
+                            {filteredPerks.length === 0 ? (
+                                <div className="p-3 text-sm text-zinc-500">Brak wyników.</div>
+                            ) : (
+                                <div className="divide-y divide-zinc-800">
+                                    {filteredPerks.map((p) => {
+                                        const picked = pickedSet.has(p.id);
+                                        return (
+                                            <button
+                                                key={p.id}
+                                                type="button"
+                                                disabled={picked}
+                                                onClick={() => addStartPerk(p.id)}
+                                                className={
+                                                    'w-full text-left px-3 py-2 text-sm hover:bg-zinc-900 disabled:opacity-50 ' +
+                                                    (picked ? 'cursor-not-allowed' : '')
+                                                }
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="font-medium text-zinc-100">{p.name}</div>
+                                                    <div className="flex items-center gap-2 text-[10px]">
+                                                        {p.category === 'AUTOMATRON' ? (
+                                                            <span className="rounded-full border border-purple-500/40 bg-purple-500/10 px-2 py-0.5 font-semibold text-purple-200">AUTOMATRON</span>
+                                                        ) : (
+                                                            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 font-semibold text-zinc-200">REGULAR</span>
+                                                        )}
+                                                        {p.isInnate ? (
+                                                            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-semibold text-amber-200">INNATE</span>
+                                                        ) : null}
+                                                        {p.requiresValue ? (
+                                                            <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">X</span>
+                                                        ) : null}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-2 text-[11px] text-zinc-500">
+                            Kliknij perk na liście, aby dodać go do startowych perków. Duplikaty są blokowane.
+                        </div>
+                    </div>
+
+                    {/* Wybrane perki */}
+                    <div className="mt-3">
+                        {form.startPerks.length === 0 ? (
+                            <div className="text-sm text-zinc-500">Brak startowych perków.</div>
+                        ) : (
+                            form.startPerks.map((sp, i) => {
+                                const perk = perkById.get(sp.perkId);
+                                return (
+                                    <div key={`${sp.perkId}_${i}`} className="mb-2 rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="font-medium truncate">{perk?.name ?? '— wybierz —'}</div>
+                                                    {perk?.category === 'AUTOMATRON' ? (
+                                                        <span className="rounded-full border border-purple-500/40 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-200">AUTOMATRON</span>
+                                                    ) : (
+                                                        <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold text-zinc-200">REGULAR</span>
+                                                    )}
+                                                    {perk?.isInnate ? (
+                                                        <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">INNATE</span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="mt-1 text-[11px] text-zinc-500">ID: {sp.perkId || '—'}</div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                className="text-xs text-red-300"
+                                                onClick={() => setForm((f) => ({ ...f, startPerks: f.startPerks.filter((_, idx) => idx !== i) }))}
+                                            >
+                                                Usuń
+                                            </button>
+                                        </div>
+
+                                        <div className="mt-2 grid grid-cols-5 gap-2 items-center">
+                                            <select
+                                                value={sp.perkId}
+                                                onChange={(e) =>
+                                                    setForm((f) => ({
+                                                        ...f,
+                                                        startPerks: f.startPerks.map((x, idx) => (idx === i ? { ...x, perkId: e.target.value } : x)),
+                                                    }))
+                                                }
+                                                className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            >
+                                                <option value="">— wybierz —</option>
+                                                {perks.map((p) => (
+                                                    <option key={p.id} value={p.id}>
+                                                        {p.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+
+                                            {perk?.requiresValue ? (
+                                                <input
+                                                    inputMode="numeric"
+                                                    placeholder="X"
+                                                    value={sp.valueInt ?? ''}
+                                                    onChange={(e) =>
+                                                        setForm((f) => ({
+                                                            ...f,
+                                                            startPerks: f.startPerks.map((x, idx) =>
+                                                                idx === i ? { ...x, valueInt: nOrNull(e.target.value) } : x,
+                                                            ),
+                                                        }))
+                                                    }
+                                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                />
+                                            ) : (
+                                                <div className="text-xs text-zinc-500">—</div>
+                                            )}
+
+                                            <div className="text-xs text-zinc-400">{perk?.requiresValue ? 'wymaga X' : ''}</div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
                 </div>
 
                 <div className="mt-4 flex gap-2">
