@@ -256,7 +256,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             {/* Lista */}
             <div className="grid gap-2">
                 {list.map((w) => (
-                    <div key={w.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div key={w.id} className="vault-panel p-3">
                         <div className="flex items-start justify-between">
                             <button
                                 onClick={() =>
@@ -296,7 +296,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             </div>
 
             {/* Formularz */}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="vault-panel p-3">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">{form.id ? 'Edytuj' : 'Nowa broń'}</div>
                     {form.id && (
@@ -325,7 +325,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                 <input
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                 />
 
                 <label className="block mt-3 text-xs text-zinc-400">Obrazek (opcjonalnie)</label>
@@ -379,27 +379,27 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                 <div className="mt-3 grid grid-cols-2 gap-2">
                     <input
                         placeholder="Base Type"
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                        className="vault-input px-2 py-1 text-sm"
                         value={form.baseType}
                         onChange={(e) => setForm({ ...form, baseType: e.target.value })}
                     />
                     <input
                         placeholder="Base Test"
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                        className="vault-input px-2 py-1 text-sm"
                         value={form.baseTest}
                         onChange={(e) => setForm({ ...form, baseTest: e.target.value })}
                     />
                     <input
                         placeholder="Base Parts"
                         inputMode="numeric"
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                        className="vault-input px-2 py-1 text-sm"
                         value={form.baseParts ?? ''}
                         onChange={(e) => setForm({ ...form, baseParts: numOrNull(e.target.value) })}
                     />
                     <input
                         placeholder="Base Rating"
                         inputMode="numeric"
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                        className="vault-input px-2 py-1 text-sm"
                         value={form.baseRating ?? ''}
                         onChange={(e) => setForm({ ...form, baseRating: numOrNull(e.target.value) })}
                     />
@@ -413,7 +413,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                         return (
                             <div key={i} className="mb-1 grid grid-cols-5 items-center gap-2">
                                 <select
-                                    className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="col-span-3 vault-input px-2 py-1 text-sm"
                                     value={be.effectId}
                                     onChange={(e) => patchBaseEffect(i, { effectId: e.target.value })}
                                 >
@@ -428,7 +428,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                     <input
                                         inputMode="numeric"
                                         placeholder="X"
-                                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                        className="vault-input px-2 py-1 text-sm"
                                         value={be.valueInt ?? ''}
                                         onChange={(e) => patchBaseEffect(i, { valueInt: numOrNull(e.target.value) })}
                                     />
@@ -455,26 +455,26 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                 <input
                                     inputMode="numeric"
                                     placeholder="Order"
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                     value={p.order}
                                     onChange={(e) => patchProfile(i, { order: Number(e.target.value) || 0 })}
                                 />
                                 <input
                                     placeholder="Type override"
-                                    className="col-span-2 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="col-span-2 vault-input px-2 py-1 text-sm"
                                     value={p.typeOverride ?? ''}
                                     onChange={(e) => patchProfile(i, { typeOverride: e.target.value || null })}
                                 />
                                 <input
                                     placeholder="Test override"
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                     value={p.testOverride ?? ''}
                                     onChange={(e) => patchProfile(i, { testOverride: e.target.value || null })}
                                 />
                                 <input
                                     placeholder="Parts override"
                                     inputMode="numeric"
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                     value={p.partsOverride ?? ''}
                                     onChange={(e) => patchProfile(i, { partsOverride: numOrNull(e.target.value) })}
                                 />
@@ -483,7 +483,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                 <input
                                     placeholder="Rating Δ (delta)"
                                     inputMode="numeric"
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                     value={p.ratingDelta ?? ''}
                                     onChange={(e) => patchProfile(i, { ratingDelta: numOrNull(e.target.value) })}
                                 />
@@ -496,7 +496,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                     return (
                                         <div key={j} className="mb-1 grid grid-cols-5 items-center gap-2">
                                             <select
-                                                className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                className="col-span-3 vault-input px-2 py-1 text-sm"
                                                 value={ef.effectId}
                                                 onChange={(e) => patchProfileEffect(i, j, { effectId: e.target.value })}
                                             >
@@ -511,7 +511,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                 <input
                                                     inputMode="numeric"
                                                     placeholder="X"
-                                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                    className="vault-input px-2 py-1 text-sm"
                                                     value={ef.valueInt ?? ''}
                                                     onChange={(e) => patchProfileEffect(i, j, { valueInt: numOrNull(e.target.value) })}
                                                 />

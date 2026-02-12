@@ -424,7 +424,7 @@ export function UnitClient({
         const mergedType = allSameType && rows.length > 0;
 
         return (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="vault-panel p-3">
                 <div className="mb-1 font-medium">{w.name}</div>
 
                 {/* < 400px: pionowe karty */}
@@ -633,7 +633,7 @@ export function UnitClient({
 
     return (
         <div className="space-y-3">
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <section className="vault-panel p-3">
                 <div className="flex items-start gap-3">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
                         {!photoMissing ? (
@@ -723,7 +723,7 @@ export function UnitClient({
             </section>
 
             {/* Nagłówek + SPECIAL */}
-            <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <section className="mt-3 vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 font-semibold truncate">{name}</div>
                     <div className="shrink-0 flex items-center gap-2">
@@ -750,7 +750,7 @@ export function UnitClient({
             </section>
 
             {/* Ulepszenia (+ Rany) */}
-            <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <section className="mt-4 vault-panel p-3">
                 <div className="text-sm font-medium">Ulepszenia</div>
 
                 {/* Panel dodawania – pozwala na wartości ujemne */}
@@ -758,7 +758,7 @@ export function UnitClient({
                     <select
                         value={upStat}
                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setUpStat(e.target.value as StatKey)}
-                        className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1"
+                        className="vault-input px-2 py-1"
                     >
                         {(['S', 'P', 'E', 'C', 'I', 'A', 'L', 'hp'] as StatKey[]).map((k) => (
                             <option key={k} value={k}>
@@ -772,7 +772,7 @@ export function UnitClient({
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                             setUpDelta(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)
                         }
-                        className="w-24 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-right"
+                        className="w-24 vault-input px-2 py-1 text-right"
                         placeholder="np. -1, 2"
                     />
                     <div className="flex gap-1">
@@ -857,7 +857,7 @@ export function UnitClient({
             </section>
 
             {/* Perki */}
-            <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <section className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Perki</div>
                     <div className="text-[11px] text-zinc-500">Posiadane: {(ownedPerks ?? []).length}</div>
@@ -897,7 +897,7 @@ export function UnitClient({
                     <select
                         value={perkId}
                         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPerkId(e.target.value)}
-                        className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1"
+                        className="flex-1 vault-input px-2 py-1"
                     >
                         <option value="">— wybierz perka —</option>
                         {availablePerks.map((p) => (

@@ -87,7 +87,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
             {/* Lista frakcji */}
             <div className="mt-3 grid gap-2">
                 {list.map((f) => (
-                    <div key={f.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div key={f.id} className="vault-panel p-3">
                         <button
                             onClick={() => setForm({ id: f.id, name: f.name, limits: f.limits })}
                             className="w-full text-left"
@@ -109,7 +109,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
             </div>
 
             {/* Formularz */}
-            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">{form.id ? 'Edytuj frakcję' : 'Nowa frakcja'}</div>
                     {form.id ? (
@@ -121,7 +121,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                 <input
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none"
+                    className="mt-1 w-full vault-input px-3 py-2 text-sm outline-none"
                 />
 
                 <div className="mt-3">
@@ -133,7 +133,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                                 value={l.tag}
                                 onChange={(e) => updateLimit(i, { tag: e.target.value })}
                                 placeholder="tag"
-                                className="col-span-2 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                className="col-span-2 vault-input px-2 py-1 text-sm"
                             />
                             {(['tier1', 'tier2', 'tier3'] as const).map((k) => (
                                 <input
@@ -142,7 +142,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                                     placeholder={k.replace('tier', 'T')}
                                     value={l[k] ?? ''}
                                     onChange={(e) => updateLimit(i, { [k]: numOrNull(e.target.value) } as Partial<FactionLimit>)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                 />
                             ))}
                             <button onClick={() => removeLimit(i)} className="text-xs text-red-300">Usuń</button>

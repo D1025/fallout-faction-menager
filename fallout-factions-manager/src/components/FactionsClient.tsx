@@ -222,7 +222,7 @@ function Search({
 }) {
     return (
         <label className="block">
-            <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+            <div className="flex items-center gap-2 vault-panel px-3 py-2">
                 <Magnifier className="h-5 w-5 text-zinc-400" />
                 <input
                     value={value}
@@ -244,7 +244,7 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
     return (
         <button
             onClick={onOpen}
-            className="group flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left active:scale-[0.99]"
+            className="group flex items-center gap-3 vault-panel p-3 text-left active:scale-[0.99]"
         >
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-800 text-zinc-300">
                 {faction.name.slice(0, 2)}
@@ -414,7 +414,7 @@ function EditorSheet({
                             value={draft.name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Nazwa frakcji"
-                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="flex-1 vault-input px-3 py-2 text-sm"
                         />
                         {mode === 'edit' && (
                             <button

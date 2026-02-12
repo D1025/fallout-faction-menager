@@ -18,7 +18,7 @@ export function RosterClient(props: {
             <main className="app-shell">
                 <div className="mt-3 grid gap-2">
                     {props.units.map(u => (
-                        <a key={u.id} href={`/army/${props.armyId}/unit/${u.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">
+                        <a key={u.id} href={`/army/${props.armyId}/unit/${u.id}`} className="flex items-center gap-3 vault-panel p-3 active:scale-[0.99]">
                             <div className="h-12 w-12 rounded-xl bg-zinc-800 grid place-items-center text-zinc-300">{u.photoPath ? '🖼️' : u.name.slice(0,2)}</div>
                             <div className="flex-1">
                                 <div className="flex items-center justify-between">

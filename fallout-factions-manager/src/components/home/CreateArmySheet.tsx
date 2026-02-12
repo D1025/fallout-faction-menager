@@ -298,7 +298,7 @@ function InfoStep({
                     value={name}
                     onChange={(e) => onName(e.target.value)}
                     placeholder="np. Oddział Alfa"
-                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-zinc-500"
+                    className="vault-input px-3 py-2 text-sm outline-none focus:border-zinc-500"
                 />
             </label>
 
@@ -359,7 +359,7 @@ function FactionStep({
                     value={q}
                     onChange={(e) => onSearch(e.target.value)}
                     placeholder="Szukaj frakcji"
-                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none"
+                    className="vault-input px-3 py-2 text-sm outline-none"
                 />
             </label>
 

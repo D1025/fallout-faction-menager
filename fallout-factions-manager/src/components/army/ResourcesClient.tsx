@@ -33,7 +33,7 @@ export function ResourcesClient(props: {
             <main className="app-shell">
                 <div className="mt-3 grid grid-cols-3 gap-2">
                     {(['caps','parts','reach'] as const).map(k => (
-                        <div key={k} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-center">
+                        <div key={k} className="vault-panel p-3 text-center">
                             <div className="text-xs text-zinc-400">{k.toUpperCase()}</div>
                             <div className="text-lg font-semibold">{totals[k] ?? 0}</div>
                             <div className="mt-2 flex gap-1">
@@ -50,7 +50,7 @@ export function ResourcesClient(props: {
                     ))}
                 </div>
 
-                <section className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                <section className="mt-5 vault-panel p-3">
                     <div className="text-sm font-medium mb-2">Historia</div>
                     <div className="grid gap-1">
                         {props.history.map(h => (

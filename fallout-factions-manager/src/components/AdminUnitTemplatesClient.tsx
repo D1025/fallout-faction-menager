@@ -193,7 +193,7 @@ export function AdminUnitTemplatesClient({
             {/* LISTA */}
             <div className="mt-3 grid gap-2">
                 {list.map(u=>(
-                    <div key={u.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <div key={u.id} className="vault-panel p-3">
                         <button
                             className="w-full text-left"
                             onClick={()=> setForm({
@@ -241,7 +241,7 @@ export function AdminUnitTemplatesClient({
             </div>
 
             {/* FORMULARZ */}
-            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">{form.id ? 'Edytuj jednostkę' : 'Nowa jednostka'}</div>
                     {form.id && <button onClick={()=>setForm(blankForm())} className="text-xs text-zinc-300">Nowa</button>}
@@ -249,7 +249,7 @@ export function AdminUnitTemplatesClient({
 
                 <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
                 <input value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
-                       className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
+                       className="w-full vault-input px-3 py-2 text-sm"/>
 
                 <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                     <label className="flex items-center gap-2 text-sm">
@@ -292,7 +292,7 @@ export function AdminUnitTemplatesClient({
                 <select
                     value={form.roleTag ?? ''}
                     onChange={(e) => setForm({ ...form, roleTag: (e.target.value || null) as UnitTemplateTag | null })}
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                 >
                     <option value="">(brak)</option>
                     <option value="CHAMPION">CHAMPION</option>
@@ -313,27 +313,27 @@ export function AdminUnitTemplatesClient({
                     <div>
                         <label className="block text-[10px] text-zinc-400">HP</label>
                         <input inputMode="numeric" value={form.hp} onChange={e=>setForm({...form, hp:n(e.target.value,3)})}
-                               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                               className="w-full vault-input px-2 py-1 text-sm"/>
                     </div>
                     {primaryKeys.map(k=>(
                         <div key={k}>
                             <label className="block text-[10px] text-zinc-400">{k.toUpperCase()}</label>
                             <input inputMode="numeric" value={form[k]} onChange={e=>updateStat(k, n(e.target.value,5))}
-                                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                   className="w-full vault-input px-2 py-1 text-sm"/>
                         </div>
                     ))}
                     {secondaryKeys.map(k=>(
                         <div key={k}>
                             <label className="block text-[10px] text-zinc-400">{k.toUpperCase()}</label>
                             <input inputMode="numeric" value={form[k]} onChange={e=>updateStat(k, n(e.target.value,5))}
-                                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                   className="w-full vault-input px-2 py-1 text-sm"/>
                         </div>
                     ))}
                 </div>
 
                 <label className="block mt-3 text-xs text-zinc-400">Bazowy rating (opcjonalnie)</label>
                 <input inputMode="numeric" value={form.baseRating ?? ''} onChange={e=>setForm({...form, baseRating:nOrNull(e.target.value)})}
-                       placeholder="np. 6" className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
+                       placeholder="np. 6" className="w-full vault-input px-3 py-2 text-sm"/>
 
                 {/* OPCJE UZBROJENIA */}
                 <div className="mt-4">
@@ -350,7 +350,7 @@ export function AdminUnitTemplatesClient({
                                 <select
                                     value={o.weapon1Id}
                                     onChange={e=>setOptionWeapon(i, 1, e.target.value)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                 >
                                     <option value="">— wybierz broń #1 —</option>
                                     {weapons.map(w=> <option key={w.id} value={w.id}>{w.name}</option>)}
@@ -359,7 +359,7 @@ export function AdminUnitTemplatesClient({
                                 <select
                                     value={o.weapon2Id ?? ''}
                                     onChange={e=>setOptionWeapon(i, 2, e.target.value)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                 >
                                     <option value="">(opcjonalnie) broń #2</option>
                                     {weapons
@@ -371,10 +371,10 @@ export function AdminUnitTemplatesClient({
                             <div className="mt-3 grid grid-cols-3 gap-2">
                                 <input inputMode="numeric" placeholder="Koszt (caps)" value={o.costCaps}
                                        onChange={e=>setOptionCost(i, n(e.target.value, 0))}
-                                       className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                       className="vault-input px-2 py-1 text-sm"/>
                                 <input inputMode="numeric" placeholder="Rating (opc.)" value={o.rating ?? ''}
                                        onChange={e=>setOptionRating(i, nOrNull(e.target.value))}
-                                       className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                       className="vault-input px-2 py-1 text-sm"/>
                             </div>
                         </div>
                     ))}
@@ -393,7 +393,7 @@ export function AdminUnitTemplatesClient({
 
                     {/* Picker */}
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                        <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+                        <div className="flex items-center gap-2 vault-panel px-3 py-2">
                             <span className="text-zinc-400">🔎</span>
                             <input
                                 value={perkQ}
@@ -414,7 +414,7 @@ export function AdminUnitTemplatesClient({
                                 <select
                                     value={perkCategory}
                                     onChange={(e) => setPerkCategory(e.target.value as 'ALL' | 'REGULAR' | 'AUTOMATRON')}
-                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="mt-1 w-full vault-input px-2 py-1 text-sm"
                                 >
                                     <option value="ALL">Wszystkie</option>
                                     <option value="REGULAR">Regular</option>
@@ -426,7 +426,7 @@ export function AdminUnitTemplatesClient({
                                 <select
                                     value={perkInnate}
                                     onChange={(e) => setPerkInnate(e.target.value as 'ALL' | 'INNATE' | 'NON_INNATE')}
-                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="mt-1 w-full vault-input px-2 py-1 text-sm"
                                 >
                                     <option value="ALL">Wszystkie</option>
                                     <option value="INNATE">Tylko INNATE</option>
@@ -524,7 +524,7 @@ export function AdminUnitTemplatesClient({
                                                         startPerks: f.startPerks.map((x, idx) => (idx === i ? { ...x, perkId: e.target.value } : x)),
                                                     }))
                                                 }
-                                                className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                className="col-span-3 vault-input px-2 py-1 text-sm"
                                             >
                                                 <option value="">— wybierz —</option>
                                                 {perks.map((p) => (
@@ -547,7 +547,7 @@ export function AdminUnitTemplatesClient({
                                                             ),
                                                         }))
                                                     }
-                                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                    className="vault-input px-2 py-1 text-sm"
                                                 />
                                             ) : (
                                                 <div className="text-xs text-zinc-500">—</div>

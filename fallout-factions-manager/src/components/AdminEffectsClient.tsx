@@ -140,14 +140,14 @@ export function AdminEffectsClient() {
 
                 <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
                 <input
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
 
                 <label className="block mt-2 text-xs text-zinc-400">Rodzaj</label>
                 <select
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                     value={form.kind}
                     onChange={(e) => setForm({ ...form, kind: e.target.value as EffectKind })}
                 >
@@ -160,7 +160,7 @@ export function AdminEffectsClient() {
                 </label>
                 <textarea
                     rows={3}
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
