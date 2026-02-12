@@ -187,7 +187,7 @@ export function AdminUnitTemplatesClient({
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100 p-3 max-w-screen-sm mx-auto">
+        <div className="app-shell pt-3">
             <h1 className="text-lg font-semibold">Jednostki</h1>
 
             {/* LISTA */}

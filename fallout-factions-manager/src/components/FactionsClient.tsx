@@ -123,7 +123,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="min-h-dvh">
             <Header
                 title="Frakcje – limity, zadania, ulepszenia"
                 right={
@@ -136,7 +136,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                 }
             />
 
-            <main className="mx-auto w-full max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <Search value={q} onChange={setQ} placeholder="Szukaj frakcji" />
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -202,8 +202,8 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
 function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-            <div className="mx-auto flex h-14 w-full max-w-screen-sm items-center justify-between px-3">
+        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
+            <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
                 <div className="text-lg font-semibold tracking-wide">{title}</div>
                 <div className="text-xs text-zinc-400">{right}</div>
             </div>

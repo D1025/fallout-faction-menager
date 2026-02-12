@@ -6,16 +6,16 @@ export function RosterClient(props: {
     units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string|null }[];
 }) {
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
+        <div className="min-h-dvh">
+            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
+                <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
                     <a href={`/army/${props.armyId}`} className="text-sm text-zinc-300">←</a>
                     <div className="text-base font-semibold">Roster: {props.armyName}</div>
                     <span className="w-6" />
                 </div>
             </header>
 
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <div className="mt-3 grid gap-2">
                     {props.units.map(u => (
                         <a key={u.id} href={`/army/${props.armyId}/unit/${u.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">

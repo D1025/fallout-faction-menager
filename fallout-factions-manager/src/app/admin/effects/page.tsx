@@ -6,9 +6,9 @@ import { AppHeader } from '@/components/nav/AppHeader';
 
 export default function EffectsAdminPage() {
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="min-h-dvh">
             <AppHeader title="Efekty (admin)" backHref="/admin" />
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <AdminEffectsClient />
             </main>
         </div>
