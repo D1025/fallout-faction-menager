@@ -434,7 +434,7 @@ export default function ArmyDashboardClient({
         }
 
         return (
-            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden vault-panel p-3">
                 <div className="flex items-center justify-between">
                     <div className="font-medium">{u.templateName}</div>
                     <div className="flex items-center gap-2">
@@ -804,7 +804,7 @@ export default function ArmyDashboardClient({
             {tab === 'OVERVIEW' && (
                 <>
                     {/* Zasoby – jedna linia (read-only) */}
-                    <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                    <section className="mt-3 vault-panel p-3">
                         <div className="mb-2 flex items-center justify-between">
                             <div className="text-sm font-medium">Zasoby</div>
                             <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
@@ -838,7 +838,7 @@ export default function ArmyDashboardClient({
                     </div>
 
                     <div className="mt-2 grid grid-cols-1 gap-2">
-                        <label className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-200">
+                        <label className="flex items-center gap-2 vault-panel px-3 py-2 text-xs text-zinc-200">
                             <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
                             <span>Chowaj nieaktywne (absent / dead)</span>
                         </label>
@@ -859,7 +859,7 @@ export default function ArmyDashboardClient({
 
             {/* EDIT RESOURCES */}
             {tab === 'EDIT' && (
-                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                <section className="mt-3 vault-panel p-3">
                     <div className="mb-2 text-sm font-medium">Edycja zasobów</div>
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -883,7 +883,7 @@ export default function ArmyDashboardClient({
                                         value={totals[k]}
                                         onChange={(e) => setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))}
                                         onBlur={(e) => void setValue(k, n(e.target.value, totals[k]))}
-                                        className="h-10 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-lg"
+                                        className="h-10 min-w-0 flex-1 vault-input px-3 text-center text-lg"
                                     />
                                     <button
                                         className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
@@ -915,7 +915,7 @@ export default function ArmyDashboardClient({
 
             {/* TASKS – trackowanie postępu celów */}
             {tab === 'TASKS' && (
-                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                <section className="mt-3 vault-panel p-3">
                     <div className="mb-1 flex items-center justify-between">
                         <div className="text-sm font-medium">Zadania</div>
                         <button
@@ -1023,7 +1023,7 @@ export default function ArmyDashboardClient({
 
             {/* TURF */}
             {tab === 'TURF' && (
-                <section className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+                <section className="mt-3 vault-panel p-3">
                     <div className="text-sm font-medium">Home Turf</div>
 
                     {/* Hazard */}
@@ -1033,7 +1033,7 @@ export default function ArmyDashboardClient({
                             value={hazard}
                             onChange={(e) => setHazard(e.target.value)}
                             rows={3}
-                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="mt-1 w-full vault-input px-3 py-2 text-sm"
                             placeholder="Opis zagrożeń terenu…"
                         />
                         <div className="mt-2 flex items-center gap-2">
@@ -1056,7 +1056,7 @@ export default function ArmyDashboardClient({
                             <input
                                 value={ftNew}
                                 onChange={(e) => setFtNew(e.target.value)}
-                                className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="flex-1 vault-input px-3 py-2 text-sm"
                                 placeholder="np. Warsztat, Farma, Pancerna Brama…"
                             />
                             <button

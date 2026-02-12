@@ -186,14 +186,14 @@ export function AdminPerksClient() {
     return (
         <div className="grid gap-3">
             {/* FORMULARZ NA GÓRZE */}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">{editingId ? 'Edytuj perk' : 'Dodaj perk'}</div>
                     {editingId ? (
                         <button
                             type="button"
                             onClick={reset}
-                            className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-300"
+                            className="h-9 vault-input px-3 text-xs text-zinc-300"
                         >
                             Anuluj edycję
                         </button>
@@ -206,7 +206,7 @@ export function AdminPerksClient() {
                         <input
                             value={form.name}
                             onChange={(e) => setForm({ ...form, name: e.target.value })}
-                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="mt-1 w-full vault-input px-3 py-2 text-sm"
                         />
                     </div>
 
@@ -216,7 +216,7 @@ export function AdminPerksClient() {
                             rows={3}
                             value={form.description}
                             onChange={(e) => setForm({ ...form, description: e.target.value })}
-                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="mt-1 w-full vault-input px-3 py-2 text-sm"
                         />
                         <div className="mt-1 text-[11px] text-zinc-500">
                             W opisie możesz używać X jako zmiennej, ale pole &quot;wymaga wartości&quot; zostało usunięte z UI.
@@ -251,7 +251,7 @@ export function AdminPerksClient() {
                                 onChange={(e) =>
                                     setForm((f) => ({ ...f, statKey: e.target.value ? (e.target.value as StatKeySpecial) : null }))
                                 }
-                                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="mt-1 w-full vault-input px-3 py-2 text-sm"
                             >
                                 <option value="">— brak —</option>
                                 {(['S', 'P', 'E', 'C', 'I', 'A', 'L'] as StatKeySpecial[]).map((k) => (
@@ -278,7 +278,7 @@ export function AdminPerksClient() {
                                                     : f.minValue,
                                     }));
                                 }}
-                                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="mt-1 w-full vault-input px-3 py-2 text-sm"
                                 placeholder="np. 5"
                             />
                         </div>
@@ -289,7 +289,7 @@ export function AdminPerksClient() {
                         <select
                             value={form.behavior}
                             onChange={(e) => setForm({ ...form, behavior: e.target.value as Behavior })}
-                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="mt-1 w-full vault-input px-3 py-2 text-sm"
                         >
                             <option value="NONE">Brak</option>
                             <option value="COMPANION_ROBOT">Kontroler robota</option>
@@ -302,7 +302,7 @@ export function AdminPerksClient() {
                         <select
                             value={form.category}
                             onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as 'REGULAR' | 'AUTOMATRON' }))}
-                            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="mt-1 w-full vault-input px-3 py-2 text-sm"
                         >
                             <option value="REGULAR">Regular</option>
                             <option value="AUTOMATRON">Automatron Perk</option>
@@ -316,7 +316,7 @@ export function AdminPerksClient() {
                         <button
                             type="button"
                             onClick={reset}
-                            className="h-10 flex-1 rounded-xl border border-zinc-700 bg-zinc-950 text-sm text-zinc-200"
+                            className="h-10 flex-1 vault-input text-sm text-zinc-200"
                         >
                             Wyczyść
                         </button>
@@ -332,7 +332,7 @@ export function AdminPerksClient() {
             </div>
 
             {/* LISTA NA DOLE */}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="vault-panel p-3">
                 <div className="flex items-start justify-between gap-2">
                     <div>
                         <div className="text-sm font-medium">Lista perków</div>
@@ -343,7 +343,7 @@ export function AdminPerksClient() {
                     <button
                         type="button"
                         onClick={() => void reload()}
-                        className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-300"
+                        className="h-9 vault-input px-3 text-xs text-zinc-300"
                     >
                         Odśwież
                     </button>
@@ -377,7 +377,7 @@ export function AdminPerksClient() {
                             <select
                                 value={categoryFilter}
                                 onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-                                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="mt-1 w-full vault-input px-3 py-2 text-sm"
                             >
                                 <option value="ALL">Wszystkie</option>
                                 <option value="REGULAR">Regular</option>
@@ -389,7 +389,7 @@ export function AdminPerksClient() {
                             <select
                                 value={availability}
                                 onChange={(e) => setAvailability(e.target.value as AvailabilityFilter)}
-                                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="mt-1 w-full vault-input px-3 py-2 text-sm"
                             >
                                 <option value="ALL">Wszystkie</option>
                                 <option value="INNATE">Tylko INNATE</option>
@@ -401,7 +401,7 @@ export function AdminPerksClient() {
                             <select
                                 value={String(pageSize)}
                                 onChange={(e) => setPageSize(Number(e.target.value))}
-                                className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                                className="mt-1 w-full vault-input px-3 py-2 text-sm"
                             >
                                 {[10, 20, 50, 100].map((n) => (
                                     <option key={n} value={String(n)}>
@@ -430,7 +430,7 @@ export function AdminPerksClient() {
                             type="button"
                             onClick={() => setPage(1)}
                             disabled={safePage === 1}
-                            className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 disabled:opacity-40"
+                            className="h-9 vault-input px-3 disabled:opacity-40"
                         >
                             «
                         </button>
@@ -438,7 +438,7 @@ export function AdminPerksClient() {
                             type="button"
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             disabled={safePage === 1}
-                            className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 disabled:opacity-40"
+                            className="h-9 vault-input px-3 disabled:opacity-40"
                         >
                             ‹
                         </button>
@@ -446,7 +446,7 @@ export function AdminPerksClient() {
                             type="button"
                             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                             disabled={safePage === totalPages}
-                            className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 disabled:opacity-40"
+                            className="h-9 vault-input px-3 disabled:opacity-40"
                         >
                             ›
                         </button>
@@ -454,7 +454,7 @@ export function AdminPerksClient() {
                             type="button"
                             onClick={() => setPage(totalPages)}
                             disabled={safePage === totalPages}
-                            className="h-9 rounded-xl border border-zinc-700 bg-zinc-950 px-3 disabled:opacity-40"
+                            className="h-9 vault-input px-3 disabled:opacity-40"
                         >
                             »
                         </button>

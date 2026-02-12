@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { UnitClient } from '@/components/army/UnitClient';
-import { BackButton } from '@/components/nav/BackButton';
+import { AppHeader } from '@/components/nav/AppHeader';
 
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -108,18 +108,10 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     };
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <BackButton fallbackHref={`/army/${unit.armyId}`} />
-                    <div className="min-w-0 flex-1 px-2 text-center">
-                        <div className="truncate text-base font-semibold">{unit.unit?.name ?? unit.id.slice(0, 6)}</div>
-                    </div>
-                    <div className="w-[64px]" />
-                </div>
-            </header>
+        <div className="min-h-dvh">
+            <AppHeader title={unit.unit?.name ?? unit.id.slice(0, 6)} backHref={`/army/${unit.armyId}`} />
 
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <UnitClient
                     unitId={unit.id}
                     armyId={unit.armyId}

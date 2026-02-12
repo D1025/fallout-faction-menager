@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import Link from 'next/link';
+import { AppHeader } from '@/components/nav/AppHeader';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
@@ -24,18 +25,16 @@ export default async function Home() {
 
   if (!userId) {
     return (
-        <div className="min-h-dvh grid place-items-center bg-zinc-950 text-zinc-100 p-4">
-          <div className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-5 text-center">
-            <div className="text-lg font-semibold">Wymagane logowanie</div>
-            <p className="mt-2 text-sm text-zinc-400">Przejdź do strony logowania.</p>
-            <Link
-                href="/login"
-                className="mt-4 inline-block rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 active:scale-[0.99]"
-            >
-              Zaloguj
-            </Link>
-          </div>
+      <div className="min-h-dvh grid place-items-center p-4">
+        <div className="vault-panel w-full max-w-sm p-6 text-center">
+          <div className="text-3xl">☢️</div>
+          <div className="mt-2 text-lg font-semibold">Wymagane logowanie</div>
+          <p className="mt-2 text-sm vault-muted">Aby śledzić armię, musisz najpierw wejść do terminala dowódcy.</p>
+          <Link href="/login" className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-emerald-950">
+            Przejdź do logowania
+          </Link>
         </div>
+      </div>
     );
   }
 
@@ -219,26 +218,30 @@ export default async function Home() {
   }
 
   return (
-      <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-            <div className="text-base font-semibold">Twoje drużyny</div>
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                  <Link href="/admin" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                    Admin
-                  </Link>
-              )}
-              <SignOutButton />
-            </div>
+    <div className="min-h-dvh">
+      <AppHeader
+        title="Fallout Army Tracker"
+        right={
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Link href="/admin" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
+                🛠 Admin
+              </Link>
+            )}
+            <SignOutButton />
           </div>
-        </header>
+        }
+      />
 
-        <main className="mx-auto max-w-screen-sm px-3 pb-24">
-          <HomeArmiesTabs myArmies={myArmies} shared={shared}>
-            <CreateArmySheet factions={factions} />
-          </HomeArmiesTabs>
-        </main>
-      </div>
+      <main className="app-shell">
+        <section className="vault-panel mb-3 p-3">
+          <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
+          <p className="mt-1 text-sm vault-muted">Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.</p>
+        </section>
+        <HomeArmiesTabs myArmies={myArmies} shared={shared}>
+          <CreateArmySheet factions={factions} />
+        </HomeArmiesTabs>
+      </main>
+    </div>
   );
 }

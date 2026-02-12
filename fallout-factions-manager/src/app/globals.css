@@ -1,26 +1,71 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0d11;
+  --foreground: #e8eadf;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* { box-sizing: border-box; }
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top right, rgba(169, 132, 42, 0.15), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(33, 99, 74, 0.2), transparent 35%),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.app-shell {
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  padding: 0 12px 88px;
+}
+
+.vault-panel {
+  border: 1px solid #303742;
+  background: linear-gradient(180deg, #131922 0%, #10161f 100%);
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+
+.vault-input {
+  border: 1px solid #3a414b;
+  background: #0d131b;
+  border-radius: 10px;
+}
+
+.vault-input:focus,
+.vault-input:focus-visible {
+  outline: none;
+  border-color: #d3a94f;
+  box-shadow: 0 0 0 2px rgba(211, 169, 79, 0.2);
+}
+
+button, [role="button"] {
+  touch-action: manipulation;
+}
+
+.vault-muted { color: #9ca3af; }
+
+@media (max-width: 420px) {
+  .app-shell {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
 }

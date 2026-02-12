@@ -123,7 +123,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="min-h-dvh">
             <Header
                 title="Frakcje – limity, zadania, ulepszenia"
                 right={
@@ -136,7 +136,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                 }
             />
 
-            <main className="mx-auto w-full max-w-screen-sm px-3 pb-24">
+            <main className="app-shell">
                 <Search value={q} onChange={setQ} placeholder="Szukaj frakcji" />
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -202,8 +202,8 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
 function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-            <div className="mx-auto flex h-14 w-full max-w-screen-sm items-center justify-between px-3">
+        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
+            <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
                 <div className="text-lg font-semibold tracking-wide">{title}</div>
                 <div className="text-xs text-zinc-400">{right}</div>
             </div>
@@ -222,7 +222,7 @@ function Search({
 }) {
     return (
         <label className="block">
-            <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+            <div className="flex items-center gap-2 vault-panel px-3 py-2">
                 <Magnifier className="h-5 w-5 text-zinc-400" />
                 <input
                     value={value}
@@ -244,7 +244,7 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
     return (
         <button
             onClick={onOpen}
-            className="group flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left active:scale-[0.99]"
+            className="group flex items-center gap-3 vault-panel p-3 text-left active:scale-[0.99]"
         >
             <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-800 text-zinc-300">
                 {faction.name.slice(0, 2)}
@@ -414,7 +414,7 @@ function EditorSheet({
                             value={draft.name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Nazwa frakcji"
-                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            className="flex-1 vault-input px-3 py-2 text-sm"
                         />
                         {mode === 'edit' && (
                             <button

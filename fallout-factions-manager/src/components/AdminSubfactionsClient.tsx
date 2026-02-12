@@ -107,7 +107,7 @@ export function AdminSubfactionsClient({
 
     return (
         <div className="py-4">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            <div className="vault-panel p-3">
                 <div className="text-sm font-semibold">Wybierz frakcję</div>
                 <select
                     value={selectedFactionId}
@@ -115,7 +115,7 @@ export function AdminSubfactionsClient({
                         setSelectedFactionId(e.target.value);
                         setEditorId(null);
                     }}
-                    className="mt-2 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="mt-2 w-full vault-input px-3 py-2 text-sm"
                 >
                     {factions.map((f) => (
                         <option key={f.id} value={f.id}>
@@ -129,7 +129,7 @@ export function AdminSubfactionsClient({
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
                         placeholder="Nowa subfrakcja"
-                        className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                        className="flex-1 vault-input px-3 py-2 text-sm"
                     />
                     <button
                         disabled={busy || !selectedFactionId}
