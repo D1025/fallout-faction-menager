@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { AdminSubfactionsClient } from '@/components/AdminSubfactionsClient';
@@ -89,11 +89,8 @@ export default async function AdminSubfactionsPage() {
     }));
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title="Subfrakcje (admin)" backHref="/admin" />
-            <main className="app-shell">
-                <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
-            </main>
-        </div>
+        <MobilePageShell title="Subfrakcje (admin)" backHref="/admin">
+            <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
+        </MobilePageShell>
     );
 }

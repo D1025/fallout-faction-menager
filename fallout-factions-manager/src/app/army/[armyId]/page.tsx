@@ -4,7 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import ArmyDashboardClient from '@/components/army/ArmyDashboardClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;
@@ -162,8 +162,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     });
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title={army.name} backHref="/" />
+        <MobilePageShell title={army.name} backHref="/">
             <ArmyDashboardClient
                 armyId={army.id}
                 armyName={army.name}
@@ -175,6 +174,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
                 subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
             />
-        </div>
+        </MobilePageShell>
     );
 }

@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import Link from 'next/link';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { Button } from 'antd';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
@@ -25,16 +27,18 @@ export default async function Home() {
 
   if (!userId) {
     return (
-      <div className="min-h-dvh grid place-items-center p-4">
-        <div className="vault-panel w-full max-w-sm p-6 text-center">
-          <div className="text-3xl">☢️</div>
-          <div className="mt-2 text-lg font-semibold">Wymagane logowanie</div>
-          <p className="mt-2 text-sm vault-muted">Aby śledzić armię, musisz najpierw wejść do terminala dowódcy.</p>
-          <Link href="/login" className="mt-5 inline-flex h-10 items-center justify-center rounded-xl bg-emerald-500 px-4 text-sm font-semibold text-emerald-950">
-            Przejdź do logowania
-          </Link>
-        </div>
-      </div>
+      <MobilePageShell title="Fallout Army Tracker">
+        <SectionCard>
+          <div className="text-center">
+            <div className="text-3xl">☢️</div>
+            <div className="mt-2 text-lg font-semibold">Wymagane logowanie</div>
+            <p className="mt-2 text-sm vault-muted">Aby śledzić armię, musisz najpierw wejść do terminala dowódcy.</p>
+            <Link href="/login">
+              <Button type="primary" className="mt-4">Przejdź do logowania</Button>
+            </Link>
+          </div>
+        </SectionCard>
+      </MobilePageShell>
     );
   }
 
@@ -218,30 +222,24 @@ export default async function Home() {
   }
 
   return (
-    <div className="min-h-dvh">
-      <AppHeader
-        title="Fallout Army Tracker"
-        right={
-          <div className="flex items-center gap-2">
-            {isAdmin && (
-              <Link href="/admin" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                🛠 Admin
-              </Link>
-            )}
-            <SignOutButton />
-          </div>
-        }
-      />
-
-      <main className="app-shell">
-        <section className="vault-panel mb-3 p-3">
-          <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
-          <p className="mt-1 text-sm vault-muted">Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.</p>
-        </section>
+    <MobilePageShell
+      title="Fallout Army Tracker"
+      headerRight={
+        <div className="flex items-center gap-2"> 
+          {isAdmin && <Link href="/admin"><Button size="small">🛠 Admin</Button></Link>}
+          <SignOutButton />
+        </div>
+      }
+    >
+      <SectionCard>
+        <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
+        <p className="mt-1 text-sm vault-muted">Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.</p>
+      </SectionCard>
+      <div className="mt-3"> 
         <HomeArmiesTabs myArmies={myArmies} shared={shared}>
           <CreateArmySheet factions={factions} />
         </HomeArmiesTabs>
-      </main>
-    </div>
+      </div>
+    </MobilePageShell>
   );
 }

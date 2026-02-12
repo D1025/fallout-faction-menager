@@ -1,9 +1,10 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-import Link from 'next/link';
 import { auth } from '@/lib/authServer';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { EntityListItem } from '@/components/ui/antd/EntityListItem';
+import { SectionCard } from '@/components/ui/antd/SectionCard';
 
 const links = [
     { href: '/admin/factions', label: 'Frakcje', icon: '🏴' },
@@ -19,20 +20,15 @@ export default async function AdminHome() {
     if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Brak uprawnień.</div>;
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title="Panel admina" backHref="/" />
-
-            <main className="app-shell pt-4">
-                <section className="vault-panel p-3 text-sm vault-muted">Zarządzaj słownikami i konfiguracją zasad armii. Widok zoptymalizowany pod smartfony.</section>
-                <div className="mt-3 grid gap-2">
-                    {links.map((x) => (
-                        <Link key={x.href} href={x.href} className="vault-panel flex items-center gap-3 p-3 text-sm font-medium active:scale-[0.99]">
-                            <span>{x.icon}</span>
-                            <span>{x.label}</span>
-                        </Link>
-                    ))}
-                </div>
-            </main>
-        </div>
+        <MobilePageShell title="Panel admina" backHref="/">
+            <SectionCard>
+                <p className="text-sm vault-muted">Zarządzaj słownikami i konfiguracją zasad armii. Widok zoptymalizowany pod smartfony.</p>
+            </SectionCard>
+            <div className="mt-3 grid gap-2">
+                {links.map((x) => (
+                    <EntityListItem key={x.href} href={x.href} title={<span>{x.icon} {x.label}</span>} />
+                ))}
+            </div>
+        </MobilePageShell>
     );
 }

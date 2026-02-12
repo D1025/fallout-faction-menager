@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { UnitClient } from '@/components/army/UnitClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -108,10 +108,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     };
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title={unit.unit?.name ?? unit.id.slice(0, 6)} backHref={`/army/${unit.armyId}`} />
+        <MobilePageShell title={unit.unit?.name ?? unit.id.slice(0, 6)} backHref={`/army/${unit.armyId}`}>
 
-            <main className="app-shell">
                 <UnitClient
                     unitId={unit.id}
                     armyId={unit.armyId}
@@ -150,7 +148,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         // deduplikacja po id perka
                         .filter((p, idx, arr) => arr.findIndex((x) => x.id === p.id) === idx)}
                 />
-            </main>
-        </div>
+        </MobilePageShell>
     );
 }

@@ -4,7 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { FactionsClient, type UIFaction } from '@/components/FactionsClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default async function Page() {
     let factions: UIFaction[];
@@ -41,9 +41,8 @@ export default async function Page() {
     }
 
     return (
-        <div className="min-h-dvh">
-            <AppHeader title="Frakcje (admin)" backHref="/admin" />
+        <MobilePageShell title="Frakcje (admin)" backHref="/admin">
             <FactionsClient initialFactions={factions} />
-        </div>
+        </MobilePageShell>
     );
 }
