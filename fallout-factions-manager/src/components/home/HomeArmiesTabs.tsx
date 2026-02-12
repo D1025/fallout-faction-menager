@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Drawer } from 'antd';
 
 type ArmyMeta = {
     id: string;
@@ -132,7 +131,7 @@ function DotsMenu({
                     e.stopPropagation();
                     setOpen((v) => !v);
                 }}
-                className="grid h-11 w-11 place-items-center rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-200 active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-200 active:scale-95"
                 aria-label="Opcje"
                 title="Opcje"
             >
@@ -182,19 +181,22 @@ function ArmyCard({
     onDeleted?: () => void;
 }) {
     return (
-        <div className="vault-panel min-h-11 p-3">
+        <div className="vault-panel p-3">
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1 text-xs">
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">T{a.tier}</span>
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">Rating {a.rating}</span>
-                    </div>
-                    <div className="mt-1 truncate font-medium">{a.name}</div>
+                    <div className="truncate font-medium">{a.name}</div>
                     <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
                         <span className="truncate">{a.factionName}</span>
                         {a.subfactionName && <span className="truncate">• {a.subfactionName}</span>}
 
                         <span className="mx-0.5 h-3 w-px bg-zinc-700" aria-hidden="true" />
+
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+                            T{a.tier}
+                        </span>
+                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+                            Rating {a.rating}
+                        </span>
                     </div>
                 </div>
 
@@ -400,7 +402,7 @@ export function HomeArmiesTabs({
                     type="button"
                     onClick={() => setState((s) => ({ ...s, tab: 'MINE' }))}
                     className={
-                        'h-11 rounded-xl border text-xs font-medium ' +
+                        'h-10 rounded-xl border text-xs font-medium ' +
                         (state.tab === 'MINE'
                             ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
                             : 'border-zinc-700 bg-zinc-900 text-zinc-300')
@@ -412,7 +414,7 @@ export function HomeArmiesTabs({
                     type="button"
                     onClick={() => setState((s) => ({ ...s, tab: 'SHARED' }))}
                     className={
-                        'h-11 rounded-xl border text-xs font-medium ' +
+                        'h-10 rounded-xl border text-xs font-medium ' +
                         (state.tab === 'SHARED'
                             ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
                             : 'border-zinc-700 bg-zinc-900 text-zinc-300')
@@ -436,7 +438,7 @@ export function HomeArmiesTabs({
                         <button
                             type="button"
                             onClick={() => setState((s) => ({ ...s, q: '' }))}
-                            className="rounded-full p-2 text-zinc-400 hover:bg-zinc-800 active:scale-95"
+                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
                             aria-label="Wyczyść"
                         >
                             ✕
@@ -444,10 +446,11 @@ export function HomeArmiesTabs({
                     )}
                 </div>
 
+                {/* Collapsed Filters header */}
                 <button
                     type="button"
-                    onClick={() => setState((s) => ({ ...s, filtersOpen: true }))}
-                    className="flex min-h-11 items-center justify-between vault-panel px-3 py-2 text-left"
+                    onClick={() => setState((s) => ({ ...s, filtersOpen: !s.filtersOpen }))}
+                    className="flex items-center justify-between vault-panel px-3 py-2 text-left"
                     aria-expanded={Boolean(state.filtersOpen)}
                 >
                     <div className="min-w-0">
@@ -457,16 +460,10 @@ export function HomeArmiesTabs({
                             {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
                         </div>
                     </div>
-                    <div className="shrink-0 text-zinc-300">Ustaw</div>
+                    <div className="shrink-0 text-zinc-300">{state.filtersOpen ? '▲' : '▼'}</div>
                 </button>
 
-                <Drawer
-                    title="Filtry i sortowanie"
-                    placement="bottom"
-                    height="80vh"
-                    open={Boolean(state.filtersOpen)}
-                    onClose={() => setState((s) => ({ ...s, filtersOpen: false }))}
-                >
+                {state.filtersOpen && (
                     <div className="grid grid-cols-1 gap-2">
                         <div className="grid grid-cols-2 gap-2">
                             <select
@@ -475,7 +472,7 @@ export function HomeArmiesTabs({
                                     const v = e.target.value;
                                     setState((s) => ({ ...s, tierFilter: v === 'ALL' ? 'ALL' : (Number(v) as 1 | 2 | 3) }));
                                 }}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                                 aria-label="Filtr tier"
                             >
                                 <option value="ALL">Wszystkie tiery</option>
@@ -487,10 +484,10 @@ export function HomeArmiesTabs({
                             <select
                                 value={state.sort}
                                 onChange={(e) => setState((s) => ({ ...s, sort: e.target.value as SortKey }))}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                                 aria-label="Sortowanie"
                             >
-                                <option value="UPDATED">Sort: ostatnio aktualizowane</option>
+                                <option value="UPDATED">Sort: ostatnio używane</option>
                                 <option value="NAME_ASC">Sort: nazwa A→Z</option>
                                 <option value="NAME_DESC">Sort: nazwa Z→A</option>
                                 <option value="TIER_ASC">Sort: tier rosnąco</option>
@@ -504,7 +501,7 @@ export function HomeArmiesTabs({
                             <select
                                 value={state.factionFilter}
                                 onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                                 aria-label="Filtr frakcja"
                             >
                                 <option value="ALL">Wszystkie frakcje</option>
@@ -518,7 +515,7 @@ export function HomeArmiesTabs({
                             <select
                                 value={state.subfactionMode}
                                 onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                                 aria-label="Filtr subfrakcja (tryb)"
                             >
                                 <option value="ANY">Subfrakcja: dowolnie</option>
@@ -532,7 +529,7 @@ export function HomeArmiesTabs({
                                 value={state.subfactionFilter}
                                 onChange={(e) => setState((s) => ({ ...s, subfactionFilter: e.target.value }))}
                                 disabled={state.subfactionMode === 'ONLY_NONE'}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                                 aria-label="Filtr subfrakcja (konkretna)"
                             >
                                 <option value="ALL">Wszystkie subfrakcje</option>
@@ -549,7 +546,7 @@ export function HomeArmiesTabs({
                                     setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))
                                 }
                                 disabled={state.tab !== 'SHARED'}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                                 aria-label="Filtr uprawnień (udostępnione)"
                             >
                                 <option value="ALL">Perm: wszystkie</option>
@@ -558,27 +555,29 @@ export function HomeArmiesTabs({
                             </select>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() =>
-                                setState({
-                                    tab: 'MINE',
-                                    q: '',
-                                    sort: 'UPDATED',
-                                    tierFilter: 'ALL',
-                                    factionFilter: 'ALL',
-                                    subfactionFilter: 'ALL',
-                                    subfactionMode: 'ANY',
-                                    permFilter: 'ALL',
-                                    filtersOpen: false,
-                                })
-                            }
-                            className="h-11 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                        >
-                            Wyczyść filtry
-                        </button>
+                        <div className="flex items-center justify-end">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setState({
+                                        tab: 'MINE',
+                                        q: '',
+                                        sort: 'UPDATED',
+                                        tierFilter: 'ALL',
+                                        factionFilter: 'ALL',
+                                        subfactionFilter: 'ALL',
+                                        subfactionMode: 'ANY',
+                                        permFilter: 'ALL',
+                                        filtersOpen: false,
+                                    })
+                                }
+                                className="h-9 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            >
+                                Wyczyść filtry
+                            </button>
+                        </div>
                     </div>
-                </Drawer>
+                )}
             </div>
 
             {/* Lists */}
