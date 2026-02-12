@@ -1,6 +1,7 @@
 'use client';
 
-import { Avatar, Button, Card, Flex, Layout, List, Space, Tag, Typography } from 'antd';
+import { Avatar, Button, Card, Flex, List, Space, Tag, Typography } from 'antd';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export function RosterClient(props: {
     armyId: string;
@@ -8,27 +9,22 @@ export function RosterClient(props: {
     units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string | null }[];
 }) {
     return (
-        <Layout style={{ minHeight: '100dvh' }}>
-            <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
-                <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto' }}>
-                    <Button type="link" href={`/army/${props.armyId}`}>
-                        ←
-                    </Button>
-                    <Typography.Title level={5} style={{ margin: 0 }}>
-                        Roster: {props.armyName}
-                    </Typography.Title>
-                    <span style={{ width: 24 }} />
-                </Flex>
-            </Layout.Header>
-
-            <Layout.Content style={{ maxWidth: 560, width: '100%', margin: '12px auto', paddingInline: 12 }}>
+        <MobilePageShell
+            title={`Roster: ${props.armyName}`}
+            backHref={`/army/${props.armyId}`}
+            stickyActions={
+                <Button type="primary" href={`/army/${props.armyId}/roster/add`} block style={{ minHeight: 44 }}>
+                    Dodaj jednostkę
+                </Button>
+            }
+        >
                 <Card size="small">
                     <List
                         dataSource={props.units}
                         renderItem={(u) => (
-                            <List.Item>
-                                <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%' }}>
-                                    <Flex align="center" gap={12}>
+                            <List.Item style={{ paddingBlock: 0 }}>
+                                <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%', minHeight: 44, display: 'flex', paddingBlock: 12 }}>
+                                    <Flex align="center" gap={12} style={{ width: '100%' }}>
                                         <Avatar shape="square" size={48}>
                                             {u.photoPath ? '🖼️' : u.name.slice(0, 2)}
                                         </Avatar>
@@ -47,11 +43,6 @@ export function RosterClient(props: {
                         )}
                     />
                 </Card>
-
-                <Button type="primary" shape="circle" size="large" href={`/army/${props.armyId}/roster/add`} style={{ position: 'fixed', right: 20, bottom: 20 }}>
-                    ＋
-                </Button>
-            </Layout.Content>
-        </Layout>
+        </MobilePageShell>
     );
 }
