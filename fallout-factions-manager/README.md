@@ -8,10 +8,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - [ ] Dostarczenie bazowych komponentów filtrów (np. `FilterBar`, `FilterChips`, `SortSelect`, `QuickToggle`) do wielokrotnego użycia.
 
 **Checklista akceptacyjna (Etap 1)**
-- [ ] Czytelność tekstu w dark mode.
-- [ ] Spójność filtrów.
-- [ ] Poprawność mobile i desktop.
-- [ ] Brak regresji funkcjonalnych.
+- [ ] Kryteria zgodne z [`docs/ui-redesign-plan.md#etap-1`](docs/ui-redesign-plan.md#etap-1).
 
 ### Etap 2: ekran główny i kluczowe ekrany armii (dashboard/roster/unit/resources)
 - [ ] Przeniesienie nowego motywu i bazowych filtrów na ekran główny.
@@ -19,10 +16,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - [ ] Ujednolicenie nawigacji, sekcji kart i stanów ładowania/pustych widoków.
 
 **Checklista akceptacyjna (Etap 2)**
-- [ ] Czytelność tekstu w dark mode.
-- [ ] Spójność filtrów.
-- [ ] Poprawność mobile i desktop.
-- [ ] Brak regresji funkcjonalnych.
+- [ ] Kryteria zgodne z [`docs/ui-redesign-plan.md#etap-2`](docs/ui-redesign-plan.md#etap-2).
 
 ### Etap 3: logowanie + frakcje
 - [ ] Dostosowanie ekranu logowania do nowego systemu motywu i kontrastu.
@@ -30,10 +24,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - [ ] Sprawdzenie zgodności walidacji i komunikatów błędów ze standardem UI.
 
 **Checklista akceptacyjna (Etap 3)**
-- [ ] Czytelność tekstu w dark mode.
-- [ ] Spójność filtrów.
-- [ ] Poprawność mobile i desktop.
-- [ ] Brak regresji funkcjonalnych.
+- [ ] Kryteria zgodne z [`docs/ui-redesign-plan.md#etap-3`](docs/ui-redesign-plan.md#etap-3).
 
 ### Etap 4: cały panel admin
 - [ ] Ujednolicenie wszystkich ekranów panelu admin pod kątem motywu, kontrastu i komponentów.
@@ -41,10 +32,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 - [ ] Domknięcie spójności UX pomiędzy sekcjami: factions, subfactions, perks, templates, weapons, effects.
 
 **Checklista akceptacyjna (Etap 4)**
-- [ ] Czytelność tekstu w dark mode.
-- [ ] Spójność filtrów.
-- [ ] Poprawność mobile i desktop.
-- [ ] Brak regresji funkcjonalnych.
+- [ ] Kryteria zgodne z [`docs/ui-redesign-plan.md#etap-4`](docs/ui-redesign-plan.md#etap-4).
 
 ## Getting Started
 
