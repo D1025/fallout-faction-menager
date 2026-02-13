@@ -1,5 +1,59 @@
 @import "tailwindcss";
 
+:root {
+  /* semantic roles */
+  --ff-text-primary: #f2f5ef;
+  --ff-text-secondary: #bcc6ba;
+  --ff-text-on-accent: #121820;
+
+  --ff-bg-base: #0c1015;
+  --ff-bg-panel: #131a22;
+  --ff-bg-elevated: #1a232d;
+
+  --ff-border: #56677a;
+  --ff-focus: #75c2ff;
+  --ff-state-error: #ff7a82;
+  --ff-state-success: #5fcf8b;
+  --ff-state-warning: #e6b84e;
+  --ff-accent: #e0b84f;
+}
+
+@theme {
+  --color-base-bg: var(--ff-bg-base);
+  --color-panel-bg: var(--ff-bg-panel);
+  --color-elevated-bg: var(--ff-bg-elevated);
+
+  --color-zinc-100: var(--ff-text-primary);
+  --color-zinc-200: #d9e0d5;
+  --color-zinc-300: #c6d0c4;
+  --color-zinc-400: var(--ff-text-secondary);
+  --color-zinc-500: #9ba69a;
+  --color-zinc-600: #859184;
+  --color-zinc-700: #62758a;
+  --color-zinc-800: var(--ff-border);
+  --color-zinc-900: var(--ff-bg-panel);
+  --color-zinc-950: var(--ff-bg-base);
+
+  --color-amber-200: #f4d38b;
+  --color-amber-300: #ebc05f;
+  --color-amber-500: var(--ff-accent);
+
+  --color-red-200: #ffbec4;
+  --color-red-300: #ff9ca5;
+  --color-red-400: var(--ff-state-error);
+  --color-red-500: #ff636e;
+  --color-red-600: #d54b57;
+  --color-red-700: #9e3742;
+  --color-red-800: #792832;
+  --color-red-900: #4b1720;
+  --color-red-950: #320f16;
+
+  --color-green-400: var(--ff-state-success);
+
+  --color-black: #000000;
+  --color-white: #ffffff;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -13,16 +67,33 @@ body {
 
 body {
   font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ff-text-primary);
+  background: var(--ff-bg-base);
 }
 
-/* helpers: brak pasków przewijania – działa mobil/desktop */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--ff-focus);
+  outline-offset: 2px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in oklab, var(--ff-text-secondary) 80%, var(--ff-bg-base));
+  opacity: 1;
+}
+
 .no-scrollbar {
-  -ms-overflow-style: none; /* IE/Edge */
-  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .no-scrollbar::-webkit-scrollbar {
-  /* Chrome/Safari */
   display: none;
 }
 
@@ -34,13 +105,13 @@ body {
 }
 
 .vault-panel {
-  border: 1px solid #2a2f37;
-  background: #11161d;
+  border: 1px solid var(--ff-border);
+  background: var(--ff-bg-panel);
   border-radius: 16px;
 }
 
 .vault-muted {
-  color: #9ca3af;
+  color: var(--ff-text-secondary);
 }
 
 @media (max-width: 420px) {
