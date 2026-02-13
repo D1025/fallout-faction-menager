@@ -1,6 +1,7 @@
 // src/components/army/UnitClient.tsx
 'use client';
 
+import { CheckOutlined, PlusOutlined } from '@ant-design/icons';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
@@ -269,21 +270,21 @@ export function UnitClient({
 
     /* ===== SPECIAL kompakt z poprawnym +/− ===== */
     function renderSpecialCompact() {
-        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', '♥'] as const;
+        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
         const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
         return (
             <div className="rounded-xl border border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {HEAD.map((h) => (
                         <div key={h} className="px-2 py-1 text-center">
-                            {h === '♥' ? 'HP' : h}
+                            {h}
                         </div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
                     {HEAD.map((h) => {
-                        const base = h === '♥' ? special.HP : special[h as Exclude<typeof h, '♥'>];
-                        const fin = h === '♥' ? finalStats.HP : finalStats[h as Exclude<typeof h, '♥'>];
+                        const base = h === 'HP' ? special.HP : special[h as Exclude<typeof h, 'HP'>];
+                        const fin = h === 'HP' ? finalStats.HP : finalStats[h as Exclude<typeof h, 'HP'>];
                         const delta = fin - base;
                         return (
                             <div key={h} className="px-2 py-1 text-center tabular-nums">
@@ -448,7 +449,7 @@ export function UnitClient({
                                                 title={isSel ? 'Usuń profil' : 'Dodaj profil'}
                                                 aria-label={isSel ? 'Usuń profil' : 'Dodaj profil'}
                                             >
-                                                {isSel ? '✓' : '+'}
+                                                {isSel ? <CheckOutlined /> : <PlusOutlined />}
                                             </button>
                                         ) : (
                                             <div className="h-7 w-7" />
@@ -575,7 +576,7 @@ export function UnitClient({
                                                     title={isSel ? 'Usuń profil' : 'Dodaj profil'}
                                                     aria-label={isSel ? 'Usuń profil' : 'Dodaj profil'}
                                                 >
-                                                    {isSel ? '✓' : '+'}
+                                                    {isSel ? <CheckOutlined /> : <PlusOutlined />}
                                                 </button>
                                             ) : (
                                                 <span className="text-zinc-500">—</span>

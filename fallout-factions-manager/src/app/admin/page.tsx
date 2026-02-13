@@ -1,18 +1,19 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+import { AppstoreOutlined, DatabaseOutlined, DeploymentUnitOutlined, SettingOutlined, ToolOutlined } from '@ant-design/icons';
 import { auth } from '@/lib/authServer';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { EntityListItem } from '@/components/ui/antd/EntityListItem';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
 
 const links = [
-    { href: '/admin/factions', label: 'Frakcje', icon: '🏴' },
-    { href: '/admin/subfactions', label: 'Subfrakcje', icon: '🧩' },
-    { href: '/admin/templates', label: 'Szablony jednostek', icon: '📋' },
-    { href: '/admin/perks', label: 'Perki', icon: '✨' },
-    { href: '/admin/weapons', label: 'Broń i zestawy', icon: '🔫' },
-    { href: '/admin/effects', label: 'Efekty broni', icon: '💥' },
+    { href: '/admin/factions', label: 'Frakcje', icon: <SettingOutlined className="text-zinc-200" /> },
+    { href: '/admin/subfactions', label: 'Subfrakcje', icon: <AppstoreOutlined className="text-zinc-200" /> },
+    { href: '/admin/templates', label: 'Szablony jednostek', icon: <DeploymentUnitOutlined className="text-zinc-200" /> },
+    { href: '/admin/perks', label: 'Perki', icon: <ToolOutlined className="text-zinc-200" /> },
+    { href: '/admin/weapons', label: 'Broń i zestawy', icon: <DatabaseOutlined className="text-zinc-200" /> },
+    { href: '/admin/effects', label: 'Efekty broni', icon: <SettingOutlined className="text-zinc-200" /> },
 ];
 
 export default async function AdminHome() {
@@ -26,7 +27,7 @@ export default async function AdminHome() {
             </SectionCard>
             <div className="mt-3 grid gap-2">
                 {links.map((x) => (
-                    <EntityListItem key={x.href} href={x.href} title={<span>{x.icon} {x.label}</span>} />
+                    <EntityListItem key={x.href} href={x.href} title={<span className="inline-flex items-center gap-2">{x.icon} {x.label}</span>} />
                 ))}
             </div>
         </MobilePageShell>

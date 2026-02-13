@@ -1,5 +1,6 @@
 'use client';
 
+import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 
 type Behavior = 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
@@ -352,7 +353,7 @@ export function AdminPerksClient() {
                 {/* Filtry */}
                 <div className="mt-3 grid gap-2">
                     <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
-                        <span className="text-zinc-400">🔎</span>
+                        <SearchOutlined className="text-zinc-400" />
                         <input
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
@@ -366,7 +367,7 @@ export function AdminPerksClient() {
                                 className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800"
                                 aria-label="Wyczyść"
                             >
-                                ✕
+                                <CloseOutlined />
                             </button>
                         ) : null}
                     </div>
