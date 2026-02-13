@@ -1,7 +1,8 @@
 'use client';
 
-import { ArrowLeftOutlined, CloseOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
+import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import { useRouter } from 'next/navigation';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
@@ -76,14 +77,15 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     const router = useRouter();
     const [q, setQ] = useState('');
     const [factions, setFactions] = useState<UIFaction[]>(initialFactions);
+    const [onlyWithLimits, setOnlyWithLimits] = useState(false);
     const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
     const [savingAll, setSavingAll] = useState(false);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
         if (!s) return factions;
-        return factions.filter((f) => f.name.toLowerCase().includes(s));
-    }, [q, factions]);
+        return factions.filter((f) => f.name.toLowerCase().includes(s)).filter((f) => (onlyWithLimits ? f.limits.length > 0 : true));
+    }, [q, factions, onlyWithLimits]);
 
     function openCreate() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
@@ -139,7 +141,23 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
             />
 
             <main className="app-shell">
-                <Search value={q} onChange={setQ} placeholder="Szukaj frakcji" />
+                <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                    <FilterBar
+                        search={q}
+                        onSearch={setQ}
+                        searchPlaceholder="Szukaj frakcji"
+                        quickToggles={<QuickToggle checked={onlyWithLimits} onChange={setOnlyWithLimits} label="Tylko z limitami" />}
+                        activeChips={[
+                            ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
+                            ...(onlyWithLimits ? [{ key: 'limits', label: 'Tylko z limitami', onRemove: () => setOnlyWithLimits(false) }] : []),
+                        ] as ActiveFilterChip[]}
+                        onClearAll={() => {
+                            setQ('');
+                            setOnlyWithLimits(false);
+                        }}
+                        moreFilters={<div className="text-xs text-zinc-400">Dodatkowe filtry pojawią się tutaj.</div>}
+                    />
+                </div>
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                     {filtered.map((f) => (
@@ -217,35 +235,6 @@ function Header({ title, right }: { title: string; right?: React.ReactNode }) {
                 <div className="text-xs text-zinc-400">{right}</div>
             </div>
         </header>
-    );
-}
-
-function Search({
-                    value,
-                    onChange,
-                    placeholder,
-                }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-}) {
-    return (
-        <label className="block">
-            <div className="flex items-center gap-2 vault-panel px-3 py-2">
-                <Magnifier className="h-5 w-5 text-zinc-400" />
-                <input
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={placeholder}
-                    className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                />
-                {value && (
-                    <button onClick={() => onChange('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95">
-                        <CloseOutlined />
-                    </button>
-                )}
-            </div>
-        </label>
     );
 }
 
@@ -589,14 +578,5 @@ function EditorSheet({
                 </footer>
             </div>
         </div>
-    );
-}
-
-function Magnifier(props: React.HTMLAttributes<SVGSVGElement>) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
-            <circle cx="11" cy="11" r="7" strokeWidth="2" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
-        </svg>
     );
 }
