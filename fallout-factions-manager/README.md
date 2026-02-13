@@ -1,5 +1,51 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Plan wdrożenia UI (etapy)
+
+### Etap 1: motyw + kontrast + komponenty bazowe filtrów
+- [ ] Ujednolicenie tokenów motywu (kolory, tło, obramowania, stany hover/focus).
+- [ ] Poprawa kontrastu elementów tekstowych i kontrolek w trybie dark mode.
+- [ ] Dostarczenie bazowych komponentów filtrów (np. `FilterBar`, `FilterChips`, `SortSelect`, `QuickToggle`) do wielokrotnego użycia.
+
+**Checklista akceptacyjna (Etap 1)**
+- [ ] Czytelność tekstu w dark mode.
+- [ ] Spójność filtrów.
+- [ ] Poprawność mobile i desktop.
+- [ ] Brak regresji funkcjonalnych.
+
+### Etap 2: ekran główny i kluczowe ekrany armii (dashboard/roster/unit/resources)
+- [ ] Przeniesienie nowego motywu i bazowych filtrów na ekran główny.
+- [ ] Spójne wdrożenie wzorców UI na widokach armii: dashboard, roster, unit, resources.
+- [ ] Ujednolicenie nawigacji, sekcji kart i stanów ładowania/pustych widoków.
+
+**Checklista akceptacyjna (Etap 2)**
+- [ ] Czytelność tekstu w dark mode.
+- [ ] Spójność filtrów.
+- [ ] Poprawność mobile i desktop.
+- [ ] Brak regresji funkcjonalnych.
+
+### Etap 3: logowanie + frakcje
+- [ ] Dostosowanie ekranu logowania do nowego systemu motywu i kontrastu.
+- [ ] Ujednolicenie ekranów/list frakcji (filtry, typografia, komponenty sekcji).
+- [ ] Sprawdzenie zgodności walidacji i komunikatów błędów ze standardem UI.
+
+**Checklista akceptacyjna (Etap 3)**
+- [ ] Czytelność tekstu w dark mode.
+- [ ] Spójność filtrów.
+- [ ] Poprawność mobile i desktop.
+- [ ] Brak regresji funkcjonalnych.
+
+### Etap 4: cały panel admin
+- [ ] Ujednolicenie wszystkich ekranów panelu admin pod kątem motywu, kontrastu i komponentów.
+- [ ] Standaryzacja formularzy, tabel/list oraz akcji CRUD.
+- [ ] Domknięcie spójności UX pomiędzy sekcjami: factions, subfactions, perks, templates, weapons, effects.
+
+**Checklista akceptacyjna (Etap 4)**
+- [ ] Czytelność tekstu w dark mode.
+- [ ] Spójność filtrów.
+- [ ] Poprawność mobile i desktop.
+- [ ] Brak regresji funkcjonalnych.
+
 ## Getting Started
 
 First, run the development server:
