@@ -491,24 +491,28 @@ function ArmyDashboardClientInner({
             );
         }
 
+        const status = [
+            absent ? 'Rezerwa' : 'Obecny',
+            u.isLeader ? 'Leader' : null,
+            tmpLeader ? 'Temp leader' : null,
+        ]
+            .filter(Boolean)
+            .join(' · ');
+
         return (
             <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden vault-panel p-3">
-                <div className="flex items-center justify-between">
-                    <div className="font-medium">{u.templateName}</div>
-                    <div className="flex items-center gap-2">
-                        {u.isLeader ? (
-                            <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
-                                LEADER
-                            </span>
-                        ) : null}
-                        {tmpLeader ? (
-                            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                                TEMP LEADER
-                            </span>
-                        ) : null}
-                        <div className="text-xs text-zinc-400">
-                            Rating <span className="font-semibold text-zinc-200">{u.rating}</span>
-                        </div>
+                <div className="stack-card">
+                    <div className="flex items-start justify-between gap-3">
+                        <p className="type-section-title">{u.templateName}</p>
+                        <span className="type-meta whitespace-nowrap">{status}</span>
+                    </div>
+
+                    <p className="type-value">
+                        Rating {u.rating} · Rola {u.roleTag ?? 'GRUNT'} · HP {maxHp - dmg}/{maxHp}
+                    </p>
+
+                    <div className="flex items-center justify-between gap-3">
+                        <p className="type-meta truncate">Perki: {u.perkNames.length > 0 ? u.perkNames.join(', ') : 'brak'} · Ulepszenia: {u.upgradesCount}</p>
                         <button
                             onClick={(e) => {
                                 e.preventDefault();

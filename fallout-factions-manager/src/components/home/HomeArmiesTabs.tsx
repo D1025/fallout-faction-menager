@@ -188,28 +188,28 @@ function ArmyCard({
     kind: 'MINE' | 'SHARED';
     onDeleted?: () => void;
 }) {
+    const status = kind === 'MINE' ? 'Własna' : 'Udostępniona';
+
     return (
         <div className="vault-panel p-3">
-            <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                    <div className="truncate font-medium">{a.name}</div>
-                    <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
-                        <span className="truncate">{a.factionName}</span>
-                        {a.subfactionName && <span className="truncate">• {a.subfactionName}</span>}
-
-                        <span className="mx-0.5 h-3 w-px bg-zinc-700" aria-hidden="true" />
-
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
-                            T{a.tier}
-                        </span>
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
-                            Rating {a.rating}
-                        </span>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 stack-card">
+                    <div className="flex items-start justify-between gap-2">
+                        <p className="truncate type-section-title">{a.name}</p>
+                        <span className="type-meta whitespace-nowrap">{status}</span>
                     </div>
+
+                    <p className="type-value">
+                        Tier T{a.tier} · Rating {a.rating} · Frakcja {a.factionName}
+                    </p>
+
+                    <p className="type-meta truncate">
+                        {a.subfactionName ? `Subfrakcja: ${a.subfactionName}` : 'Bez subfrakcji'}
+                        {right ? <span className="ml-2">· {right}</span> : null}
+                    </p>
                 </div>
 
-                <div className="flex shrink-0 items-start gap-2">
-                    {right}
+                <div className="shrink-0">
                     <DotsMenu kind={kind} armyId={a.id} onDeleted={onDeleted} />
                 </div>
             </div>
@@ -626,11 +626,7 @@ export function HomeArmiesTabs({
                                 <ArmyCard
                                     a={s.army}
                                     kind="SHARED"
-                                    right={
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px]">
-                                            {s.perm === 'READ' ? 'tylko odczyt' : 'współpraca'}
-                                        </span>
-                                    }
+                                    right={s.perm === 'READ' ? 'Tylko odczyt' : 'Współpraca'}
                                 />
                             </Link>
                         ))}
