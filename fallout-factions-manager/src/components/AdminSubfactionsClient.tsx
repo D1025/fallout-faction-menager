@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import type { SubfactionDTO, UnitTemplateDTO } from '@/app/admin/subfactions/page';
 
 type FactionDTO = { id: string; name: string };
@@ -89,7 +90,7 @@ export function AdminSubfactionsClient({
         if (!selectedFactionId) return;
         const name = newName.trim();
         if (name.length < 2) {
-            alert('Nazwa subfrakcji min. 2 znaki');
+            notifyWarning('Nazwa subfrakcji min. 2 znaki');
             return;
         }
         setBusy(true);
@@ -99,7 +100,7 @@ export function AdminSubfactionsClient({
             setNewName('');
             setEditorId(created.id);
         } catch (e) {
-            alert('Błąd: ' + errMsg(e));
+            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
         } finally {
             setBusy(false);
         }
@@ -241,7 +242,7 @@ function Editor({
     async function saveName() {
         const n = name.trim();
         if (n.length < 2) {
-            alert('Nazwa min. 2 znaki');
+            notifyWarning('Nazwa min. 2 znaki');
             return;
         }
         setSaving(true);
@@ -249,7 +250,7 @@ function Editor({
             await patchSubfaction(sub.id, { name: n });
             onSaveLocal({ ...sub, name: n, unitAllowIds: allowIds, unitDenyIds: denyIds });
         } catch (e) {
-            alert('Błąd: ' + errMsg(e));
+            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
         } finally {
             setSaving(false);
         }
@@ -261,23 +262,31 @@ function Editor({
             await putSubfactionUnits(sub.id, { allowIds, denyIds });
             onSaveLocal({ ...sub, name: name.trim(), unitAllowIds: allowIds, unitDenyIds: denyIds });
         } catch (e) {
-            alert('Błąd: ' + errMsg(e));
+            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
         } finally {
             setSaving(false);
         }
     }
 
     async function del() {
-        if (!confirm(`Usunąć subfrakcję „${sub.name}”?`)) return;
-        setSaving(true);
-        try {
-            await deleteSubfaction(sub.id);
-            onDeleteLocal(sub.id);
-        } catch (e) {
-            alert('Błąd: ' + errMsg(e));
-        } finally {
-            setSaving(false);
-        }
+        confirmAction({
+            title: `Usunąć subfrakcję „${sub.name}”?`,
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                setSaving(true);
+                try {
+                    await deleteSubfaction(sub.id);
+                    onDeleteLocal(sub.id);
+                } catch (e) {
+                    notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
+                    throw e;
+                } finally {
+                    setSaving(false);
+                }
+            },
+        });
     }
 
     return (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { notifyApiError } from '@/lib/ui/notify';
 import { useMemo, useState, useEffect } from 'react';
 
 type FactionDTO = {
@@ -116,7 +117,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
         });
         if (!res.ok) {
             const txt = await res.text().catch(() => '');
-            alert('Nie udało się utworzyć armii: ' + txt);
+            notifyApiError(txt, 'Nie udało się utworzyć armii');
             return;
         }
         const { id } = (await res.json()) as { id: string };

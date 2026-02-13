@@ -93,7 +93,7 @@ export function AdminUnitTemplatesClient({
 
     async function reload(): Promise<void> {
         const res = await fetch('/api/admin/unit-templates', { cache: 'no-store' });
-        if (!res.ok) { alert('Nie udało się pobrać jednostek'); return; }
+        if (!res.ok) { notifyApiError('Nie udało się pobrać jednostek'); return; }
         const data: UnitTemplateDTO[] = await res.json();
         setList(data);
     }
@@ -109,11 +109,11 @@ export function AdminUnitTemplatesClient({
     }
 
     async function save(): Promise<void> {
-        if (!form.name.trim()) { alert('Podaj nazwę jednostki'); return; }
+        if (!form.name.trim()) { notifyWarning('Podaj nazwę jednostki'); return; }
         const optErr = validateOptions();
-        if (optErr) { alert(optErr); return; }
+        if (optErr) { notifyWarning(optErr); return; }
         if (!form.isGlobal && form.factionIds.length === 0) {
-            alert('Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.');
+            notifyWarning('Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.');
             return;
         }
 
@@ -140,7 +140,7 @@ export function AdminUnitTemplatesClient({
             });
             if (!res.ok) {
                 const pld = await res.json().catch(async()=>({status:res.status, text:await res.text()}));
-                alert('Błąd zapisu: ' + JSON.stringify(pld));
+                notifyApiError(JSON.stringify(pld), 'Błąd zapisu jednostki');
                 return;
             }
             await reload();

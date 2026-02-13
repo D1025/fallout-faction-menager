@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CloseOutlined, DeleteOutlined, DownOutlined, EllipsisOutlined, SearchOutlined, ShareAltOutlined, UpOutlined } from '@ant-design/icons';
@@ -107,19 +108,24 @@ function DotsMenu({
     async function del() {
         setOpen(false);
         if (kind !== 'MINE') {
-            alert('Na razie można usuwać tylko własne armie.');
+            notifyWarning('Na razie można usuwać tylko własne armie.');
             return;
         }
-        const ok = confirm('Na pewno usunąć tę armię? Tej operacji nie da się cofnąć.');
-        if (!ok) return;
-
-        const res = await fetch(`/api/armies/${armyId}`, { method: 'DELETE' });
-        if (!res.ok) {
-            const t = await res.text().catch(() => '');
-            alert(t || 'Nie udało się usunąć armii');
-            return;
-        }
-        onDeleted?.();
+        confirmAction({
+            title: 'Na pewno usunąć tę armię? Tej operacji nie da się cofnąć.',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                const res = await fetch(`/api/armies/${armyId}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const t = await res.text().catch(() => '');
+                    notifyApiError(t || 'Nie udało się usunąć armii');
+                    throw new Error('delete failed');
+                }
+                onDeleted?.();
+            },
+        });
     }
 
     return (
