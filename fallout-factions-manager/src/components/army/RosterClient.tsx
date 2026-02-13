@@ -3,6 +3,7 @@
 import { FileImageOutlined, PlusOutlined } from '@ant-design/icons';
 import { Avatar, Button, Card, Col, Flex, Grid, Row, Space, Tag, Typography } from 'antd';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { EmptyState } from '@/components/ui/antd/ScreenStates';
 
 export function RosterClient(props: {
   armyId: string;
@@ -30,6 +31,9 @@ export function RosterClient(props: {
       }
     >
       <Row gutter={[12, 12]}>
+        {props.units.length === 0 ? (
+          <Col span={24}><EmptyState title="Brak jednostek" description="Dodaj pierwszą jednostkę do rosteru." /></Col>
+        ) : null}
         {props.units.map((u) => (
           <Col key={u.id} xs={24} md={12}>
             <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%', display: 'block' }}>

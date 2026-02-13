@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { DeleteOutlined, EllipsisOutlined, ShareAltOutlined } from '@ant-design/icons';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
+import { EmptyState } from '@/components/ui/antd/ScreenStates';
 
 type ArmyMeta = {
     id: string;
@@ -611,9 +612,7 @@ export function HomeArmiesTabs({
                             </Link>
                         ))}
                         {mineFiltered.length === 0 && (
-                            <div className="vault-panel p-3 text-sm text-zinc-400">
-                                Brak armii dla filtrów.
-                            </div>
+                            <EmptyState title="Brak armii" description="Nie ma armii spełniających wybrane filtry." />
                         )}
                     </div>
                 </section>
@@ -636,9 +635,7 @@ export function HomeArmiesTabs({
                             </Link>
                         ))}
                         {sharedFiltered.length === 0 && (
-                            <div className="vault-panel p-3 text-sm text-zinc-400">
-                                Brak udostępnionych armii dla filtrów.
-                            </div>
+                            <EmptyState title="Brak udostępnionych armii" description="Zmień filtry lub poproś o dostęp do armii." />
                         )}
                     </div>
                 </section>

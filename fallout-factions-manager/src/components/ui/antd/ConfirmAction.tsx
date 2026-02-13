@@ -1,7 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Button, Popconfirm } from 'antd';
+import { Button } from 'antd';
+import { confirmAction } from '@/lib/ui/notify';
 
 export function ConfirmAction({
   title,
@@ -9,18 +10,33 @@ export function ConfirmAction({
   onConfirm,
   children,
   danger,
+  okText,
 }: {
   title: ReactNode;
   description?: ReactNode;
   onConfirm: () => void | Promise<void>;
   children: ReactNode;
   danger?: boolean;
+  okText?: string;
 }) {
   return (
-    <Popconfirm title={title} description={description} onConfirm={onConfirm} okText="Tak" cancelText="Anuluj">
-      <Button danger={danger} size="small">
-        {children}
-      </Button>
-    </Popconfirm>
+    <Button
+      danger={danger}
+      size="small"
+      onClick={() =>
+        confirmAction({
+          title: typeof title === 'string' ? title : 'Potwierdź akcję',
+          content: typeof description === 'string' ? description : undefined,
+          okText: okText ?? 'Tak, wykonaj',
+          cancelText: 'Anuluj',
+          danger,
+          onOk: async () => {
+            await onConfirm();
+          },
+        })
+      }
+    >
+      {children}
+    </Button>
   );
 }

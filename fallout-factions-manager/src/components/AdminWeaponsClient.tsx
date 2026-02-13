@@ -4,6 +4,8 @@ import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 /* ===== Typy słownika efektów ===== */
 export type EffectKind = 'WEAPON' | 'CRITICAL';
@@ -85,14 +87,21 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [q, setQ] = useState('');
     const [sort, setSort] = useState<'NAME:ASC' | 'NAME:DESC'>('NAME:ASC');
+    const [loading, setLoading] = useState(!initial);
+    const [listError, setListError] = useState<string | null>(null);
 
     useEffect(() => {
         void (async () => {
-            const e = (await fetch('/api/admin/effects', { cache: 'no-store' }).then((r) => r.json())) as DictEffect[];
-            setEffects(e);
-            if (!initial) {
-                const w = (await fetch('/api/admin/weapons', { cache: 'no-store' }).then((r) => r.json())) as WeaponListItem[];
-                setList(w);
+            try {
+                const e = (await fetch('/api/admin/effects', { cache: 'no-store' }).then((r) => r.json())) as DictEffect[];
+                setEffects(e);
+                if (!initial) {
+                    await reload();
+                }
+            } catch (error: unknown) {
+                setListError('Nie udało się pobrać danych broni. Odśwież widok i spróbuj ponownie.');
+                notifyApiError(error, 'Nie udało się pobrać danych broni.');
+                setLoading(false);
             }
         })();
     }, [initial]);
@@ -105,8 +114,18 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     };
 
     async function reload(): Promise<void> {
-        const w = (await fetch('/api/admin/weapons', { cache: 'no-store' }).then((r) => r.json())) as WeaponListItem[];
+        setLoading(true);
+        setListError(null);
+        const res = await fetch('/api/admin/weapons', { cache: 'no-store' });
+        if (!res.ok) {
+            const msg = 'Nie udało się pobrać listy broni. Sprawdź połączenie i spróbuj ponownie.';
+            setListError(msg);
+            setLoading(false);
+            return;
+        }
+        const w = (await res.json()) as WeaponListItem[];
         setList(w);
+        setLoading(false);
     }
 
     /* ----- Bazowe efekty (formularz) ----- */
@@ -600,7 +619,10 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     onClearAllAction={clearAll}
                 />
 
-                {filteredSorted.map((w) => (
+                {loading ? <LoadingState title="Ładowanie listy broni" /> : null}
+                {!loading && listError ? <ErrorState description={listError} onRetry={() => void reload()} /> : null}
+                {!loading && !listError && filteredSorted.length === 0 ? <EmptyState title="Brak broni" description="Dodaj pierwszy szablon broni albo wyczyść filtry." /> : null}
+                {!loading && !listError && filteredSorted.map((w) => (
                     <div key={w.id} className="vault-panel p-3">
                         <div className="flex items-start justify-between">
                             <button
