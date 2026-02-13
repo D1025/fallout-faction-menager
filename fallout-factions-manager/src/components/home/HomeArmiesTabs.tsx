@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { CloseOutlined, DeleteOutlined, DownOutlined, EllipsisOutlined, SearchOutlined, ShareAltOutlined, UpOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EllipsisOutlined, ShareAltOutlined } from '@ant-design/icons';
+import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 
 type ArmyMeta = {
     id: string;
@@ -30,7 +31,6 @@ type UiState = {
     subfactionFilter: 'ALL' | string;
     subfactionMode: SubfactionMode;
     permFilter: 'ALL' | 'READ' | 'WRITE';
-    filtersOpen?: boolean;
 };
 
 const LS_KEY = 'homeArmiesTabs:v1';
@@ -235,7 +235,6 @@ const readInitialState = (params: URLSearchParams): UiState => {
     const subfactionFilter = params.get('subfaction') ?? 'ALL';
     const subfactionMode = (params.get('subMode') as SubfactionMode) || 'ANY';
     const permFilter = (params.get('perm') as UiState['permFilter']) || 'ALL';
-    const filtersOpen = params.get('filters') === '1' ? true : undefined;
 
     return {
         tab,
@@ -246,7 +245,6 @@ const readInitialState = (params: URLSearchParams): UiState => {
         subfactionFilter,
         subfactionMode: subfactionMode === 'ONLY_WITH' || subfactionMode === 'ONLY_NONE' ? subfactionMode : 'ANY',
         permFilter: permFilter === 'READ' || permFilter === 'WRITE' ? permFilter : 'ALL',
-        filtersOpen,
     };
 };
 
@@ -260,7 +258,6 @@ const writeStateToParams = (state: UiState): URLSearchParams => {
     if (state.subfactionFilter !== 'ALL') p.set('subfaction', state.subfactionFilter);
     if (state.subfactionMode !== 'ANY') p.set('subMode', state.subfactionMode);
     if (state.permFilter !== 'ALL') p.set('perm', state.permFilter);
-    if (state.filtersOpen) p.set('filters', '1');
     return p;
 };
 
@@ -401,14 +398,37 @@ export function HomeArmiesTabs({
     const currentTotal = state.tab === 'MINE' ? myArmies.length : shared.length;
     const currentCount = state.tab === 'MINE' ? mineFiltered.length : sharedFiltered.length;
 
-    // jeśli są aktywne filtry, a panel nieustawiony — otwórz
-    useEffect(() => {
-        if (!hydrated) return;
-        if (state.filtersOpen === undefined && hasActiveFilters(state)) {
-            setState((s) => ({ ...s, filtersOpen: true }));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hydrated]);
+    const resetFilters = () => {
+        setState((s) => ({
+            ...s,
+            q: '',
+            sort: 'UPDATED',
+            tierFilter: 'ALL',
+            factionFilter: 'ALL',
+            subfactionFilter: 'ALL',
+            subfactionMode: 'ANY',
+            permFilter: 'ALL',
+        }));
+    };
+
+    const chips: ActiveFilterChip[] = [
+        ...(state.q ? [{ key: 'q', label: `Szukaj: ${state.q}`, onRemove: () => setState((s) => ({ ...s, q: '' })) }] : []),
+        ...(state.tierFilter !== 'ALL'
+            ? [{ key: 'tier', label: `Tier ${state.tierFilter}`, onRemove: () => setState((s) => ({ ...s, tierFilter: 'ALL' })) }]
+            : []),
+        ...(state.factionFilter !== 'ALL'
+            ? [{ key: 'faction', label: `Frakcja: ${state.factionFilter}`, onRemove: () => setState((s) => ({ ...s, factionFilter: 'ALL' })) }]
+            : []),
+        ...(state.subfactionMode !== 'ANY'
+            ? [{ key: 'submode', label: `Subfrakcja: ${state.subfactionMode === 'ONLY_WITH' ? 'tylko z' : 'tylko bez'}`, onRemove: () => setState((s) => ({ ...s, subfactionMode: 'ANY' })) }]
+            : []),
+        ...(state.subfactionFilter !== 'ALL'
+            ? [{ key: 'subfaction', label: `Subfrakcja: ${state.subfactionFilter}`, onRemove: () => setState((s) => ({ ...s, subfactionFilter: 'ALL' })) }]
+            : []),
+        ...(state.permFilter !== 'ALL'
+            ? [{ key: 'perm', label: `Perm: ${state.permFilter}`, onRemove: () => setState((s) => ({ ...s, permFilter: 'ALL' })) }]
+            : []),
+    ];
 
     return (
         <div className="pt-3">
@@ -446,47 +466,16 @@ export function HomeArmiesTabs({
                 </button>
             </div>
 
-            {/* Search */}
-            <div className="mt-3 grid grid-cols-1 gap-2">
-                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
-                    <SearchOutlined className="text-zinc-400" />
-                    <input
-                        value={state.q}
-                        onChange={(e) => setState((s) => ({ ...s, q: e.target.value }))}
-                        className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                        placeholder="Szukaj (nazwa, frakcja, subfrakcja, tier, rating)…"
-                    />
-                    {state.q && (
-                        <button
-                            type="button"
-                            onClick={() => setState((s) => ({ ...s, q: '' }))}
-                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
-                            aria-label="Wyczyść"
-                        >
-                            <CloseOutlined />
-                        </button>
-                    )}
+            <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                <div className="mb-2 text-[11px] text-zinc-400">
+                    Wyniki: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
+                    {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
                 </div>
-
-                {/* Collapsed Filters header */}
-                <button
-                    type="button"
-                    onClick={() => setState((s) => ({ ...s, filtersOpen: !s.filtersOpen }))}
-                    className="flex items-center justify-between vault-panel px-3 py-2 text-left"
-                    aria-expanded={Boolean(state.filtersOpen)}
-                >
-                    <div className="min-w-0">
-                        <div className="text-xs font-medium text-zinc-200">Filtry i sortowanie</div>
-                        <div className="mt-0.5 text-[11px] text-zinc-400">
-                            Wyniki: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
-                            {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
-                        </div>
-                    </div>
-                    <div className="shrink-0 text-zinc-300">{state.filtersOpen ? <UpOutlined /> : <DownOutlined />}</div>
-                </button>
-
-                {state.filtersOpen && (
-                    <div className="grid grid-cols-1 gap-2">
+                <FilterBar
+                    search={state.q}
+                    onSearch={(q) => setState((s) => ({ ...s, q }))}
+                    searchPlaceholder="Szukaj (nazwa, frakcja, subfrakcja, tier, rating)…"
+                    controls={
                         <div className="grid grid-cols-2 gap-2">
                             <select
                                 value={String(state.tierFilter)}
@@ -502,24 +491,24 @@ export function HomeArmiesTabs({
                                 <option value="2">Tier 2</option>
                                 <option value="3">Tier 3</option>
                             </select>
-
-                            <select
+                            <SortSelect
                                 value={state.sort}
-                                onChange={(e) => setState((s) => ({ ...s, sort: e.target.value as SortKey }))}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                aria-label="Sortowanie"
-                            >
-                                <option value="UPDATED">Sort: ostatnio używane</option>
-                                <option value="NAME_ASC">Sort: nazwa A→Z</option>
-                                <option value="NAME_DESC">Sort: nazwa Z→A</option>
-                                <option value="TIER_ASC">Sort: tier rosnąco</option>
-                                <option value="TIER_DESC">Sort: tier malejąco</option>
-                                <option value="RATING_ASC">Sort: rating rosnąco</option>
-                                <option value="RATING_DESC">Sort: rating malejąco</option>
-                            </select>
+                                onChange={(sort) => setState((s) => ({ ...s, sort: sort as SortKey }))}
+                                label="Sortowanie"
+                                options={[
+                                    { value: 'UPDATED', label: 'Sort: ostatnio używane' },
+                                    { value: 'NAME_ASC', label: 'Sort: nazwa A→Z' },
+                                    { value: 'NAME_DESC', label: 'Sort: nazwa Z→A' },
+                                    { value: 'TIER_ASC', label: 'Sort: tier rosnąco' },
+                                    { value: 'TIER_DESC', label: 'Sort: tier malejąco' },
+                                    { value: 'RATING_ASC', label: 'Sort: rating rosnąco' },
+                                    { value: 'RATING_DESC', label: 'Sort: rating malejąco' },
+                                ]}
+                            />
                         </div>
-
-                        <div className="grid grid-cols-2 gap-2">
+                    }
+                    moreFilters={
+                        <>
                             <select
                                 value={state.factionFilter}
                                 onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
@@ -528,78 +517,44 @@ export function HomeArmiesTabs({
                             >
                                 <option value="ALL">Wszystkie frakcje</option>
                                 {factions.map((f) => (
-                                    <option key={f} value={f}>
-                                        {f}
-                                    </option>
+                                    <option key={f} value={f}>{f}</option>
                                 ))}
                             </select>
-
                             <select
                                 value={state.subfactionMode}
                                 onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
                                 className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                aria-label="Filtr subfrakcja (tryb)"
                             >
                                 <option value="ANY">Subfrakcja: dowolnie</option>
                                 <option value="ONLY_WITH">Tylko z subfrakcją</option>
                                 <option value="ONLY_NONE">Tylko bez subfrakcji</option>
                             </select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
                             <select
                                 value={state.subfactionFilter}
                                 onChange={(e) => setState((s) => ({ ...s, subfactionFilter: e.target.value }))}
                                 disabled={state.subfactionMode === 'ONLY_NONE'}
                                 className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
-                                aria-label="Filtr subfrakcja (konkretna)"
                             >
                                 <option value="ALL">Wszystkie subfrakcje</option>
                                 {subfactions.map((sf) => (
-                                    <option key={sf} value={sf}>
-                                        {sf}
-                                    </option>
+                                    <option key={sf} value={sf}>{sf}</option>
                                 ))}
                             </select>
-
                             <select
                                 value={state.permFilter}
-                                onChange={(e) =>
-                                    setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))
-                                }
+                                onChange={(e) => setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))}
                                 disabled={state.tab !== 'SHARED'}
                                 className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
-                                aria-label="Filtr uprawnień (udostępnione)"
                             >
                                 <option value="ALL">Perm: wszystkie</option>
                                 <option value="READ">Perm: tylko odczyt</option>
                                 <option value="WRITE">Perm: współpraca</option>
                             </select>
-                        </div>
-
-                        <div className="flex items-center justify-end">
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setState({
-                                        tab: 'MINE',
-                                        q: '',
-                                        sort: 'UPDATED',
-                                        tierFilter: 'ALL',
-                                        factionFilter: 'ALL',
-                                        subfactionFilter: 'ALL',
-                                        subfactionMode: 'ANY',
-                                        permFilter: 'ALL',
-                                        filtersOpen: false,
-                                    })
-                                }
-                                className="h-9 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                            >
-                                Wyczyść filtry
-                            </button>
-                        </div>
-                    </div>
-                )}
+                        </>
+                    }
+                    activeChips={chips}
+                    onClearAll={resetFilters}
+                />
             </div>
 
             {/* Lists */}

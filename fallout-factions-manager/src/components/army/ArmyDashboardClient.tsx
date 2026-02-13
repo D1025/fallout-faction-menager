@@ -1,6 +1,7 @@
 'use client';
 
 import { AppstoreOutlined, CloseOutlined, DeploymentUnitOutlined, DownOutlined, SearchOutlined, StarOutlined, UpOutlined } from '@ant-design/icons';
+import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -879,26 +880,31 @@ function ArmyDashboardClientInner({
                     </section>
 
                     {/* FILTER */}
-                    <div className="mt-3 flex gap-2">
-                        {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => setFilter(f)}
-                                className={
-                                    'h-9 flex-1 rounded-xl border text-xs font-medium ' +
-                                    (filter === f ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
-                                }
-                            >
-                                {f}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="mt-2 grid grid-cols-1 gap-2">
-                        <label className="flex items-center gap-2 vault-panel px-3 py-2 text-xs text-zinc-200">
-                            <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
-                            <span>Chowaj nieaktywne (absent / dead)</span>
-                        </label>
+                    <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+                        <FilterBar
+                            controls={
+                                <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+                                    {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
+                                        <QuickToggle key={f} checked={filter === f} onChange={() => setFilter(f)} label={f} />
+                                    ))}
+                                </div>
+                            }
+                            moreFilters={
+                                <QuickToggle
+                                    checked={hideInactive}
+                                    onChange={setHideInactive}
+                                    label="Chowaj nieaktywne (absent / dead)"
+                                />
+                            }
+                            activeChips={[
+                                ...(filter !== 'ALL' ? [{ key: 'role', label: `Rola: ${filter}`, onRemove: () => setFilter('ALL') }] : []),
+                                ...(hideInactive ? [{ key: 'inactive', label: 'Ukryte nieaktywne', onRemove: () => setHideInactive(false) }] : []),
+                            ] as ActiveFilterChip[]}
+                            onClearAll={() => {
+                                setFilter('ALL');
+                                setHideInactive(false);
+                            }}
+                        />
                     </div>
 
                     {/* JEDNOSTKI */}
