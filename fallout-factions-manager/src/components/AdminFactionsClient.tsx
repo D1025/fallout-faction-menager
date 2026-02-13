@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null; };
 export type Faction = { id: string; name: string; limits: FactionLimit[] };
@@ -23,12 +24,12 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
         try {
             // prosta walidacja klientowa
             if (!form.name.trim()) {
-                alert('Podaj nazwę frakcji');
+                notifyWarning('Podaj nazwę frakcji');
                 return;
             }
             for (const l of form.limits) {
                 if (!l.tag.trim()) {
-                    alert('Każdy limit musi mieć tag');
+                    notifyWarning('Każdy limit musi mieć tag');
                     return;
                 }
             }
@@ -44,7 +45,7 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
             if (!res.ok) {
                 const ct = res.headers.get('content-type');
                 const payload = ct?.includes('application/json') ? await res.json() : { status: res.status, text: await res.text() };
-                alert('Błąd zapisu: ' + JSON.stringify(payload));
+                notifyApiError(JSON.stringify(payload), 'Błąd zapisu frakcji');
                 return;
             }
 
@@ -56,15 +57,22 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
     }
 
     async function del(id: string) {
-        if (!confirm('Usunąć frakcję? Operacja nieodwracalna.')) return;
-        const res = await fetch(`/api/admin/factions/${id}`, { method: 'DELETE' });
-        if (!res.ok) {
-            const payload = await res.json().catch(() => ({}));
-            alert('Błąd usuwania: ' + JSON.stringify(payload));
-            return;
-        }
-        await reloadList();
-        if (form.id === id) setForm({ name: '', limits: [] });
+        confirmAction({
+            title: 'Usunąć frakcję? Operacja nieodwracalna.',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                const res = await fetch(`/api/admin/factions/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const payload = await res.json().catch(() => ({}));
+                    notifyApiError(JSON.stringify(payload), 'Błąd usuwania frakcji');
+                    throw new Error('delete failed');
+                }
+                await reloadList();
+                if (form.id === id) setForm({ name: '', limits: [] });
+            },
+        });
     }
 
     function updateLimit(idx: number, patch: Partial<FactionLimit>) {

@@ -164,7 +164,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     /* ----- CRUD ----- */
     async function save(): Promise<void> {
-        if (!form.name.trim()) return alert('Podaj nazwę');
+        if (!form.name.trim()) { notifyWarning('Podaj nazwę'); return; }
 
         setSaving(true);
         try {
@@ -177,7 +177,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             });
             if (!res.ok) {
                 const txt = await res.text();
-                alert('Błąd: ' + txt);
+                notifyApiError(txt || 'Błąd zapisu broni');
                 return;
             }
             await reload();
@@ -198,13 +198,20 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     }
 
     async function del(id: string): Promise<void> {
-        if (!confirm('Usunąć?')) return;
-        const r = await fetch(`/api/admin/weapons/${id}`, { method: 'DELETE' });
-        if (!r.ok) {
-            alert('Nie udało się usunąć');
-            return;
-        }
-        await reload();
+        confirmAction({
+            title: 'Usunąć?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                const r = await fetch(`/api/admin/weapons/${id}`, { method: 'DELETE' });
+                if (!r.ok) {
+                    notifyApiError('Nie udało się usunąć broni');
+                    throw new Error('delete failed');
+                }
+                await reload();
+            },
+        });
     }
 
     async function uploadWeaponImageBlob(blob: Blob): Promise<void> {
@@ -216,17 +223,17 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
             if (!res.ok) {
                 const txt = await res.text().catch(() => '');
-                alert('Upload nieudany: ' + (txt || 'błąd serwera'));
+                notifyApiError(txt || 'Upload nieudany: błąd serwera');
                 return;
             }
             const json = (await res.json().catch(() => null)) as { path?: string } | null;
             if (!json?.path) {
-                alert('Upload nieudany: brak ścieżki pliku w odpowiedzi');
+                notifyApiError('Upload nieudany: brak ścieżki pliku w odpowiedzi');
                 return;
             }
             setForm((f) => ({ ...f, imagePath: json.path }));
         } catch (e: unknown) {
-            alert('Nie udało się wgrać obrazka: ' + (e instanceof Error ? e.message : String(e)));
+            notifyApiError(e instanceof Error ? e.message : String(e), 'Nie udało się wgrać obrazka');
         } finally {
             setUploadingImg(false);
             setImgPick(null);
@@ -237,11 +244,11 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     async function uploadWeaponImage(file: File): Promise<void> {
         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowed.includes(file.type)) {
-            alert('Obsługiwane formaty: JPG/PNG/WebP');
+            notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            alert('Plik za duży. Wybierz obraz do 10MB.');
+            notifyWarning('Plik za duży. Wybierz obraz do 10MB.');
             return;
         }
         setImgPick(file);

@@ -3,6 +3,7 @@
 import { ArrowLeftOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 /* ===== Types ===== */
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null };
@@ -163,9 +164,16 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                         router.refresh();
                     }}
                     onDeleteRequest={async (id) => {
-                        if (!confirm('Na pewno usunąć frakcję? Operacja nieodwracalna.')) return;
-                        await deleteFaction(id);
-                        router.refresh();
+                        confirmAction({
+                            title: 'Na pewno usunąć frakcję? Operacja nieodwracalna.',
+                            okText: 'Usuń',
+                            cancelText: 'Anuluj',
+                            danger: true,
+                            onOk: async () => {
+                                await deleteFaction(id);
+                                router.refresh();
+                            },
+                        });
                     }}
                     saving={savingAll}
                     onSaveAll={async (draft) => {
@@ -374,14 +382,14 @@ function EditorSheet({
 
     async function handleSaveAll() {
         if (!draft.name.trim()) {
-            alert('Podaj nazwę frakcji.');
+            notifyWarning('Podaj nazwę frakcji.');
             return;
         }
         try {
             const saved = await onSaveAll(draft);
             onSaved(saved);
         } catch (e: unknown) {
-            alert('Błąd zapisu: ' + getErrorMessage(e));
+            notifyApiError(getErrorMessage(e), 'Błąd zapisu frakcji');
         }
     }
 
@@ -424,7 +432,7 @@ function EditorSheet({
                                         await onDeleteRequest(draft.id);
                                         onDeleted(draft.id);
                                     } catch (e: unknown) {
-                                        alert('Nie udało się usunąć: ' + getErrorMessage(e));
+                                        notifyApiError(getErrorMessage(e), 'Nie udało się usunąć frakcji');
                                     }
                                 }}
                                 className="rounded-xl border border-red-700 bg-red-900/30 px-3 py-2 text-sm text-red-200"

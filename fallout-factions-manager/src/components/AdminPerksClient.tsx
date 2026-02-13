@@ -2,6 +2,7 @@
 
 import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 type Behavior = 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
 type StatKeySpecial = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
@@ -81,7 +82,7 @@ export function AdminPerksClient() {
 
     async function save() {
         if (!form.name.trim() || !form.description.trim()) {
-            alert('Uzupełnij nazwę i opis');
+            notifyWarning('Uzupełnij nazwę i opis');
             return;
         }
         const method: 'POST' | 'PATCH' = editingId ? 'PATCH' : 'POST';
@@ -101,7 +102,7 @@ export function AdminPerksClient() {
         });
         if (!res.ok) {
             const t = await res.text().catch(() => '');
-            alert('Błąd zapisu' + (t ? `: ${t}` : ''));
+            notifyApiError(t || 'Błąd zapisu perka');
             return;
         }
         reset();
@@ -109,14 +110,21 @@ export function AdminPerksClient() {
     }
 
     async function del(id: string) {
-        if (!confirm('Usunąć perk?')) return;
-        const res = await fetch(`/api/admin/perks/${id}`, { method: 'DELETE' });
-        if (!res.ok) {
-            alert('Błąd usuwania');
-            return;
-        }
-        if (editingId === id) reset();
-        await reload();
+        confirmAction({
+            title: 'Usunąć perk?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                const res = await fetch(`/api/admin/perks/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    notifyApiError('Błąd usuwania perka');
+                    throw new Error('delete failed');
+                }
+                if (editingId === id) reset();
+                await reload();
+            },
+        });
     }
 
     const reqLabel = (p: Pick<Perk, 'statKey' | 'minValue'>) => {

@@ -111,7 +111,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
         }
     }
 
-    async function confirm() {
+    async function confirmCrop() {
         if (!img) return;
 
         const out = document.createElement('canvas');
@@ -133,7 +133,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
         const blob: Blob | null = await new Promise((resolve) => out.toBlob(resolve, mime, quality));
         if (!blob) return;
         if (blob.size > maxBytes) {
-            alert(`Zdjęcie po przeskalowaniu jest za duże (${Math.round(blob.size / 1024)}KB). Spróbuj większego przybliżenia lub innego zdjęcia.`);
+            notifyWarning(`Zdjęcie po przeskalowaniu jest za duże (${Math.round(blob.size / 1024)}KB). Spróbuj większego przybliżenia lub innego zdjęcia.`);
             return;
         }
         onConfirm(blob);
@@ -186,7 +186,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
                         <button onClick={onCancel} className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300">
                             Anuluj
                         </button>
-                        <button onClick={() => void confirm()} className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950">
+                        <button onClick={() => void confirmCrop()} className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950">
                             Zapisz zdjęcie
                         </button>
                     </div>

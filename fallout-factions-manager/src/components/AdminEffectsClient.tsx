@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 export type EffectKind = 'WEAPON' | 'CRITICAL';
 
@@ -33,7 +34,7 @@ export function AdminEffectsClient() {
     async function reload(): Promise<void> {
         const res = await fetch('/api/admin/effects', { cache: 'no-store' });
         if (!res.ok) {
-            alert('Nie udało się pobrać efektów');
+            notifyApiError('Nie udało się pobrać efektów');
             return;
         }
         const data: Effect[] = await res.json();
@@ -61,11 +62,11 @@ export function AdminEffectsClient() {
 
     async function save(): Promise<void> {
         if (!form.name.trim()) {
-            alert('Podaj nazwę efektu');
+            notifyWarning('Podaj nazwę efektu');
             return;
         }
         if (!form.description.trim()) {
-            alert('Podaj opis efektu');
+            notifyWarning('Podaj opis efektu');
             return;
         }
 
@@ -82,7 +83,7 @@ export function AdminEffectsClient() {
             const payload = await res
                 .json()
                 .catch(async () => ({ status: res.status, text: await res.text() }));
-            alert('Błąd zapisu: ' + JSON.stringify(payload));
+            notifyApiError(JSON.stringify(payload), 'Błąd zapisu efektu');
             return;
         }
 
@@ -91,17 +92,24 @@ export function AdminEffectsClient() {
     }
 
     async function del(id: string): Promise<void> {
-        if (!confirm('Usunąć efekt?')) return;
-        const res = await fetch(`/api/admin/effects/${id}`, { method: 'DELETE' });
-        if (!res.ok) {
-            const payload = await res
-                .json()
-                .catch(async () => ({ status: res.status, text: await res.text() }));
-            alert('Błąd usuwania: ' + JSON.stringify(payload));
-            return;
-        }
-        if (editingId === id) resetForm();
-        await reload();
+        confirmAction({
+            title: 'Usunąć efekt?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                const res = await fetch(`/api/admin/effects/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const payload = await res
+                        .json()
+                        .catch(async () => ({ status: res.status, text: await res.text() }));
+                    notifyApiError(JSON.stringify(payload), 'Błąd usuwania efektu');
+                    throw new Error('delete failed');
+                }
+                if (editingId === id) resetForm();
+                await reload();
+            },
+        });
     }
 
     return (

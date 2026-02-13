@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 import { useRouter } from 'next/navigation';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 type EffectKind = 'WEAPON' | 'CRITICAL';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -114,7 +115,7 @@ export function UnitClient({
         }).catch(() => null);
         if (!res || !res.ok) {
             setTmpLeader(prev);
-            alert('Nie udało się zapisać Temporary Leader.');
+            notifyApiError('Nie udało się zapisać Temporary Leader.');
             return;
         }
         router.refresh();
@@ -201,7 +202,7 @@ export function UnitClient({
             body: JSON.stringify({ profileIds }),
         });
         if (!res.ok) {
-            alert('Nie udało się zmienić profili');
+            notifyApiError('Nie udało się zmienić profili');
             return false;
         }
         return true;
@@ -217,7 +218,7 @@ export function UnitClient({
             body: JSON.stringify({ statKey: upStat, delta: upDelta }), // może być ujemny
         });
         if (!res.ok) {
-            alert('Nie udało się dodać ulepszenia');
+            notifyApiError('Nie udało się dodać ulepszenia');
             return;
         }
         location.reload();
@@ -226,7 +227,7 @@ export function UnitClient({
     async function deleteUpgrade(upgradeId: string) {
         const res = await fetch(`/api/units/${unitId}/upgrades/${upgradeId}`, { method: 'DELETE' });
         if (!res.ok) {
-            alert('Nie udało się cofnąć ulepszenia');
+            notifyApiError('Nie udało się cofnąć ulepszenia');
             return;
         }
         location.reload();
@@ -236,7 +237,7 @@ export function UnitClient({
         if (!perkId) return;
         const selected = perks.find((p) => p.id === perkId);
         if (selected?.requiresValue) {
-            alert('Ten perk wymaga wartości – na razie nieobsługiwane dla chosenPerkIds.');
+            notifyWarning('Ten perk wymaga wartości – na razie nieobsługiwane dla chosenPerkIds.');
             return;
         }
         const res = await fetch(`/api/units/${unitId}/perks`, {
@@ -245,7 +246,7 @@ export function UnitClient({
             body: JSON.stringify({ perkId }),
         });
         if (!res.ok) {
-            alert('Nie udało się dodać perka');
+            notifyApiError('Nie udało się dodać perka');
             return;
         }
         setPerkId('');
@@ -262,7 +263,7 @@ export function UnitClient({
         });
         if (!res.ok) {
             const t = await res.text().catch(() => '');
-            alert(t || 'Nie udało się usunąć perka');
+            notifyApiError(t || 'Nie udało się usunąć perka');
             return;
         }
         location.reload();
@@ -619,15 +620,25 @@ export function UnitClient({
     }
 
     async function deletePhoto() {
-        if (!confirm('Usunąć zdjęcie jednostki?')) return;
-        setUploadingPhoto(true);
-        try {
-            const res = await fetch(`/api/units/${unitId}/photo`, { method: 'DELETE' });
-            if (!res.ok) throw new Error(await res.text());
-            router.refresh();
-        } finally {
-            setUploadingPhoto(false);
-        }
+        confirmAction({
+            title: 'Usunąć zdjęcie jednostki?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                setUploadingPhoto(true);
+                try {
+                    const res = await fetch(`/api/units/${unitId}/photo`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error(await res.text());
+                    router.refresh();
+                } catch {
+                    notifyApiError('Nie udało się usunąć zdjęcia jednostki.');
+                    throw new Error('delete photo failed');
+                } finally {
+                    setUploadingPhoto(false);
+                }
+            },
+        });
     }
 
     const normalizedTag = useMemo(() => normalizeRoleTag(roleTag), [roleTag]);
@@ -695,11 +706,11 @@ export function UnitClient({
                                         // wejściowa walidacja (zanim otworzymy crop)
                                         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
                                         if (!allowed.includes(file.type)) {
-                                            alert('Obsługiwane formaty: JPG/PNG/WebP');
+                                            notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
                                             return;
                                         }
                                         if (file.size > 10 * 1024 * 1024) {
-                                            alert('Plik za duży. Wybierz zdjęcie do 10MB.');
+                                            notifyWarning('Plik za duży. Wybierz zdjęcie do 10MB.');
                                             return;
                                         }
 

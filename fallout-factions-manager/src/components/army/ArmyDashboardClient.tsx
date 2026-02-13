@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 type Kind = 'caps' | 'parts' | 'reach' | 'exp';
 
@@ -150,28 +151,35 @@ function ArmyDashboardClientInner({
             if (!res.ok) throw new Error(await res.text());
             setTotals((t) => ({ ...t, [kind]: v }));
         } catch {
-            alert('Nie udało się zapisać zasobów');
+            notifyApiError('Nie udało się zapisać zasobów');
         } finally {
             setBusy(null);
         }
     }
 
     async function deleteUnit(unitId: string) {
-        const ok = typeof window !== 'undefined' ? window.confirm('Na pewno usunąć tę jednostkę z armii?') : false;
-        if (!ok) return;
-        setDeletingId(unitId);
-        try {
-            const res = await fetch(`/api/armies/${armyId}/units/${unitId}`, { method: 'DELETE' });
-            if (!res.ok) {
-                const txt = await res.text().catch(() => '');
-                throw new Error(txt || 'Request failed');
-            }
-            router.refresh();
-        } catch {
-            alert('Nie udało się usunąć jednostki');
-        } finally {
-            setDeletingId(null);
-        }
+        confirmAction({
+            title: 'Na pewno usunąć tę jednostkę z armii?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                setDeletingId(unitId);
+                try {
+                    const res = await fetch(`/api/armies/${armyId}/units/${unitId}`, { method: 'DELETE' });
+                    if (!res.ok) {
+                        const txt = await res.text().catch(() => '');
+                        throw new Error(txt || 'Request failed');
+                    }
+                    router.refresh();
+                } catch {
+                    notifyApiError('Nie udało się usunąć jednostki');
+                    throw new Error('delete failed');
+                } finally {
+                    setDeletingId(null);
+                }
+            },
+        });
     }
 
     function n(v: string, def = 0) {
@@ -367,7 +375,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setAbsent(prev);
-                alert('Nie udało się zapisać obecności.');
+                notifyApiError('Nie udało się zapisać obecności.');
                 return;
             }
 
@@ -385,7 +393,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setWounds(prev);
-                alert('Nie udało się zapisać ran.');
+                notifyApiError('Nie udało się zapisać ran.');
                 return;
             }
 
@@ -404,7 +412,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setTmpLeader(prev);
-                alert('Nie udało się zapisać Temporary Leader.');
+                notifyApiError('Nie udało się zapisać Temporary Leader.');
                 return;
             }
 
@@ -663,7 +671,7 @@ function ArmyDashboardClientInner({
                 throw new Error(t || 'fail');
             }
         } catch {
-            alert('Nie udało się zapisać hazardu');
+            notifyApiError('Nie udało się zapisać hazardu');
         } finally {
             setSavingHazard(false);
         }
@@ -684,24 +692,32 @@ function ArmyDashboardClientInner({
             setFacilities((f) => [created, ...f]);
             setFtNew('');
         } catch {
-            alert('Nie udało się dodać facility');
+            notifyApiError('Nie udało się dodać facility');
         } finally {
             setAddingFac(false);
         }
     }
 
     async function deleteFacility(id: string) {
-        if (!confirm('Usunąć to facility?')) return;
-        setDeletingFacId(id);
-        try {
-            const res = await fetch(`/api/armies/${armyId}/home-turf/facilities/${id}`, { method: 'DELETE' });
-            if (!res.ok) throw new Error();
-            setFacilities((f) => f.filter((x) => x.id !== id));
-        } catch {
-            alert('Nie udało się usunąć facility');
-        } finally {
-            setDeletingFacId(null);
-        }
+        confirmAction({
+            title: 'Usunąć to facility?',
+            okText: 'Usuń',
+            cancelText: 'Anuluj',
+            danger: true,
+            onOk: async () => {
+                setDeletingFacId(id);
+                try {
+                    const res = await fetch(`/api/armies/${armyId}/home-turf/facilities/${id}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error();
+                    setFacilities((f) => f.filter((x) => x.id !== id));
+                } catch {
+                    notifyApiError('Nie udało się usunąć facility');
+                    throw new Error('delete failed');
+                } finally {
+                    setDeletingFacId(null);
+                }
+            },
+        });
     }
 
     /* ====== TASKS (Goals) – stan i metody ====== */
@@ -728,34 +744,40 @@ function ArmyDashboardClientInner({
     }
 
     async function advanceTier() {
-        const ok = confirm('Zwiększyć tier armii? (Wymaga ukończenia wszystkich zadań na aktualnym tierze)');
-        if (!ok) return;
-        try {
-            const res = await fetch(`/api/armies/${armyId}/tier`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'advance' }),
-            });
-            if (!res.ok) {
-                const json = (await res.json().catch(() => null)) as { error?: string } | null;
-                if (json?.error === 'TIER_NOT_COMPLETED') {
-                    alert('Nie możesz zwiększyć tieru: nie wszystkie zadania na tym tierze są ukończone.');
-                } else if (json?.error === 'NO_ACTIVE_SET') {
-                    alert('Nie możesz zwiększyć tieru: brak aktywnego zestawu zadań.');
-                } else {
-                    const t = await res.text().catch(() => '');
-                    alert(t || 'Nie udało się zwiększyć tieru.');
-                }
-                return;
-            }
+        confirmAction({
+            title: 'Zwiększyć tier armii?',
+            content: 'Wymaga ukończenia wszystkich zadań na aktualnym tierze.',
+            okText: 'Zwiększ tier',
+            cancelText: 'Anuluj',
+            onOk: async () => {
+                try {
+                    const res = await fetch(`/api/armies/${armyId}/tier`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'advance' }),
+                    });
+                    if (!res.ok) {
+                        const json = (await res.json().catch(() => null)) as { error?: string } | null;
+                        if (json?.error === 'TIER_NOT_COMPLETED') {
+                            notifyWarning('Nie możesz zwiększyć tieru: nie wszystkie zadania na tym tierze są ukończone.');
+                        } else if (json?.error === 'NO_ACTIVE_SET') {
+                            notifyWarning('Nie możesz zwiększyć tieru: brak aktywnego zestawu zadań.');
+                        } else {
+                            const t = await res.text().catch(() => '');
+                            notifyApiError(t || 'Nie udało się zwiększyć tieru.');
+                        }
+                        throw new Error('advance tier failed');
+                    }
 
-            const updated = (await res.json().catch(() => null)) as { tier?: number } | null;
-            if (updated?.tier) setCurrentTier(updated.tier);
-            await loadGoals();
-            router.refresh();
-        } catch {
-            alert('Nie udało się zwiększyć tieru.');
-        }
+                    const updated = (await res.json().catch(() => null)) as { tier?: number } | null;
+                    if (updated?.tier) setCurrentTier(updated.tier);
+                    await loadGoals();
+                    router.refresh();
+                } catch {
+                    throw new Error('tier failed');
+                }
+            }
+        });
     }
 
     // Lazy load TASKS
@@ -783,7 +805,7 @@ function ArmyDashboardClientInner({
         } catch {
             // rollback
             setGoals((arr) => (g ? arr.map((x) => (x.id === goalId ? { ...x, ticks: g.ticks } : x)) : arr));
-            alert('Nie udało się zapisać postępu celu');
+            notifyApiError('Nie udało się zapisać postępu celu');
         } finally {
             setUpdatingGoalId(null);
         }
@@ -1306,7 +1328,7 @@ function AddUnitSheet({
             });
             if (!res.ok) {
                 const txt = await res.text().catch(() => '');
-                alert('Nie udało się dodać jednostki: ' + txt);
+                notifyApiError(txt, 'Nie udało się dodać jednostki');
                 return;
             }
             onClose();
