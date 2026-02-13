@@ -6,10 +6,12 @@ import { LockOutlined, LoginOutlined, UserOutlined } from '@ant-design/icons';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { LoadingState } from '@/components/ui/antd/ScreenStates';
+import { notifyError } from '@/lib/ui/notify';
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-dvh grid place-items-center">Ładowanie…</div>}>
+    <Suspense fallback={<div className="p-4"><LoadingState /></div>}>
       <LoginForm />
     </Suspense>
   );
@@ -25,7 +27,7 @@ function LoginForm() {
     e.preventDefault();
     const res = await signIn('credentials', { name, redirect: false });
     if (res?.ok) router.push(next);
-    else alert('Logowanie nieudane');
+    else notifyError('Logowanie nieudane. Sprawdź nazwę użytkownika i spróbuj ponownie.');
   }
 
   return (

@@ -3,6 +3,7 @@
 import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 export type EffectKind = 'WEAPON' | 'CRITICAL';
@@ -38,6 +39,8 @@ export function AdminEffectsClient() {
     const [q, setQ] = useState('');
     const [kindFilter, setKindFilter] = useState<'ALL' | EffectKind>('ALL');
     const [sort, setSort] = useState<'NAME:ASC' | 'NAME:DESC' | 'KIND:ASC' | 'KIND:DESC'>('NAME:ASC');
+    const [loading, setLoading] = useState(true);
+    const [listError, setListError] = useState<string | null>(null);
 
     const filteredSorted = useMemo(() => {
         const query = q.trim().toLowerCase();
@@ -67,13 +70,19 @@ export function AdminEffectsClient() {
     };
 
     async function reload(): Promise<void> {
+        setLoading(true);
+        setListError(null);
         const res = await fetch('/api/admin/effects', { cache: 'no-store' });
         if (!res.ok) {
-            notifyApiError('Nie udało się pobrać efektów');
+            const msg = 'Nie udało się pobrać efektów. Odśwież widok i spróbuj ponownie.';
+            setListError(msg);
+            notifyApiError(msg);
+            setLoading(false);
             return;
         }
         const data: Effect[] = await res.json();
         setList(data);
+        setLoading(false);
     }
 
     useEffect(() => {
@@ -279,7 +288,12 @@ export function AdminEffectsClient() {
                     onClearAllAction={clearAll}
                 />
 
-                {filteredSorted.map((e) => (
+                {loading ? <LoadingState /> : null}
+                {!loading && listError ? <ErrorState description={listError} onRetry={() => void reload()} /> : null}
+                {!loading && !listError && filteredSorted.length === 0 ? (
+                    <EmptyState title="Brak efektów" description="Dodaj pierwszy efekt albo wyczyść filtry." />
+                ) : null}
+                {!loading && !listError && filteredSorted.map((e) => (
                     <div key={e.id} className="rounded-xl border border-zinc-800 p-3">
                         <div className="flex items-center justify-between">
                             <div className="font-medium">

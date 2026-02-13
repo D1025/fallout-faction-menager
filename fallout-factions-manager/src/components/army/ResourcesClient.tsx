@@ -3,6 +3,7 @@
 import { Button, Card, Col, Flex, Grid, Row, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { EmptyState } from '@/components/ui/antd/ScreenStates';
 
 type Kind = 'caps' | 'parts' | 'reach';
 
@@ -75,6 +76,7 @@ export function ResourcesClient(props: {
 
         <Card title="Historia" size="small">
           <Space direction="vertical" style={{ width: '100%' }}>
+            {props.history.length === 0 ? <EmptyState title="Brak historii" description="Wykonaj pierwszą zmianę zasobów, aby zobaczyć wpisy." /> : null}
             {props.history.map((h) => (
               <Flex key={h.id} justify="space-between" gap={8}>
                 <Typography.Text>

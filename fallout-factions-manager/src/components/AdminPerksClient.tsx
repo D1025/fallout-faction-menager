@@ -4,6 +4,7 @@ import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
+import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
 
 type Behavior = 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
 type StatKeySpecial = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
@@ -54,10 +55,20 @@ export function AdminPerksClient() {
     const [pageSize, setPageSize] = useState<number>(20);
     const [page, setPage] = useState<number>(1);
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [listError, setListError] = useState<string | null>(null);
 
     async function reload() {
+        setLoading(true);
+        setListError(null);
         const res = await fetch('/api/admin/perks', { cache: 'no-store' });
+        if (!res.ok) {
+            setListError('Nie udało się pobrać perków. Odśwież stronę i spróbuj ponownie.');
+            setLoading(false);
+            return;
+        }
         setList(await res.json());
+        setLoading(false);
     }
     useEffect(() => {
         void reload();
@@ -489,7 +500,9 @@ export function AdminPerksClient() {
 
                 {/* Lista */}
                 <div className="mt-3 grid gap-2">
-                    {pageItems.map((p) => (
+                    {loading ? <LoadingState title="Ładowanie perków" /> : null}
+                    {!loading && listError ? <ErrorState description={listError} onRetry={() => void reload()} /> : null}
+                    {!loading && !listError && pageItems.map((p) => (
                         <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
@@ -557,8 +570,8 @@ export function AdminPerksClient() {
                         </div>
                     ))}
 
-                    {pageItems.length === 0 ? (
-                        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">Brak wyników dla filtrów.</div>
+                    {!loading && !listError && pageItems.length === 0 ? (
+                        <EmptyState title="Brak wyników" description="Nie znaleziono perków dla aktywnych filtrów." />
                     ) : null}
                 </div>
             </div>
