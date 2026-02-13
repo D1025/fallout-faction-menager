@@ -211,7 +211,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
 function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-[#0d1117]/95 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur">
             <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
                 <div className="text-lg font-semibold tracking-wide">{title}</div>
                 <div className="text-xs text-zinc-400">{right}</div>
