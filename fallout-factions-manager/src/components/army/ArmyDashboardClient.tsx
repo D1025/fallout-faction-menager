@@ -1,5 +1,6 @@
 'use client';
 
+import { AppstoreOutlined, CloseOutlined, DeploymentUnitOutlined, DownOutlined, SearchOutlined, StarOutlined, UpOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -225,7 +226,7 @@ function ArmyDashboardClientInner({
         base: UnitListItem['base'];
         bonus: UnitListItem['bonus'];
     }) {
-        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', '♥'] as const;
+        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
         const sign = (x: number) => (x > 0 ? `+${x}` : `${x}`);
 
         return (
@@ -233,15 +234,15 @@ function ArmyDashboardClientInner({
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {HEAD.map((h) => (
                         <div key={h} className="px-2 py-1 text-center">
-                            {h === '♥' ? 'HP' : h}
+                            {h}
                         </div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
                     {HEAD.map((h) => {
-                        const baseVal = h === '♥' ? base.hp : base[h as Exclude<typeof h, '♥'>];
+                        const baseVal = h === 'HP' ? base.hp : base[h as Exclude<typeof h, 'HP'>];
                         const finalVal =
-                            h === '♥' ? base.hp + bonus.HP : base[h as Exclude<typeof h, '♥'>] + bonus[h as Exclude<typeof h, '♥'>];
+                            h === 'HP' ? base.hp + bonus.HP : base[h as Exclude<typeof h, 'HP'>] + bonus[h as Exclude<typeof h, 'HP'>];
                         const delta = finalVal - baseVal;
                         return (
                             <div key={h} className="px-2 py-1 text-center tabular-nums">
@@ -611,10 +612,10 @@ function ArmyDashboardClientInner({
      }
 
     /* ====== Ikony ====== */
-    const ICON: Record<Kind, string> = {
-        caps: '🪙',
-        parts: '🧩',
-        exp: '⭐',
+    const ICON: Record<Kind, React.ReactNode> = {
+        caps: <DeploymentUnitOutlined className="text-zinc-200" />,
+        parts: <AppstoreOutlined className="text-zinc-200" />,
+        exp: <StarOutlined className="text-zinc-200" />,
         reach: 'REACH',
     };
 
@@ -1459,8 +1460,8 @@ function AddUnitSheet({
         return (
             <div className="mt-2 rounded-xl border border-zinc-800 overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
-                    {['S','P','E','C','I','A','L','♥'].map((h) => (
-                        <div key={h} className="px-2 py-1 text-center">{h === '♥' ? 'HP' : h}</div>
+                    {['S','P','E','C','I','A','L','HP'].map((h) => (
+                        <div key={h} className="px-2 py-1 text-center">{h}</div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
@@ -1496,7 +1497,7 @@ function AddUnitSheet({
 
                     <div className="mt-3">
                         <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
-                            <span className="text-zinc-400">🔎</span>
+                            <SearchOutlined className="text-zinc-400" />
                             <input
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
@@ -1505,7 +1506,7 @@ function AddUnitSheet({
                             />
                             {q && (
                                 <button onClick={() => setQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95" aria-label="Wyczyść">
-                                    ✕
+                                    <CloseOutlined />
                                 </button>
                             )}
                         </div>
@@ -1558,7 +1559,7 @@ function AddUnitSheet({
                                              </div>
                                              {isSel && <SpecialRow t={t} />}
                                          </div>
-                                        <div className="text-xs text-zinc-400">{isSel ? '▲' : '▼'}</div>
+                                        <div className="text-xs text-zinc-400">{isSel ? <UpOutlined /> : <DownOutlined />}</div>
                                     </button>
 
                                     {isSel && (

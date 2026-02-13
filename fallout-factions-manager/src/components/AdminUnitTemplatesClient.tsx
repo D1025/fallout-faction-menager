@@ -1,5 +1,6 @@
 'use client';
 
+import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import type { FactionDTO, PerkDTO, WeaponDTO, UnitTemplateDTO } from '@/app/admin/templates/page';
 
@@ -394,7 +395,7 @@ export function AdminUnitTemplatesClient({
                     {/* Picker */}
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
                         <div className="flex items-center gap-2 vault-panel px-3 py-2">
-                            <span className="text-zinc-400">🔎</span>
+                            <SearchOutlined className="text-zinc-400" />
                             <input
                                 value={perkQ}
                                 onChange={(e) => setPerkQ(e.target.value)}
@@ -403,7 +404,7 @@ export function AdminUnitTemplatesClient({
                             />
                             {perkQ ? (
                                 <button type="button" onClick={() => setPerkQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800" aria-label="Wyczyść">
-                                    ✕
+                                    <CloseOutlined />
                                 </button>
                             ) : null}
                         </div>

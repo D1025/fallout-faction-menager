@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { CloseOutlined, DeleteOutlined, DownOutlined, EllipsisOutlined, SearchOutlined, ShareAltOutlined, UpOutlined } from '@ant-design/icons';
 
 type ArmyMeta = {
     id: string;
@@ -135,7 +136,7 @@ function DotsMenu({
                 aria-label="Opcje"
                 title="Opcje"
             >
-                ⋯
+                <EllipsisOutlined className="text-zinc-200" />
             </button>
 
             {open && (
@@ -153,7 +154,7 @@ function DotsMenu({
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-500 disabled:opacity-60"
                         title="Wkrótce"
                     >
-                        <span className="text-base">⤴</span> Udostępnij (wkrótce)
+                        <ShareAltOutlined className="text-zinc-300" /> Udostępnij (wkrótce)
                     </button>
                     <div className="h-px bg-zinc-800" />
                     <button
@@ -161,7 +162,7 @@ function DotsMenu({
                         onClick={() => void del()}
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-200 hover:bg-red-950/40"
                     >
-                        <span className="text-base">🗑</span> Usuń
+                        <DeleteOutlined className="text-red-300" /> Usuń
                     </button>
                 </div>
             )}
@@ -442,7 +443,7 @@ export function HomeArmiesTabs({
             {/* Search */}
             <div className="mt-3 grid grid-cols-1 gap-2">
                 <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
-                    <span className="text-zinc-400">🔎</span>
+                    <SearchOutlined className="text-zinc-400" />
                     <input
                         value={state.q}
                         onChange={(e) => setState((s) => ({ ...s, q: e.target.value }))}
@@ -456,7 +457,7 @@ export function HomeArmiesTabs({
                             className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
                             aria-label="Wyczyść"
                         >
-                            ✕
+                            <CloseOutlined />
                         </button>
                     )}
                 </div>
@@ -475,7 +476,7 @@ export function HomeArmiesTabs({
                             {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
                         </div>
                     </div>
-                    <div className="shrink-0 text-zinc-300">{state.filtersOpen ? '▲' : '▼'}</div>
+                    <div className="shrink-0 text-zinc-300">{state.filtersOpen ? <UpOutlined /> : <DownOutlined />}</div>
                 </button>
 
                 {state.filtersOpen && (

@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Button, Card, Flex, Layout, List, Space, Typography } from 'antd';
 import { useState } from 'react';
 
@@ -29,7 +30,7 @@ export function ResourcesClient(props: {
             <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
                 <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto' }}>
                     <Button type="link" href={`/army/${props.armyId}`}>
-                        ←
+                        <ArrowLeftOutlined />
                     </Button>
                     <Typography.Title level={5} style={{ margin: 0 }}>
                         Zasoby: {props.armyName}

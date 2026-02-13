@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowLeftOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
@@ -232,7 +233,7 @@ function Search({
                 />
                 {value && (
                     <button onClick={() => onChange('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95">
-                        ✕
+                        <CloseOutlined />
                     </button>
                 )}
             </div>
@@ -398,7 +399,7 @@ function EditorSheet({
                             onClick={handleCancel}
                             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 active:scale-[0.99]"
                         >
-                            ← Wróć
+                            <ArrowLeftOutlined /> Wróć
                         </button>
                         <div className="min-w-0 flex-1 text-center">
                             <div className="truncate text-sm font-semibold">

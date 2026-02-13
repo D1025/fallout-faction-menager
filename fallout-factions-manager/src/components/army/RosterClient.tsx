@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowLeftOutlined, FileImageOutlined, PlusOutlined } from '@ant-design/icons';
 import { Avatar, Button, Card, Flex, Layout, List, Space, Tag, Typography } from 'antd';
 
 export function RosterClient(props: {
@@ -12,7 +13,7 @@ export function RosterClient(props: {
             <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
                 <Flex align="center" justify="space-between" style={{ maxWidth: 560, margin: '0 auto' }}>
                     <Button type="link" href={`/army/${props.armyId}`}>
-                        ←
+                        <ArrowLeftOutlined />
                     </Button>
                     <Typography.Title level={5} style={{ margin: 0 }}>
                         Roster: {props.armyName}
@@ -30,7 +31,7 @@ export function RosterClient(props: {
                                 <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%' }}>
                                     <Flex align="center" gap={12}>
                                         <Avatar shape="square" size={48}>
-                                            {u.photoPath ? '🖼️' : u.name.slice(0, 2)}
+                                            {u.photoPath ? <FileImageOutlined /> : u.name.slice(0, 2)}
                                         </Avatar>
                                         <Space direction="vertical" size={0} style={{ flex: 1 }}>
                                             <Flex justify="space-between" align="center">
@@ -49,7 +50,7 @@ export function RosterClient(props: {
                 </Card>
 
                 <Button type="primary" shape="circle" size="large" href={`/army/${props.armyId}/roster/add`} style={{ position: 'fixed', right: 20, bottom: 20 }}>
-                    ＋
+                    <PlusOutlined />
                 </Button>
             </Layout.Content>
         </Layout>

@@ -1,5 +1,6 @@
 'use client';
 
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Crop = { x: number; y: number; size: number };
@@ -147,7 +148,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
                     <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                     <div className="flex items-center justify-between gap-3">
                         <button onClick={onCancel} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300">
-                            ← Wróć
+                            <ArrowLeftOutlined /> Wróć
                         </button>
                         <div className="min-w-0 flex-1 text-center">
                             <div className="truncate text-sm font-semibold">Przytnij zdjęcie</div>

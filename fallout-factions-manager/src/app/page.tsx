@@ -3,6 +3,7 @@ export const revalidate = 0;
 
 import Link from 'next/link';
 import { Button } from 'antd';
+import { LoginOutlined, ToolOutlined, UserOutlined } from '@ant-design/icons';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
@@ -30,11 +31,11 @@ export default async function Home() {
       <MobilePageShell title="Fallout Army Tracker">
         <SectionCard>
           <div className="text-center">
-            <div className="text-3xl">☢️</div>
+            <div className="text-3xl text-amber-300"><UserOutlined /></div>
             <div className="mt-2 text-lg font-semibold">Wymagane logowanie</div>
             <p className="mt-2 text-sm vault-muted">Aby śledzić armię, musisz najpierw wejść do terminala dowódcy.</p>
             <Link href="/login">
-              <Button type="primary" className="mt-4">Przejdź do logowania</Button>
+              <Button type="primary" className="mt-4" icon={<LoginOutlined />}>Przejdź do logowania</Button>
             </Link>
           </div>
         </SectionCard>
@@ -226,7 +227,7 @@ export default async function Home() {
       title="Fallout Army Tracker"
       headerRight={
         <div className="flex items-center gap-2"> 
-          {isAdmin && <Link href="/admin"><Button size="small">🛠 Admin</Button></Link>}
+          {isAdmin && <Link href="/admin"><Button size="small" icon={<ToolOutlined />}>Admin</Button></Link>}
           <SignOutButton />
         </div>
       }
