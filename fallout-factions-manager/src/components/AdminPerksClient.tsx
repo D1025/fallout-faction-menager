@@ -1,5 +1,6 @@
 'use client';
 
+import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
@@ -52,6 +53,7 @@ export function AdminPerksClient() {
 
     const [pageSize, setPageSize] = useState<number>(20);
     const [page, setPage] = useState<number>(1);
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     async function reload() {
         const res = await fetch('/api/admin/perks', { cache: 'no-store' });
@@ -180,6 +182,14 @@ export function AdminPerksClient() {
         ...(availability !== 'ALL' ? [{ key: 'availability', label: `Dostępność: ${availability}`, onRemove: () => setAvailability('ALL') }] : []),
     ];
 
+    const clearAll = () => {
+        setQ('');
+        setCategoryFilter('ALL');
+        setAvailability('ALL');
+        setSortKey('NAME');
+        setSortDir('ASC');
+        setPageSize(20);
+    };
 
     return (
         <div className="grid gap-3">
@@ -338,86 +348,103 @@ export function AdminPerksClient() {
                             Wyniki: <span className="font-semibold text-zinc-200">{total}</span>
                         </div>
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => void reload()}
-                        className="h-9 vault-input px-3 text-xs text-zinc-300"
-                    >
-                        Odśwież
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen(true)}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Filtry"
+                            title="Filtry"
+                        >
+                            <FilterOutlined />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={clearAll}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Wyczyść filtry"
+                            title="Wyczyść filtry"
+                        >
+                            <ClearOutlined />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void reload()}
+                            className="h-9 vault-input px-3 text-xs text-zinc-300"
+                        >
+                            Odśwież
+                        </button>
+                    </div>
                 </div>
 
-                {/* Filtry */}
-                <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                    <FilterBar
-                        search={q}
-                        onSearch={setQ}
-                        searchPlaceholder="Szukaj po nazwie/opisie…"
-                        controls={
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                <select
-                                    value={categoryFilter}
-                                    onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
-                                    className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                >
-                                    <option value="ALL">Kategoria: wszystkie</option>
-                                    <option value="REGULAR">Kategoria: regular</option>
-                                    <option value="AUTOMATRON">Kategoria: automatron</option>
-                                </select>
-                                <select
-                                    value={availability}
-                                    onChange={(e) => setAvailability(e.target.value as AvailabilityFilter)}
-                                    className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                >
-                                    <option value="ALL">Dostępność: wszystkie</option>
-                                    <option value="INNATE">Dostępność: INNATE</option>
-                                    <option value="NON_INNATE">Dostępność: nie‑INNATE</option>
-                                </select>
-                                <SortSelect
-                                    value={`${sortKey}:${sortDir}`}
-                                    onChange={(next) => {
-                                        const [k, d] = next.split(':') as [SortKey, 'ASC' | 'DESC'];
-                                        setSortKey(k);
-                                        setSortDir(d);
-                                    }}
-                                    options={[
-                                        { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
-                                        { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
-                                        { value: 'CATEGORY:ASC', label: 'Sort: kategoria A→Z' },
-                                        { value: 'CATEGORY:DESC', label: 'Sort: kategoria Z→A' },
-                                        { value: 'INNATE:ASC', label: 'Sort: INNATE rosnąco' },
-                                        { value: 'INNATE:DESC', label: 'Sort: INNATE malejąco' },
-                                        { value: 'START_ALLOWED:ASC', label: 'Sort: startowe rosnąco' },
-                                        { value: 'START_ALLOWED:DESC', label: 'Sort: startowe malejąco' },
-                                    ]}
-                                />
-                            </div>
-                        }
-                        moreFilters={
-                            <label className="block text-xs text-zinc-300">
-                                Na stronę
-                                <select
-                                    value={String(pageSize)}
-                                    onChange={(e) => setPageSize(Number(e.target.value))}
-                                    className="mt-1 h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                >
-                                    {[10, 20, 50, 100].map((n) => (
-                                        <option key={n} value={String(n)}>{n}</option>
-                                    ))}
-                                </select>
-                            </label>
-                        }
-                        activeChips={chips}
-                        onClearAll={() => {
-                            setQ('');
-                            setCategoryFilter('ALL');
-                            setAvailability('ALL');
-                            setSortKey('NAME');
-                            setSortDir('ASC');
-                            setPageSize(20);
-                        }}
-                    />
-                </div>
+                {/* Drawer filtrów (bez kontenera w treści) */}
+                <FilterBar
+                    showTrigger={false}
+                    open={filtersOpen}
+                    onOpenChangeAction={setFiltersOpen}
+                    search={q}
+                    onSearchAction={setQ}
+                    searchPlaceholder="Szukaj po nazwie/opisie…"
+                    controls={
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <select
+                                value={categoryFilter}
+                                onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            >
+                                <option value="ALL">Kategoria: wszystkie</option>
+                                <option value="REGULAR">Kategoria: regular</option>
+                                <option value="AUTOMATRON">Kategoria: automatron</option>
+                            </select>
+                            <select
+                                value={availability}
+                                onChange={(e) => setAvailability(e.target.value as AvailabilityFilter)}
+                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            >
+                                <option value="ALL">Dostępność: wszystkie</option>
+                                <option value="INNATE">Dostępność: INNATE</option>
+                                <option value="NON_INNATE">Dostępność: nie‑INNATE</option>
+                            </select>
+                            <SortSelect
+                                value={`${sortKey}:${sortDir}`}
+                                onChange={(next) => {
+                                    const [k, d] = next.split(':') as [SortKey, 'ASC' | 'DESC'];
+                                    setSortKey(k);
+                                    setSortDir(d);
+                                }}
+                                options={[
+                                    { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
+                                    { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
+                                    { value: 'CATEGORY:ASC', label: 'Sort: kategoria A→Z' },
+                                    { value: 'CATEGORY:DESC', label: 'Sort: kategoria Z→A' },
+                                    { value: 'INNATE:ASC', label: 'Sort: INNATE rosnąco' },
+                                    { value: 'INNATE:DESC', label: 'Sort: INNATE malejąco' },
+                                    { value: 'START_ALLOWED:ASC', label: 'Sort: startowe rosnąco' },
+                                    { value: 'START_ALLOWED:DESC', label: 'Sort: startowe malejąco' },
+                                ]}
+                            />
+                        </div>
+                    }
+                    moreFilters={
+                        <label className="block text-xs text-zinc-300">
+                            Na stronę
+                            <select
+                                value={String(pageSize)}
+                                onChange={(e) => setPageSize(Number(e.target.value))}
+                                className="mt-1 h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            >
+                                {[10, 20, 50, 100].map((n) => (
+                                    <option key={n} value={String(n)}>{n}</option>
+                                ))}
+                            </select>
+                        </label>
+                    }
+                    activeChips={chips}
+                    onClearAllAction={clearAll}
+                />
+
+                {/* usunięto: stary kontener filtrów w treści */}
 
                 {/* Paginacja */}
                 <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">

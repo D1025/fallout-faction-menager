@@ -74,60 +74,73 @@ type GoalsResponse = {
     goals: Goal[];
 };
 
+export type ArmyDashboardActions = {
+    openFilters: () => void;
+    clearFilters: () => void;
+};
+
 export function ArmyDashboardClient({
     armyId,
     armyName,
     tier,
-    factionId,                 // <<<<<< DODANE
+    factionId,
     factionName,
     resources,
     units,
     rating,
     subfactionId,
+    // zamiast refa
+    onActionsReadyAction,
 }: {
     armyId: string;
     armyName: string;
     tier: number;
-    factionId: string;         // <<<<<< DODANE
+    factionId: string;
     factionName: string;
     resources: Record<Kind, number>;
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
 }) {
-    return <ArmyDashboardClientInner
-        armyId={armyId}
-        armyName={armyName}
-        tier={tier}
-        factionId={factionId}
-        factionName={factionName}
-        resources={resources}
-        units={units}
-        rating={rating}
-        subfactionId={subfactionId}
-    />;
+    return (
+        <ArmyDashboardClientInner
+            armyId={armyId}
+            armyName={armyName}
+            tier={tier}
+            factionId={factionId}
+            factionName={factionName}
+            resources={resources}
+            units={units}
+            rating={rating}
+            subfactionId={subfactionId}
+            onActionsReadyAction={onActionsReadyAction}
+        />
+    );
 }
 
 function ArmyDashboardClientInner({
     armyId,
     armyName,
     tier,
-    factionId,                 // <<<<<< DODANE
+    factionId,
     factionName,
     resources,
     units,
     rating,
     subfactionId,
+    onActionsReadyAction,
 }: {
     armyId: string;
     armyName: string;
     tier: number;
-    factionId: string;         // <<<<<< DODANE
+    factionId: string;
     factionName: string;
     resources: Record<Kind, number>;
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
 }) {
     const router = useRouter();
     const [totals, setTotals] = useState(resources);
@@ -137,6 +150,7 @@ function ArmyDashboardClientInner({
     const [hideInactive, setHideInactive] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [tab, setTab] = useState<TabKey>('OVERVIEW');
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     useEffect(() => setTotals(resources), [resources]);
 
@@ -825,6 +839,19 @@ function ArmyDashboardClientInner({
         return arr.filter((g) => g.ticks >= g.target).length;
     }
 
+    function clearAllFilters() {
+        setFilter('ALL');
+        setHideInactive(false);
+    }
+
+    useEffect(() => {
+        onActionsReadyAction?.({
+            openFilters: () => setFiltersOpen(true),
+            clearFilters: () => clearAllFilters(),
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return (
         <main className="mx-auto max-w-screen-sm px-3 pb-24">
             {/* META */}
@@ -880,32 +907,32 @@ function ArmyDashboardClientInner({
                     </section>
 
                     {/* FILTER */}
-                    <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                        <FilterBar
-                            controls={
-                                <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-                                    {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
-                                        <QuickToggle key={f} checked={filter === f} onChange={() => setFilter(f)} label={f} />
-                                    ))}
-                                </div>
-                            }
-                            moreFilters={
+                    <FilterBar
+                        showTrigger={false}
+                        open={filtersOpen}
+                        onOpenChangeAction={setFiltersOpen}
+                        controls={
+                            <div className="grid grid-cols-2 gap-2 [grid-template-columns:repeat(auto-fit,minmax(140px,1fr))]">
+                                {(['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as RoleFilter[]).map((f) => (
+                                    <QuickToggle key={f} checked={filter === f} onChangeAction={() => setFilter(f)} label={f} />
+                                ))}
+                            </div>
+                        }
+                        moreFilters={
+                            <div className="min-w-0">
                                 <QuickToggle
                                     checked={hideInactive}
-                                    onChange={setHideInactive}
+                                    onChangeAction={setHideInactive}
                                     label="Chowaj nieaktywne (absent / dead)"
                                 />
-                            }
-                            activeChips={[
-                                ...(filter !== 'ALL' ? [{ key: 'role', label: `Rola: ${filter}`, onRemove: () => setFilter('ALL') }] : []),
-                                ...(hideInactive ? [{ key: 'inactive', label: 'Ukryte nieaktywne', onRemove: () => setHideInactive(false) }] : []),
-                            ] as ActiveFilterChip[]}
-                            onClearAll={() => {
-                                setFilter('ALL');
-                                setHideInactive(false);
-                            }}
-                        />
-                    </div>
+                            </div>
+                        }
+                        activeChips={[
+                            ...(filter !== 'ALL' ? [{ key: 'role', label: `Rola: ${filter}`, onRemove: () => setFilter('ALL') }] : []),
+                            ...(hideInactive ? [{ key: 'inactive', label: 'Ukryte nieaktywne', onRemove: () => setHideInactive(false) }] : []),
+                        ] as ActiveFilterChip[]}
+                        onClearAllAction={clearAllFilters}
+                    />
 
                     {/* JEDNOSTKI */}
                     <section className="mt-4">

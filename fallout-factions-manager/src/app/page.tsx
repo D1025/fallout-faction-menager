@@ -11,6 +11,7 @@ import { prisma } from '@/server/prisma';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { CreateArmySheet } from '@/components/home/CreateArmySheet';
 import { HomeArmiesTabs } from '@/components/home/HomeArmiesTabs';
+import { HomeClient } from '@/components/home/HomeClient';
 
 type ArmyMeta = {
   id: string;
@@ -223,24 +224,11 @@ export default async function Home() {
   }
 
   return (
-    <MobilePageShell
-      title="Fallout Army Tracker"
-      headerRight={
-        <div className="flex items-center gap-2"> 
-          {isAdmin && <Link href="/admin"><Button size="small" icon={<ToolOutlined />}>Admin</Button></Link>}
-          <SignOutButton />
-        </div>
-      }
-    >
-      <SectionCard>
-        <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
-        <p className="mt-1 text-sm vault-muted">Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.</p>
-      </SectionCard>
-      <div className="mt-3"> 
-        <HomeArmiesTabs myArmies={myArmies} shared={shared}>
-          <CreateArmySheet factions={factions} />
-        </HomeArmiesTabs>
-      </div>
-    </MobilePageShell>
+    <HomeClient
+      isAdmin={isAdmin}
+      myArmies={myArmies}
+      shared={shared}
+      factions={factions}
+    />
   );
 }

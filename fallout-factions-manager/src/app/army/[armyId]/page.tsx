@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
-import { ArmyDashboardClient } from '@/components/army/ArmyDashboardClient';
+import { ArmyPageClient } from '@/components/army/ArmyPageClient';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
@@ -162,18 +162,17 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     });
 
     return (
-        <MobilePageShell title={army.name} backHref="/">
-            <ArmyDashboardClient
-                armyId={army.id}
-                armyName={army.name}
-                tier={army.tier}
-                factionId={army.faction.id}
-                factionName={army.faction.name}
-                resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
-                units={uiUnits}
-                rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
-                subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
-            />
-        </MobilePageShell>
+        <ArmyPageClient
+            backHref="/"
+            armyId={army.id}
+            armyName={army.name}
+            tier={army.tier}
+            factionId={army.faction.id}
+            factionName={army.faction.name}
+            resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
+            units={uiUnits}
+            rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
+            subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
+        />
     );
 }

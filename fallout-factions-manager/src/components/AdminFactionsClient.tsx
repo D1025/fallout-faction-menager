@@ -7,6 +7,10 @@ export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number 
 export type Faction = { id: string; name: string; limits: FactionLimit[] };
 type FormState = { id?: string; name: string; limits: FactionLimit[] };
 
+/**
+ * @deprecated Ten komponent nie jest już używany. Admin frakcji działa przez `FactionsClient` (widok /admin/factions).
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
     const [list, setList] = useState<Faction[]>(initial);
     const [form, setForm] = useState<FormState>({ name: '', limits: [] });
@@ -92,30 +96,6 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
         <div className="app-shell pt-3">
             <h1 className="text-lg font-semibold">Frakcje (admin)</h1>
 
-            {/* Lista frakcji */}
-            <div className="mt-3 grid gap-2">
-                {list.map((f) => (
-                    <div key={f.id} className="vault-panel p-3">
-                        <button
-                            onClick={() => setForm({ id: f.id, name: f.name, limits: f.limits })}
-                            className="w-full text-left"
-                            title="Edytuj"
-                        >
-                            <div className="flex items-center justify-between">
-                                <div className="font-medium">{f.name}</div>
-                                <div className="text-xs text-zinc-400">{f.limits.length} limit(y)</div>
-                            </div>
-                            <div className="mt-1 text-xs text-zinc-500">
-                                {f.limits.map((l) => `${l.tag}: ${l.tier1 ?? '–'}/${l.tier2 ?? '–'}/${l.tier3 ?? '–'}`).join(' • ')}
-                            </div>
-                        </button>
-                        <div className="mt-2">
-                            <button onClick={() => del(f.id)} className="text-xs text-red-300">Usuń</button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
             {/* Formularz */}
             <div className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between">
@@ -180,6 +160,30 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                         {saving ? 'Zapisywanie…' : 'Zapisz'}
                     </button>
                 </div>
+            </div>
+
+            {/* Lista frakcji */}
+            <div className="mt-3 grid gap-2">
+                {list.map((f) => (
+                    <div key={f.id} className="vault-panel p-3">
+                        <button
+                            onClick={() => setForm({ id: f.id, name: f.name, limits: f.limits })}
+                            className="w-full text-left"
+                            title="Edytuj"
+                        >
+                            <div className="flex items-center justify-between">
+                                <div className="font-medium">{f.name}</div>
+                                <div className="text-xs text-zinc-400">{f.limits.length} limit(y)</div>
+                            </div>
+                            <div className="mt-1 text-xs text-zinc-500">
+                                {f.limits.map((l) => `${l.tag}: ${l.tier1 ?? '–'}/${l.tier2 ?? '–'}/${l.tier3 ?? '–'}`).join(' • ')}
+                            </div>
+                        </button>
+                        <div className="mt-2">
+                            <button onClick={() => del(f.id)} className="text-xs text-red-300">Usuń</button>
+                        </div>
+                    </div>
+                ))}
             </div>
         </div>
     );

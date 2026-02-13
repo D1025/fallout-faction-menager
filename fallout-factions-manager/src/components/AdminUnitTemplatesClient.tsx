@@ -1,7 +1,8 @@
 'use client';
 
-import { CloseOutlined, SearchOutlined } from '@ant-design/icons';
+import { ClearOutlined, FilterOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
+import { FilterBar, QuickToggle, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import type { FactionDTO, PerkDTO, WeaponDTO, UnitTemplateDTO } from '@/app/admin/templates/page';
 
 /** Opcja: 1–2 bronie + koszt + (opcjonalny) rating */
@@ -187,59 +188,40 @@ export function AdminUnitTemplatesClient({
         });
     }
 
+    // list controls
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const [onlyGlobal, setOnlyGlobal] = useState(false);
+    const [onlyLeader, setOnlyLeader] = useState(false);
+    const [sort, setSort] = useState<'NAME:ASC' | 'NAME:DESC'>('NAME:ASC');
+
+    const filteredSorted = useMemo(() => {
+        const query = q.trim().toLowerCase();
+        let arr = list;
+        if (query) arr = arr.filter((u) => u.name.toLowerCase().includes(query));
+        if (onlyGlobal) arr = arr.filter((u) => u.isGlobal);
+        if (onlyLeader) arr = arr.filter((u) => Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false));
+        const dir = sort === 'NAME:ASC' ? 1 : -1;
+        return [...arr].sort((a, b) => a.name.localeCompare(b.name, 'pl') * dir);
+    }, [list, q, onlyGlobal, onlyLeader, sort]);
+
+    const chips: ActiveFilterChip[] = [
+        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(onlyGlobal ? [{ key: 'global', label: 'Tylko GLOBAL', onRemove: () => setOnlyGlobal(false) }] : []),
+        ...(onlyLeader ? [{ key: 'leader', label: 'Tylko LEADER', onRemove: () => setOnlyLeader(false) }] : []),
+        ...(sort !== 'NAME:ASC' ? [{ key: 'sort', label: `Sort: ${sort}`, onRemove: () => setSort('NAME:ASC') }] : []),
+    ];
+
+    const clearAll = () => {
+        setQ('');
+        setOnlyGlobal(false);
+        setOnlyLeader(false);
+        setSort('NAME:ASC');
+    };
+
     return (
         <div className="app-shell pt-3">
             <h1 className="text-lg font-semibold">Jednostki</h1>
-
-            {/* LISTA */}
-            <div className="mt-3 grid gap-2">
-                {list.map(u=>(
-                    <div key={u.id} className="vault-panel p-3">
-                        <button
-                            className="w-full text-left"
-                            onClick={()=> setForm({
-                                id: u.id,
-                                name: u.name,
-                                isGlobal: u.isGlobal,
-                                factionIds: u.factionIds,
-                                roleTag: u.roleTag,
-                                isLeader: Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false),
-                                hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
-                                baseRating: u.baseRating,
-                                options: u.options.map(o=> ({
-                                    weapon1Id: o.weapon1Id,
-                                    weapon2Id: o.weapon2Id,
-                                    costCaps: o.costCaps,
-                                    rating: o.rating
-                                })),
-                                startPerks: u.startPerks,
-                            })}
-                        >
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <div className="font-medium">{u.name}</div>
-                                    <div className="mt-1 text-xs text-zinc-400">
-                                        {u.isGlobal ? 'GLOBAL' : (u.factionIds.length ? `Frakcje: ${u.factionIds.length}` : 'Brak frakcji')} • HP {u.hp} • S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
-                                    </div>
-                                </div>
-                                <div className="text-xs text-zinc-400">{u.options.length} pakiet(y)</div>
-                            </div>
-                            {u.options.length > 0 && (
-                                <div className="mt-2 text-xs text-zinc-400">
-                                    {u.options.map((o,idx)=>(
-                                        <div key={idx}>#{idx+1}: {weaponName(o.weapon1Id)}{o.weapon2Id ? ` + ${weaponName(o.weapon2Id)}` : ''} • {o.costCaps} caps{typeof o.rating==='number' ? ` • rating ${o.rating}` : ''}</div>
-                                    ))}
-                                </div>
-                            )}
-                        </button>
-                        {(u as unknown as { isLeader?: boolean }).isLeader ? (
-                            <div className="mt-2 text-[11px] text-sky-200">
-                                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold">LEADER</span>
-                            </div>
-                        ) : null}
-                     </div>
-                 ))}
-            </div>
 
             {/* FORMULARZ */}
             <div className="mt-4 vault-panel p-3">
@@ -576,6 +558,112 @@ export function AdminUnitTemplatesClient({
                         {saving ? 'Zapisywanie…' : 'Zapisz'}
                     </button>
                 </div>
+            </div>
+
+            {/* LISTA */}
+            <div className="mt-3 grid gap-2">
+                <div className="flex items-start justify-between gap-2 rounded-xl border border-zinc-800 p-3">
+                    <div>
+                        <div className="text-sm font-medium">Lista jednostek</div>
+                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                            Wyniki: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen(true)}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Filtry"
+                            title="Filtry"
+                        >
+                            <FilterOutlined />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={clearAll}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Wyczyść filtry"
+                            title="Wyczyść filtry"
+                        >
+                            <ClearOutlined />
+                        </button>
+                    </div>
+                </div>
+
+                <FilterBar
+                    showTrigger={false}
+                    open={filtersOpen}
+                    onOpenChangeAction={setFiltersOpen}
+                    search={q}
+                    onSearchAction={setQ}
+                    searchPlaceholder="Szukaj jednostki…"
+                    quickToggles={
+                        <div className="flex flex-wrap gap-2">
+                            <QuickToggle checked={onlyGlobal} onChange={setOnlyGlobal} label="Tylko GLOBAL" />
+                            <QuickToggle checked={onlyLeader} onChange={setOnlyLeader} label="Tylko LEADER" />
+                        </div>
+                    }
+                    controls={
+                        <SortSelect
+                            value={sort}
+                            onChange={(v) => setSort(v as typeof sort)}
+                            options={[
+                                { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
+                                { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
+                            ]}
+                        />
+                    }
+                    activeChips={chips}
+                    onClearAllAction={clearAll}
+                />
+
+                {filteredSorted.map(u => (
+                    <div key={u.id} className="vault-panel p-3">
+                        <button
+                            className="w-full text-left"
+                            onClick={()=> setForm({
+                                id: u.id,
+                                name: u.name,
+                                isGlobal: u.isGlobal,
+                                factionIds: u.factionIds,
+                                roleTag: u.roleTag,
+                                isLeader: Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false),
+                                hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
+                                baseRating: u.baseRating,
+                                options: u.options.map(o=> ({
+                                    weapon1Id: o.weapon1Id,
+                                    weapon2Id: o.weapon2Id,
+                                    costCaps: o.costCaps,
+                                    rating: o.rating
+                                })),
+                                startPerks: u.startPerks,
+                            })}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-medium">{u.name}</div>
+                                    <div className="mt-1 text-xs text-zinc-400">
+                                        {u.isGlobal ? 'GLOBAL' : (u.factionIds.length ? `Frakcje: ${u.factionIds.length}` : 'Brak frakcji')} • HP {u.hp} • S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
+                                    </div>
+                                </div>
+                                <div className="text-xs text-zinc-400">{u.options.length} pakiet(y)</div>
+                            </div>
+                            {u.options.length > 0 && (
+                                <div className="mt-2 text-xs text-zinc-400">
+                                    {u.options.map((o,idx)=>(
+                                        <div key={idx}>#{idx+1}: {weaponName(o.weapon1Id)}{o.weapon2Id ? ` + ${weaponName(o.weapon2Id)}` : ''} • {o.costCaps} caps{typeof o.rating==='number' ? ` • rating ${o.rating}` : ''}</div>
+                                    ))}
+                                </div>
+                            )}
+                        </button>
+                        {(u as unknown as { isLeader?: boolean }).isLeader ? (
+                            <div className="mt-2 text-[11px] text-sky-200">
+                                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold">LEADER</span>
+                            </div>
+                        ) : null}
+                     </div>
+                 ))}
             </div>
         </div>
     );

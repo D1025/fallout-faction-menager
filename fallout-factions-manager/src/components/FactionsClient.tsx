@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ClearOutlined, FilterOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import { useRouter } from 'next/navigation';
@@ -80,6 +80,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     const [onlyWithLimits, setOnlyWithLimits] = useState(false);
     const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
     const [savingAll, setSavingAll] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
@@ -126,38 +127,63 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
         setFactions((prev) => prev.filter((f) => f.id !== id));
     }
 
+    const activeChips = [
+        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(onlyWithLimits ? [{ key: 'limits', label: 'Tylko z limitami', onRemove: () => setOnlyWithLimits(false) }] : []),
+    ] as ActiveFilterChip[];
+
+    const clearAll = () => {
+        setQ('');
+        setOnlyWithLimits(false);
+    };
+
     return (
         <div className="min-h-dvh">
             <Header
                 title="Frakcje – limity, zadania, ulepszenia"
                 right={
-                    <button
-                        onClick={openCreate}
-                        className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
-                    >
-                        + Dodaj frakcję
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setFiltersOpen(true)}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900"
+                            aria-label="Filtry"
+                            title="Filtry"
+                        >
+                            <FilterOutlined />
+                        </button>
+                        <button
+                            onClick={clearAll}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900"
+                            aria-label="Wyczyść filtry"
+                            title="Wyczyść filtry"
+                        >
+                            <ClearOutlined />
+                        </button>
+                        <button
+                            onClick={openCreate}
+                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+                        >
+                            + Dodaj frakcję
+                        </button>
+                    </div>
                 }
             />
 
+            {/* Drawer filtrów (bez triggera w treści) */}
+            <FilterBar
+                showTrigger={false}
+                open={filtersOpen}
+                onOpenChangeAction={setFiltersOpen}
+                search={q}
+                onSearchAction={setQ}
+                searchPlaceholder="Szukaj frakcji"
+                quickToggles={<QuickToggle checked={onlyWithLimits} onChange={setOnlyWithLimits} label="Tylko z limitami" />}
+                activeChips={activeChips}
+                onClearAllAction={clearAll}
+            />
+
             <main className="app-shell">
-                <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
-                    <FilterBar
-                        search={q}
-                        onSearch={setQ}
-                        searchPlaceholder="Szukaj frakcji"
-                        quickToggles={<QuickToggle checked={onlyWithLimits} onChange={setOnlyWithLimits} label="Tylko z limitami" />}
-                        activeChips={[
-                            ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
-                            ...(onlyWithLimits ? [{ key: 'limits', label: 'Tylko z limitami', onRemove: () => setOnlyWithLimits(false) }] : []),
-                        ] as ActiveFilterChip[]}
-                        onClearAll={() => {
-                            setQ('');
-                            setOnlyWithLimits(false);
-                        }}
-                        moreFilters={<div className="text-xs text-zinc-400">Dodatkowe filtry pojawią się tutaj.</div>}
-                    />
-                </div>
+                {/* usunięto stary kontener filtrów */}
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                     {filtered.map((f) => (

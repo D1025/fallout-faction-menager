@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
+import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 
 /* ===== Typy słownika efektów ===== */
@@ -79,6 +81,10 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         baseEffects: [],
         profiles: [],
     });
+
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const [sort, setSort] = useState<'NAME:ASC' | 'NAME:DESC'>('NAME:ASC');
 
     useEffect(() => {
         void (async () => {
@@ -258,50 +264,26 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         setForm((f) => ({ ...f, imagePath: null }));
     }
 
+    const filteredSorted = useMemo(() => {
+        const query = q.trim().toLowerCase();
+        let arr = list;
+        if (query) arr = arr.filter((w) => w.name.toLowerCase().includes(query));
+        const dir = sort.endsWith(':ASC') ? 1 : -1;
+        return [...arr].sort((a, b) => a.name.localeCompare(b.name, 'pl') * dir);
+    }, [list, q, sort]);
+
+    const chips: ActiveFilterChip[] = [
+        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(sort !== 'NAME:ASC' ? [{ key: 'sort', label: `Sort: ${sort}`, onRemove: () => setSort('NAME:ASC') }] : []),
+    ];
+
+    const clearAll = () => {
+        setQ('');
+        setSort('NAME:ASC');
+    };
+
     return (
         <div className="space-y-4">
-            {/* Lista */}
-            <div className="grid gap-2">
-                {list.map((w) => (
-                    <div key={w.id} className="vault-panel p-3">
-                        <div className="flex items-start justify-between">
-                            <button
-                                onClick={() =>
-                                    setForm({
-                                        id: w.id,
-                                        name: w.name,
-                                        imagePath: w.imagePath ?? null,
-                                        notes: w.notes ?? null,
-                                        baseType: w.baseType ?? '',
-                                        baseTest: w.baseTest ?? '',
-                                        baseParts: w.baseParts ?? null,
-                                        baseRating: w.baseRating ?? null,
-                                        baseEffects: w.baseEffects.map((be) => ({ effectId: be.effectId, valueInt: be.valueInt })),
-                                        profiles: w.profiles
-                                            .slice()
-                                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-                                            .map((p) => ({
-                                                order: p.order ?? 0,
-                                                typeOverride: p.typeOverride ?? null,
-                                                testOverride: p.testOverride ?? null,
-                                                partsOverride: p.partsOverride ?? null,
-                                                ratingDelta: p.ratingDelta ?? null,
-                                                effects: p.effects.map((e) => ({ effectId: e.effectId, valueInt: e.valueInt })),
-                                            })),
-                                    })
-                                }
-                                className="text-left font-medium"
-                            >
-                                {w.name}
-                            </button>
-                            <button onClick={() => void del(w.id)} className="text-xs text-red-300">
-                                Usuń
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
             {/* Formularz */}
             <div className="vault-panel p-3">
                 <div className="flex items-center justify-between">
@@ -557,6 +539,105 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                         {saving ? 'Zapisywanie…' : 'Zapisz'}
                     </button>
                 </div>
+            </div>
+
+            {/* Lista */}
+            <div className="grid gap-2">
+                <div className="flex items-start justify-between gap-2 rounded-xl border border-zinc-800 p-3">
+                    <div>
+                        <div className="text-sm font-medium">Lista broni</div>
+                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                            Wyniki: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen(true)}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Filtry"
+                            title="Filtry"
+                        >
+                            <FilterOutlined />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={clearAll}
+                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            aria-label="Wyczyść filtry"
+                            title="Wyczyść filtry"
+                        >
+                            <ClearOutlined />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void reload()}
+                            className="h-9 vault-input px-3 text-xs text-zinc-300"
+                        >
+                            Odśwież
+                        </button>
+                    </div>
+                </div>
+
+                <FilterBar
+                    showTrigger={false}
+                    open={filtersOpen}
+                    onOpenChangeAction={setFiltersOpen}
+                    search={q}
+                    onSearchAction={setQ}
+                    searchPlaceholder="Szukaj broni…"
+                    controls={
+                        <SortSelect
+                            value={sort}
+                            onChange={(v) => setSort(v as typeof sort)}
+                            options={[
+                                { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
+                                { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
+                            ]}
+                        />
+                    }
+                    activeChips={chips}
+                    onClearAllAction={clearAll}
+                />
+
+                {filteredSorted.map((w) => (
+                    <div key={w.id} className="vault-panel p-3">
+                        <div className="flex items-start justify-between">
+                            <button
+                                onClick={() =>
+                                    setForm({
+                                        id: w.id,
+                                        name: w.name,
+                                        imagePath: w.imagePath ?? null,
+                                        notes: w.notes ?? null,
+                                        baseType: w.baseType ?? '',
+                                        baseTest: w.baseTest ?? '',
+                                        baseParts: w.baseParts ?? null,
+                                        baseRating: w.baseRating ?? null,
+                                        baseEffects: w.baseEffects.map((be) => ({ effectId: be.effectId, valueInt: be.valueInt })),
+                                        profiles: w.profiles
+                                            .slice()
+                                            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                                            .map((p) => ({
+                                                order: p.order ?? 0,
+                                                typeOverride: p.typeOverride ?? null,
+                                                testOverride: p.testOverride ?? null,
+                                                partsOverride: p.partsOverride ?? null,
+                                                ratingDelta: p.ratingDelta ?? null,
+                                                effects: p.effects.map((e) => ({ effectId: e.effectId, valueInt: e.valueInt })),
+                                            })),
+                                    })
+                                }
+                                className="text-left font-medium"
+                            >
+                                {w.name}
+                            </button>
+                            <button onClick={() => void del(w.id)} className="text-xs text-red-300">
+                                Usuń
+                            </button>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {imgPick && (

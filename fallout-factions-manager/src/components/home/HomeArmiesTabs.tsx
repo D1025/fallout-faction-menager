@@ -316,10 +316,20 @@ export function HomeArmiesTabs({
     myArmies,
     shared,
     children,
+    filtersOpen,
+    onFiltersOpenChangeAction,
+    onClearFiltersAction,
+    clearFromHeaderTick,
+    onClearFromHeaderAction,
 }: {
     myArmies: ArmyMeta[];
     shared: SharedMeta[];
     children?: React.ReactNode;
+    filtersOpen?: boolean;
+    onFiltersOpenChangeAction?: (next: boolean) => void;
+    onClearFiltersAction?: () => void;
+    clearFromHeaderTick?: number;
+    onClearFromHeaderAction?: () => void;
 }) {
     const router = useRouter();
     const pathname = usePathname();
@@ -409,6 +419,7 @@ export function HomeArmiesTabs({
             subfactionMode: 'ANY',
             permFilter: 'ALL',
         }));
+        onClearFiltersAction?.();
     };
 
     const chips: ActiveFilterChip[] = [
@@ -429,6 +440,24 @@ export function HomeArmiesTabs({
             ? [{ key: 'perm', label: `Perm: ${state.permFilter}`, onRemove: () => setState((s) => ({ ...s, permFilter: 'ALL' })) }]
             : []),
     ];
+
+    // Lokalne sterowanie drawerem (fallback), jeśli nie jest kontrolowane z zewnątrz.
+    const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
+    const isControlled = filtersOpen != null;
+    const drawerOpen = isControlled ? Boolean(filtersOpen) : internalFiltersOpen;
+    const setDrawerOpen = (next: boolean) => {
+        if (!isControlled) setInternalFiltersOpen(next);
+        onFiltersOpenChangeAction?.(next);
+    };
+
+    useEffect(() => {
+        if (clearFromHeaderTick == null) return;
+        // przy pierwszym renderze nie czyścimy automatycznie
+        if (clearFromHeaderTick === 0) return;
+        resetFilters();
+        onClearFromHeaderAction?.();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clearFromHeaderTick]);
 
     return (
         <div className="pt-3">
@@ -466,31 +495,41 @@ export function HomeArmiesTabs({
                 </button>
             </div>
 
-            <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 p-3">
+            <div className="mt-3">
                 <div className="mb-2 text-[11px] text-zinc-400">
                     Wyniki: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
                     {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
                 </div>
-                <FilterBar
-                    search={state.q}
-                    onSearch={(q) => setState((s) => ({ ...s, q }))}
-                    searchPlaceholder="Szukaj (nazwa, frakcja, subfrakcja, tier, rating)…"
-                    controls={
+            </div>
+
+            {/* Drawer filtrów renderujemy poza layoutem, żeby nie zostawiać pustych kontenerów */}
+            <FilterBar
+                showTrigger={false}
+                open={drawerOpen}
+                onOpenChangeAction={setDrawerOpen}
+                search={state.q}
+                onSearchAction={(q) => setState((s) => ({ ...s, q }))}
+                searchPlaceholder="Szukaj (nazwa, frakcja, subfrakcja, tier, rating)…"
+                moreFilters={
+                    <>
                         <div className="grid grid-cols-2 gap-2">
-                            <select
-                                value={String(state.tierFilter)}
-                                onChange={(e) => {
-                                    const v = e.target.value;
-                                    setState((s) => ({ ...s, tierFilter: v === 'ALL' ? 'ALL' : (Number(v) as 1 | 2 | 3) }));
-                                }}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                aria-label="Filtr tier"
-                            >
-                                <option value="ALL">Wszystkie tiery</option>
-                                <option value="1">Tier 1</option>
-                                <option value="2">Tier 2</option>
-                                <option value="3">Tier 3</option>
-                            </select>
+                            <label className="block min-w-0">
+                                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">Tier</div>
+                                <select
+                                    value={String(state.tierFilter)}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        setState((s) => ({ ...s, tierFilter: v === 'ALL' ? 'ALL' : (Number(v) as 1 | 2 | 3) }));
+                                    }}
+                                    className="h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                    aria-label="Filtr tier"
+                                >
+                                    <option value="ALL">Wszystkie tiery</option>
+                                    <option value="1">Tier 1</option>
+                                    <option value="2">Tier 2</option>
+                                    <option value="3">Tier 3</option>
+                                </select>
+                            </label>
                             <SortSelect
                                 value={state.sort}
                                 onChange={(sort) => setState((s) => ({ ...s, sort: sort as SortKey }))}
@@ -506,56 +545,57 @@ export function HomeArmiesTabs({
                                 ]}
                             />
                         </div>
-                    }
-                    moreFilters={
-                        <>
-                            <select
-                                value={state.factionFilter}
-                                onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                aria-label="Filtr frakcja"
-                            >
-                                <option value="ALL">Wszystkie frakcje</option>
-                                {factions.map((f) => (
-                                    <option key={f} value={f}>{f}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={state.subfactionMode}
-                                onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                            >
-                                <option value="ANY">Subfrakcja: dowolnie</option>
-                                <option value="ONLY_WITH">Tylko z subfrakcją</option>
-                                <option value="ONLY_NONE">Tylko bez subfrakcji</option>
-                            </select>
-                            <select
-                                value={state.subfactionFilter}
-                                onChange={(e) => setState((s) => ({ ...s, subfactionFilter: e.target.value }))}
-                                disabled={state.subfactionMode === 'ONLY_NONE'}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
-                            >
-                                <option value="ALL">Wszystkie subfrakcje</option>
-                                {subfactions.map((sf) => (
-                                    <option key={sf} value={sf}>{sf}</option>
-                                ))}
-                            </select>
-                            <select
-                                value={state.permFilter}
-                                onChange={(e) => setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))}
-                                disabled={state.tab !== 'SHARED'}
-                                className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
-                            >
-                                <option value="ALL">Perm: wszystkie</option>
-                                <option value="READ">Perm: tylko odczyt</option>
-                                <option value="WRITE">Perm: współpraca</option>
-                            </select>
-                        </>
-                    }
-                    activeChips={chips}
-                    onClearAll={resetFilters}
-                />
-            </div>
+
+                        <select
+                            value={state.factionFilter}
+                            onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
+                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            aria-label="Filtr frakcja"
+                        >
+                            <option value="ALL">Wszystkie frakcje</option>
+                            {factions.map((f) => (
+                                <option key={f} value={f}>{f}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={state.subfactionMode}
+                            onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
+                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                        >
+                            <option value="ANY">Subfrakcja: dowolnie</option>
+                            <option value="ONLY_WITH">Tylko z subfrakcją</option>
+                            <option value="ONLY_NONE">Tylko bez subfrakcji</option>
+                        </select>
+
+                        <select
+                            value={state.subfactionFilter}
+                            onChange={(e) => setState((s) => ({ ...s, subfactionFilter: e.target.value }))}
+                            disabled={state.subfactionMode === 'ONLY_NONE'}
+                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                        >
+                            <option value="ALL">Wszystkie subfrakcje</option>
+                            {subfactions.map((sf) => (
+                                <option key={sf} value={sf}>{sf}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={state.permFilter}
+                            onChange={(e) => setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))}
+                            disabled={state.tab !== 'SHARED'}
+                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                        >
+                            <option value="ALL">Perm: wszystkie</option>
+                            <option value="READ">Perm: tylko odczyt</option>
+                            <option value="WRITE">Perm: współpraca</option>
+                        </select>
+                    </>
+                }
+                activeChips={chips}
+                // clear jest w AppHeader
+                onClearAllAction={undefined}
+            />
 
             {/* Lists */}
             {state.tab === 'MINE' && (
