@@ -1,3 +1,5 @@
+'use client';
+
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Button, Flex, Typography } from 'antd';
@@ -9,14 +11,15 @@ export function EntityListItem({
   meta,
   actions,
   href,
-  onClick,
+  onClickAction,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
   href?: string;
-  onClick?: () => void;
+  /** Preferowana nazwa w komponentach klienckich (Next TS71007). */
+  onClickAction?: () => void;
 }) {
   const body = (
     <Flex vertical gap={4}>
@@ -37,9 +40,14 @@ export function EntityListItem({
     );
   }
 
-  if (onClick) {
+  // Back-compat dla starszych wywołań: <EntityListItem onClick={...} />
+  // Nie trzymamy `onClick` w typie, bo Next ostrzega o nie-serializowalnych propsach.
+  const legacyOnClick = (arguments[0] as any)?.onClick as undefined | (() => void);
+  const click = onClickAction ?? legacyOnClick;
+
+  if (click) {
     return (
-      <Button type="text" onClick={onClick} style={{ padding: 0, height: 'auto', textAlign: 'left', width: '100%' }}>
+      <Button type="text" onClick={click} style={{ padding: 0, height: 'auto', textAlign: 'left', width: '100%' }}>
         <SectionCard>{body}</SectionCard>
       </Button>
     );

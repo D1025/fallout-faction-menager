@@ -1,6 +1,7 @@
 // app/admin/subfactions/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const runtime = 'nodejs';
 
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { prisma } from '@/server/prisma';
@@ -29,10 +30,6 @@ type RawUnitTemplate = {
     factions: Array<{ factionId: string }>;
 };
 
-type UnitTemplateDelegate = {
-    findMany(args: { include: { factions: true }; orderBy: Array<{ name: 'asc' | 'desc' }> }): Promise<RawUnitTemplate[]>;
-};
-
 type RawSubfaction = {
     id: string;
     name: string;
@@ -41,21 +38,8 @@ type RawSubfaction = {
     unitDenies: Array<{ unitId: string }>;
 };
 
-type SubfactionDelegate = {
-    findMany(args: {
-        select: {
-            id: true;
-            name: true;
-            factionId: true;
-            unitAllows: { select: { unitId: true } };
-            unitDenies: { select: { unitId: true } };
-        };
-        orderBy: Array<{ factionId: 'asc' | 'desc' } | { name: 'asc' | 'desc' }>;
-    }): Promise<RawSubfaction[]>;
-};
-
-const p = prisma as unknown as { unitTemplate: UnitTemplateDelegate };
-const ps = prisma as unknown as { subfaction: SubfactionDelegate };
+// Usuwamy "p/ps" – w runtime i tak działa realny delegate Prisma.
+// Minimalne typowanie dla mapowania wyników.
 
 export default async function AdminSubfactionsPage() {
     const session = await auth();
@@ -63,8 +47,8 @@ export default async function AdminSubfactionsPage() {
 
     const [factions, rawUnits, subs] = await Promise.all([
         prisma.faction.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-        p.unitTemplate.findMany({ include: { factions: true }, orderBy: [{ name: 'asc' }] }),
-        ps.subfaction.findMany({
+        prisma.unitTemplate.findMany({ include: { factions: true }, orderBy: [{ name: 'asc' }] }) as unknown as RawUnitTemplate[],
+        prisma.subfaction.findMany({
             select: {
                 id: true,
                 name: true,
@@ -73,7 +57,7 @@ export default async function AdminSubfactionsPage() {
                 unitDenies: { select: { unitId: true } },
             },
             orderBy: [{ factionId: 'asc' }, { name: 'asc' }],
-        }),
+        }) as unknown as RawSubfaction[],
     ]);
 
     const units: UnitTemplateDTO[] = rawUnits
