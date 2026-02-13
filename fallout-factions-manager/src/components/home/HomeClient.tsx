@@ -79,8 +79,8 @@ export function HomeClient({
     return (
         <MobilePageShell title="Fallout Army Tracker" headerRight={headerRight}>
             <SectionCard>
-                <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
-                <p className="mt-1 text-sm vault-muted">
+                <p className="type-label text-amber-300">Pip-Boy Dowódcy</p>
+                <p className="mt-1 type-meta">
                     Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.
                 </p>
             </SectionCard>
