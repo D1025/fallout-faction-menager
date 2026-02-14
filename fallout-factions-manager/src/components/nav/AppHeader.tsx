@@ -16,26 +16,20 @@ export function AppHeader({
     maxWidth?: number;
 }) {
     return (
-        <Layout.Header style={{ position: 'sticky', top: 0, zIndex: 10, height: 56, lineHeight: '56px', paddingInline: 12 }}>
-            <Flex align="center" justify="space-between" style={{ maxWidth, margin: '0 auto', width: '100%', gap: 8 }}>
+        <Layout.Header className="ff-app-header">
+            <Flex className="ff-app-header__inner" align="center" justify="space-between" style={{ maxWidth }}>
                 <div style={{ flex: '0 0 auto' }}>{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
 
                 <Typography.Text
                     strong
-                    style={{
-                        flex: '1 1 auto',
-                        minWidth: 0,
-                        textAlign: 'center',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.12em',
-                    }}
+                    className="ff-app-header__title"
                     ellipsis
                     title={title}
                 >
                     {title}
                 </Typography.Text>
 
-                <div style={{ flex: '0 0 auto', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
+                <div className="ff-app-header__right">
                     {right}
                 </div>
             </Flex>

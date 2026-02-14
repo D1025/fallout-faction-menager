@@ -1,12 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { Button } from 'antd';
-import { ClearOutlined, FilterOutlined, ToolOutlined } from '@ant-design/icons';
+import { FilterOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
-import { SignOutButton } from '@/components/auth/SignOutButton';
+import { UserAccountMenu } from '@/components/auth/UserAccountMenu';
 import { CreateArmySheet } from '@/components/home/CreateArmySheet';
 import { HomeArmiesTabs } from '@/components/home/HomeArmiesTabs';
 
@@ -33,56 +32,53 @@ type FactionDTO = {
 };
 
 export function HomeClient({
-    isAdmin,
+    userName,
+    userRole,
+    userPhotoEtag,
     myArmies,
     shared,
     factions,
 }: {
-    isAdmin: boolean;
+    userName: string;
+    userRole: 'USER' | 'ADMIN';
+    userPhotoEtag?: string | null;
     myArmies: ArmyMeta[];
     shared: SharedMeta[];
     factions: FactionDTO[];
 }) {
     const [filtersOpen, setFiltersOpen] = useState(false);
-    const [clearTick, setClearTick] = useState(0);
+    const [filtersActive, setFiltersActive] = useState(false);
+    const writableShared = useMemo(() => shared.filter((row) => row.perm === 'WRITE').length, [shared]);
 
     const headerRight = useMemo(
         () => (
             <div className="flex items-center gap-2">
                 <Button
-                    size="small"
+                    type={filtersActive ? 'primary' : 'default'}
                     icon={<FilterOutlined />}
                     onClick={() => setFiltersOpen(true)}
                     aria-label="Filtry"
                     title="Filtry"
                 />
-                <Button
-                    size="small"
-                    icon={<ClearOutlined />}
-                    onClick={() => setClearTick((x) => x + 1)}
-                    aria-label="Wyczyść filtry"
-                    title="Wyczyść filtry"
-                />
-                {isAdmin ? (
-                    <Link href="/admin">
-                        <Button size="small" icon={<ToolOutlined />}>
-                            Admin
-                        </Button>
-                    </Link>
-                ) : null}
-                <SignOutButton />
+                <UserAccountMenu name={userName} role={userRole} photoEtag={userPhotoEtag} />
             </div>
         ),
-        [isAdmin],
+        [filtersActive, userName, userPhotoEtag, userRole],
     );
 
     return (
         <MobilePageShell title="Fallout Army Tracker" headerRight={headerRight}>
-            <SectionCard>
-                <p className="text-xs uppercase tracking-[0.18em] text-amber-300">Pip-Boy Dowódcy</p>
+            <SectionCard className="vault-panel">
+                <p className="ff-panel-headline">Wasteland Command Hub</p>
+                <h2 className="ff-panel-title">Tracker armii Fallout Wasteland Warfare</h2>
                 <p className="mt-1 text-sm vault-muted">
-                    Zarządzaj oddziałami, celami kampanii i zasobami armii pod mobile-first gameplay.
+                    Zarzadzaj oddzialami, celami kampanii i zasobami armii pod mobile-first gameplay.
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="vault-chip">Moje armie: {myArmies.length}</span>
+                    <span className="vault-chip">Udostepnione: {shared.length}</span>
+                    <span className="vault-chip">Edycja shared: {writableShared}</span>
+                </div>
             </SectionCard>
 
             <div className="mt-3">
@@ -91,11 +87,7 @@ export function HomeClient({
                     shared={shared}
                     filtersOpen={filtersOpen}
                     onFiltersOpenChangeAction={setFiltersOpen}
-                    clearFromHeaderTick={clearTick}
-                    onClearFromHeaderAction={() => {
-                        // UX: po wyczyszczeniu zazwyczaj chcemy ukryć drawer
-                        setFiltersOpen(false);
-                    }}
+                    onFiltersActiveChangeAction={setFiltersActive}
                 >
                     <CreateArmySheet factions={factions} />
                 </HomeArmiesTabs>

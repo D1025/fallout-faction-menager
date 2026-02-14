@@ -5,13 +5,15 @@ export function SectionCard({
   title,
   extra,
   children,
+  className,
 }: {
   title?: ReactNode;
   extra?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <Card size="small" styles={{ body: { padding: 14 } }}>
+    <Card size="small" className={`ff-section-card ${className ?? ''}`.trim()} styles={{ body: { padding: 14 } }}>
       {title ? (
         <Flex align="center" justify="space-between" style={{ marginBottom: 10 }}>
           <Typography.Text strong>{title}</Typography.Text>

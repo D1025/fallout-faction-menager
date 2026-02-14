@@ -1,6 +1,6 @@
 'use client';
 
-import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
@@ -364,20 +364,16 @@ export function AdminPerksClient() {
                         <button
                             type="button"
                             onClick={() => setFiltersOpen(true)}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (chips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
                             aria-label="Filtry"
                             title="Filtry"
                         >
                             <FilterOutlined />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={clearAll}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
-                            aria-label="Wyczyść filtry"
-                            title="Wyczyść filtry"
-                        >
-                            <ClearOutlined />
                         </button>
                         <button
                             type="button"

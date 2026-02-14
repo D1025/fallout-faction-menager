@@ -3,14 +3,11 @@ export const revalidate = 0;
 
 import Link from 'next/link';
 import { Button } from 'antd';
-import { LoginOutlined, ToolOutlined, UserOutlined } from '@ant-design/icons';
+import { LoginOutlined, UserOutlined } from '@ant-design/icons';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
-import { SignOutButton } from '@/components/auth/SignOutButton';
-import { CreateArmySheet } from '@/components/home/CreateArmySheet';
-import { HomeArmiesTabs } from '@/components/home/HomeArmiesTabs';
 import { HomeClient } from '@/components/home/HomeClient';
 
 type ArmyMeta = {
@@ -25,7 +22,6 @@ type ArmyMeta = {
 export default async function Home() {
   const session = await auth();
   const userId = session?.user?.id;
-  const isAdmin = session?.user.role === 'ADMIN';
 
   if (!userId) {
     return (
@@ -43,6 +39,13 @@ export default async function Home() {
       </MobilePageShell>
     );
   }
+
+  const userMeta = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, role: true, photoEtag: true },
+  });
+  const userName = userMeta?.name ?? session?.user?.name ?? 'Dowodca';
+  const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
   let myArmies: ArmyMeta[] = [];
   let shared:
@@ -225,7 +228,9 @@ export default async function Home() {
 
   return (
     <HomeClient
-      isAdmin={isAdmin}
+      userName={userName}
+      userRole={userRole}
+      userPhotoEtag={userMeta?.photoEtag ?? null}
       myArmies={myArmies}
       shared={shared}
       factions={factions}

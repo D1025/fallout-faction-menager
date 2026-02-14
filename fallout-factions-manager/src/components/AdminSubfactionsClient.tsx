@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import type { SubfactionDTO, UnitTemplateDTO } from '@/app/admin/subfactions/page';
+import { PlusOutlined } from '@ant-design/icons';
 
 type FactionDTO = { id: string; name: string };
 
@@ -107,7 +108,14 @@ export function AdminSubfactionsClient({
     }
 
     return (
-        <div className="py-4">
+        <div className="app-shell pt-2">
+            <div className="vault-panel p-3">
+                <p className="ff-panel-headline">Admin / Subfrakcje</p>
+                <p className="text-sm vault-muted">
+                    Konfiguruj warianty frakcji i kontroluj liste dozwolonych lub blokowanych jednostek.
+                </p>
+            </div>
+
             <div className="vault-panel p-3">
                 <div className="text-sm font-semibold">Wybierz frakcję</div>
                 <select
@@ -135,9 +143,12 @@ export function AdminSubfactionsClient({
                     <button
                         disabled={busy || !selectedFactionId}
                         onClick={() => void create()}
-                        className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-50"
+                        className="ff-btn ff-btn-primary ff-btn-icon-mobile disabled:opacity-50"
+                        aria-label="Dodaj subfrakcje"
+                        title="Dodaj subfrakcje"
                     >
-                        Dodaj
+                        <PlusOutlined className="ff-btn-icon" />
+                        <span className="ff-btn-label">Dodaj</span>
                     </button>
                 </div>
             </div>

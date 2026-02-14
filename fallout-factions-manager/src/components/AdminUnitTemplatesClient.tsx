@@ -1,9 +1,10 @@
 'use client';
 
-import { ClearOutlined, FilterOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
+import { FilterOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { FilterBar, QuickToggle, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import type { FactionDTO, PerkDTO, WeaponDTO, UnitTemplateDTO } from '@/app/admin/templates/page';
+import { notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 /** Opcja: 1–2 bronie + koszt + (opcjonalny) rating */
 type FormOption = { weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null };
@@ -221,7 +222,13 @@ export function AdminUnitTemplatesClient({
 
     return (
         <div className="app-shell pt-3">
-            <h1 className="text-lg font-semibold">Jednostki</h1>
+            <div className="vault-panel p-3">
+                <p className="ff-panel-headline">Admin / Szablony</p>
+                <h1 className="ff-panel-title">Jednostki i konfiguracje startowe</h1>
+                <p className="mt-1 text-sm vault-muted">
+                    Definiuj role jednostek, statystyki SPECIAL, opcje uzbrojenia oraz perki startowe.
+                </p>
+            </div>
 
             {/* FORMULARZ */}
             <div className="mt-4 vault-panel p-3">
@@ -573,21 +580,17 @@ export function AdminUnitTemplatesClient({
                         <button
                             type="button"
                             onClick={() => setFiltersOpen(true)}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (chips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
                             aria-label="Filtry"
                             title="Filtry"
                         >
                             <FilterOutlined />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={clearAll}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
-                            aria-label="Wyczyść filtry"
-                            title="Wyczyść filtry"
-                        >
-                            <ClearOutlined />
-                        </button>
+                        </button>
                     </div>
                 </div>
 
@@ -600,8 +603,8 @@ export function AdminUnitTemplatesClient({
                     searchPlaceholder="Szukaj jednostki…"
                     quickToggles={
                         <div className="flex flex-wrap gap-2">
-                            <QuickToggle checked={onlyGlobal} onChange={setOnlyGlobal} label="Tylko GLOBAL" />
-                            <QuickToggle checked={onlyLeader} onChange={setOnlyLeader} label="Tylko LEADER" />
+                            <QuickToggle checked={onlyGlobal} onChangeAction={setOnlyGlobal} label="Tylko GLOBAL" />
+                            <QuickToggle checked={onlyLeader} onChangeAction={setOnlyLeader} label="Tylko LEADER" />
                         </div>
                     }
                     controls={

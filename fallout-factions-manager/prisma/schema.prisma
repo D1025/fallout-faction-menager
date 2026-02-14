@@ -60,7 +60,11 @@ enum PerkCategory {
 model User {
   id        String   @id @default(cuid())
   name      String   @unique
+  passwordHash String?
   role      UserRole @default(USER)
+  photoBytes Bytes?
+  photoMime  String?
+  photoEtag  String?
   createdAt DateTime @default(now())
 
   armies Army[]
@@ -581,4 +585,3 @@ model SubfactionWeaponDeny {
   @@unique([subfactionId, weaponId])
   @@index([weaponId])
 }
-

@@ -9,7 +9,7 @@ export function LoadingState({
   description?: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 p-4">
+    <div className="vault-panel rounded-xl p-4">
       <Space direction="vertical" size={8} style={{ width: '100%' }}>
         <Typography.Text strong>{title}</Typography.Text>
         <Typography.Text type="secondary">{description}</Typography.Text>
@@ -34,7 +34,7 @@ export function EmptyState({
       title={title}
       subTitle={description}
       extra={action}
-      style={{ border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: 20 }}
+      style={{ border: '1px solid rgba(101,118,104,0.5)', borderRadius: 16, padding: 20 }}
     />
   );
 }

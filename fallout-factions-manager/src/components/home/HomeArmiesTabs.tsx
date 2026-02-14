@@ -319,6 +319,7 @@ export function HomeArmiesTabs({
     children,
     filtersOpen,
     onFiltersOpenChangeAction,
+    onFiltersActiveChangeAction,
     onClearFiltersAction,
     clearFromHeaderTick,
     onClearFromHeaderAction,
@@ -328,6 +329,7 @@ export function HomeArmiesTabs({
     children?: React.ReactNode;
     filtersOpen?: boolean;
     onFiltersOpenChangeAction?: (next: boolean) => void;
+    onFiltersActiveChangeAction?: (active: boolean) => void;
     onClearFiltersAction?: () => void;
     clearFromHeaderTick?: number;
     onClearFromHeaderAction?: () => void;
@@ -442,6 +444,12 @@ export function HomeArmiesTabs({
             : []),
     ];
 
+    const hasActive = hasActiveFilters(state);
+
+    useEffect(() => {
+        onFiltersActiveChangeAction?.(hasActive);
+    }, [hasActive, onFiltersActiveChangeAction]);
+
     // Lokalne sterowanie drawerem (fallback), jeśli nie jest kontrolowane z zewnątrz.
     const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
     const isControlled = filtersOpen != null;
@@ -499,7 +507,7 @@ export function HomeArmiesTabs({
             <div className="mt-3">
                 <div className="mb-2 text-[11px] text-zinc-400">
                     Wyniki: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
-                    {hasActiveFilters(state) ? ' • aktywne filtry' : ' • brak filtrów'}
+                    {hasActive ? ' • aktywne filtry' : ' • brak filtrów'}
                 </div>
             </div>
 
@@ -594,8 +602,7 @@ export function HomeArmiesTabs({
                     </>
                 }
                 activeChips={chips}
-                // clear jest w AppHeader
-                onClearAllAction={undefined}
+                onClearAllAction={resetFilters}
             />
 
             {/* Lists */}

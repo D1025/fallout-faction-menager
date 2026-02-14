@@ -12,6 +12,7 @@ export function EntityListItem({
   actions,
   href,
   onClickAction,
+  onClick,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -20,6 +21,8 @@ export function EntityListItem({
   href?: string;
   /** Preferowana nazwa w komponentach klienckich (Next TS71007). */
   onClickAction?: () => void;
+  /** Back-compat dla starszych wywo�a�: <EntityListItem onClick={...} /> */
+  onClick?: () => void;
 }) {
   const body = (
     <Flex vertical gap={4}>
@@ -34,21 +37,20 @@ export function EntityListItem({
 
   if (href) {
     return (
-      <Link href={href} style={{ display: 'block' }}>
+      <Link href={href} className="ff-link-card" style={{ display: 'block' }}>
         <SectionCard>{body}</SectionCard>
       </Link>
     );
   }
 
-  // Back-compat dla starszych wywołań: <EntityListItem onClick={...} />
-  // Nie trzymamy `onClick` w typie, bo Next ostrzega o nie-serializowalnych propsach.
-  const legacyOnClick = (arguments[0] as any)?.onClick as undefined | (() => void);
-  const click = onClickAction ?? legacyOnClick;
+  const click = onClickAction ?? onClick;
 
   if (click) {
     return (
       <Button type="text" onClick={click} style={{ padding: 0, height: 'auto', textAlign: 'left', width: '100%' }}>
-        <SectionCard>{body}</SectionCard>
+        <div className="ff-link-card" style={{ width: '100%' }}>
+          <SectionCard>{body}</SectionCard>
+        </div>
       </Button>
     );
   }

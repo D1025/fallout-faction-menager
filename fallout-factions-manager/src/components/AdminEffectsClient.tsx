@@ -1,6 +1,6 @@
 'use client';
 
-import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
@@ -158,8 +158,15 @@ export function AdminEffectsClient() {
 
     return (
         <div className="grid gap-3">
+            <div className="vault-panel p-3">
+                <p className="ff-panel-headline">Admin / Efekty</p>
+                <p className="text-sm vault-muted">
+                    Definiuj efekty broni i krytyki, ktore beda przypinane do profili uzbrojenia.
+                </p>
+            </div>
+
             {/* Formularz */}
-            <div className="rounded-xl border border-zinc-800 p-3">
+            <div className="vault-panel p-3">
                 <div className="text-sm font-medium">
                     {editingId ? 'Edytuj efekt' : 'Nowy efekt'}
                 </div>
@@ -218,7 +225,7 @@ export function AdminEffectsClient() {
 
             {/* Lista */}
             <div className="grid gap-2">
-                <div className="flex items-start justify-between gap-2 rounded-xl border border-zinc-800 p-3">
+                <div className="vault-panel p-3">
                     <div>
                         <div className="text-sm font-medium">Lista efektów</div>
                         <div className="mt-0.5 text-[11px] text-zinc-400">
@@ -229,21 +236,17 @@ export function AdminEffectsClient() {
                         <button
                             type="button"
                             onClick={() => setFiltersOpen(true)}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (chips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
                             aria-label="Filtry"
                             title="Filtry"
                         >
                             <FilterOutlined />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={clearAll}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
-                            aria-label="Wyczyść filtry"
-                            title="Wyczyść filtry"
-                        >
-                            <ClearOutlined />
-                        </button>
+                        </button>
                         <button
                             type="button"
                             onClick={() => void reload()}

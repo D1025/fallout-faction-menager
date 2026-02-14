@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { notifyApiError } from '@/lib/ui/notify';
 import { useMemo, useState, useEffect } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
 
 type FactionDTO = {
     id: string;
@@ -27,9 +28,12 @@ export default function CreateArmySheetDefault({ factions }: { factions: Faction
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 active:scale-[0.99]"
+                className="ff-btn ff-btn-primary ff-btn-icon-mobile"
+                title="Dodaj armie"
+                aria-label="Dodaj armie"
             >
-                Dodaj nową
+                <PlusOutlined className="ff-btn-icon" />
+                <span className="ff-btn-label">Dodaj armie</span>
             </button>
             {open && <Sheet factions={factions} onClose={() => setOpen(false)} />}
         </>

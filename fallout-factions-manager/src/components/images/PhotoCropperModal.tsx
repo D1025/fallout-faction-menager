@@ -2,6 +2,7 @@
 
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { notifyWarning } from '@/lib/ui/notify';
 
 type Crop = { x: number; y: number; size: number };
 

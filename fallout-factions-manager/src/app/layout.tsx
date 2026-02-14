@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
+import { AntdNotifyBridge } from '@/components/providers/AntdNotifyBridge';
 import { falloutTheme } from '@/lib/ui/theme';
 import './globals.css';
 
@@ -16,7 +17,12 @@ export default function RootLayout({
   return (
     <html lang="pl">
       <body className="antialiased">
-        <ConfigProvider theme={falloutTheme}>{children}</ConfigProvider>
+        <ConfigProvider theme={falloutTheme}>
+          <App>
+            <AntdNotifyBridge />
+            {children}
+          </App>
+        </ConfigProvider>
       </body>
     </html>
   );

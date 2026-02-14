@@ -1,32 +1,24 @@
 'use client';
 
 import { Button } from 'antd';
-import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { FilterOutlined } from '@ant-design/icons';
 
 export function ArmyHeaderControls({
     onOpenFiltersAction,
-    onClearFiltersAction,
+    hasActiveFilters,
 }: {
     onOpenFiltersAction: () => void;
-    onClearFiltersAction: () => void;
+    hasActiveFilters: boolean;
 }) {
     return (
         <div className="flex items-center gap-2">
             <Button
-                size="small"
+                type={hasActiveFilters ? 'primary' : 'default'}
                 icon={<FilterOutlined />}
                 onClick={onOpenFiltersAction}
                 aria-label="Filtry"
                 title="Filtry"
             />
-            <Button
-                size="small"
-                icon={<ClearOutlined />}
-                onClick={onClearFiltersAction}
-                aria-label="Wyczyść filtry"
-                title="Wyczyść filtry"
-            />
         </div>
     );
 }
-

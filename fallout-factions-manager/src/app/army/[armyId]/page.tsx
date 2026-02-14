@@ -4,7 +4,6 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { ArmyPageClient } from '@/components/army/ArmyPageClient';
-import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;

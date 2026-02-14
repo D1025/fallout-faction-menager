@@ -1,6 +1,6 @@
 'use client';
 
-import { ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { FilterOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
@@ -303,6 +303,13 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     return (
         <div className="space-y-4">
+            <div className="vault-panel p-3">
+                <p className="ff-panel-headline">Admin / Uzbrojenie</p>
+                <p className="text-sm vault-muted">
+                    Zarzadzaj bazowymi statystykami broni, profilami i zestawami efektow.
+                </p>
+            </div>
+
             {/* Formularz */}
             <div className="vault-panel p-3">
                 <div className="flex items-center justify-between">
@@ -573,21 +580,17 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                         <button
                             type="button"
                             onClick={() => setFiltersOpen(true)}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (chips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
                             aria-label="Filtry"
                             title="Filtry"
                         >
                             <FilterOutlined />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={clearAll}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-200"
-                            aria-label="Wyczyść filtry"
-                            title="Wyczyść filtry"
-                        >
-                            <ClearOutlined />
-                        </button>
+                        </button>
                         <button
                             type="button"
                             onClick={() => void reload()}

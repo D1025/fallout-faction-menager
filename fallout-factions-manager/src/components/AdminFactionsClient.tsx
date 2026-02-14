@@ -7,10 +7,6 @@ export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number 
 export type Faction = { id: string; name: string; limits: FactionLimit[] };
 type FormState = { id?: string; name: string; limits: FactionLimit[] };
 
-/**
- * @deprecated Ten komponent nie jest już używany. Admin frakcji działa przez `FactionsClient` (widok /admin/factions).
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
     const [list, setList] = useState<Faction[]>(initial);
     const [form, setForm] = useState<FormState>({ name: '', limits: [] });

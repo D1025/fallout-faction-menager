@@ -91,6 +91,7 @@ export function ArmyDashboardClient({
     subfactionId,
     // zamiast refa
     onActionsReadyAction,
+    onFiltersActiveChangeAction,
 }: {
     armyId: string;
     armyName: string;
@@ -102,6 +103,7 @@ export function ArmyDashboardClient({
     rating: number;
     subfactionId?: string | null;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
+    onFiltersActiveChangeAction?: (active: boolean) => void;
 }) {
     return (
         <ArmyDashboardClientInner
@@ -115,6 +117,7 @@ export function ArmyDashboardClient({
             rating={rating}
             subfactionId={subfactionId}
             onActionsReadyAction={onActionsReadyAction}
+            onFiltersActiveChangeAction={onFiltersActiveChangeAction}
         />
     );
 }
@@ -130,6 +133,7 @@ function ArmyDashboardClientInner({
     rating,
     subfactionId,
     onActionsReadyAction,
+    onFiltersActiveChangeAction,
 }: {
     armyId: string;
     armyName: string;
@@ -141,6 +145,7 @@ function ArmyDashboardClientInner({
     rating: number;
     subfactionId?: string | null;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
+    onFiltersActiveChangeAction?: (active: boolean) => void;
 }) {
     const router = useRouter();
     const [totals, setTotals] = useState(resources);
@@ -843,6 +848,12 @@ function ArmyDashboardClientInner({
         setFilter('ALL');
         setHideInactive(false);
     }
+
+    const hasActiveFilters = filter !== 'ALL' || hideInactive;
+
+    useEffect(() => {
+        onFiltersActiveChangeAction?.(hasActiveFilters);
+    }, [hasActiveFilters, onFiltersActiveChangeAction]);
 
     useEffect(() => {
         onActionsReadyAction?.({

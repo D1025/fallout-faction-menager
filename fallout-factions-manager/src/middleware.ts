@@ -7,7 +7,7 @@ import { getToken } from 'next-auth/jwt';
 export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
-    // Przepuść auth endpointy i assety
+    // Przepusc auth endpointy i assety
     if (
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/_next/') ||
@@ -21,7 +21,12 @@ export async function middleware(req: NextRequest) {
     // Odczytaj token z ciasteczka (Edge-safe)
     const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-    // Wymuś logowanie na wszystkim poza /login
+    // Zalogowany user nie powinien trafic na ekran logowania
+    if (token && pathname === '/login') {
+        return NextResponse.redirect(new URL('/', req.url));
+    }
+
+    // Wymus logowanie na wszystkim poza /login
     if (!token && pathname !== '/login') {
         const url = new URL('/login', req.url);
         url.searchParams.set('next', pathname);

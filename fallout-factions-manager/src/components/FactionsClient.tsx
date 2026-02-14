@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftOutlined, ClearOutlined, FilterOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import { useRouter } from 'next/navigation';
@@ -138,32 +138,32 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     };
 
     return (
-        <div className="min-h-dvh">
+        <div className="app-shell">
             <Header
                 title="Frakcje – limity, zadania, ulepszenia"
                 right={
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => setFiltersOpen(true)}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900"
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (activeChips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
                             aria-label="Filtry"
                             title="Filtry"
                         >
                             <FilterOutlined />
-                        </button>
-                        <button
-                            onClick={clearAll}
-                            className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-700 bg-zinc-900"
-                            aria-label="Wyczyść filtry"
-                            title="Wyczyść filtry"
-                        >
-                            <ClearOutlined />
-                        </button>
+                        </button>
                         <button
                             onClick={openCreate}
-                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+                            className="ff-btn ff-btn-icon-mobile"
+                            title="Dodaj frakcje"
+                            aria-label="Dodaj frakcje"
                         >
-                            + Dodaj frakcję
+                            <PlusOutlined className="ff-btn-icon" />
+                            <span className="ff-btn-label">Dodaj frakcje</span>
                         </button>
                     </div>
                 }
@@ -177,12 +177,12 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                 search={q}
                 onSearchAction={setQ}
                 searchPlaceholder="Szukaj frakcji"
-                quickToggles={<QuickToggle checked={onlyWithLimits} onChange={setOnlyWithLimits} label="Tylko z limitami" />}
+                quickToggles={<QuickToggle checked={onlyWithLimits} onChangeAction={setOnlyWithLimits} label="Tylko z limitami" />}
                 activeChips={activeChips}
                 onClearAllAction={clearAll}
             />
 
-            <main className="app-shell">
+            <main>
                 {/* usunięto stary kontener filtrów */}
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -255,10 +255,13 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
 function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur">
-            <div className="mx-auto flex h-14 w-full max-w-[560px] items-center justify-between px-3">
-                <div className="text-lg font-semibold tracking-wide">{title}</div>
-                <div className="text-xs text-zinc-400">{right}</div>
+        <header className="sticky top-0 z-10 vault-panel px-3 py-2 backdrop-blur">
+            <div className="mx-auto flex min-h-12 w-full items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="ff-panel-headline">Admin / Frakcje</p>
+                    <div className="truncate text-sm font-semibold tracking-wide">{title}</div>
+                </div>
+                <div className="text-xs text-zinc-300">{right}</div>
             </div>
         </header>
     );
@@ -270,13 +273,13 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
             onClick={onOpen}
             className="group flex items-center gap-3 vault-panel p-3 text-left active:scale-[0.99]"
         >
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-800 text-zinc-300">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-amber-300/30 bg-zinc-900 text-amber-200">
                 {faction.name.slice(0, 2)}
             </div>
             <div className="flex-1">
                 <div className="flex items-center justify-between">
                     <div className="text-base font-semibold leading-tight">{faction.name}</div>
-                    <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
+                    <span className="rounded-full border border-amber-300/35 bg-zinc-900 px-2 py-0.5 text-[10px] text-amber-100">
             edytuj
           </span>
                 </div>
@@ -292,7 +295,7 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
 
 function LimitBadge({ tag, values }: { tag: string; values: (number | null | undefined)[] }) {
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-300">
+        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
       <span className="font-medium">{tag}</span>
       <span className="text-zinc-500">{values.map((v) => (v ?? '–')).join('/')}</span>
     </span>

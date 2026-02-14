@@ -7,10 +7,12 @@ export function SignOutButton() {
     return (
         <button
             onClick={() => signOut({ callbackUrl: '/login' })}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs active:scale-[0.98]"
+            className="ff-btn ff-btn-icon-mobile"
             title="Wyloguj"
+            aria-label="Wyloguj"
         >
-            <LogoutOutlined className="mr-1 text-zinc-200" /> Wyloguj
+            <LogoutOutlined className="ff-btn-icon" />
+            <span className="ff-btn-label">Wyloguj</span>
         </button>
     );
 }

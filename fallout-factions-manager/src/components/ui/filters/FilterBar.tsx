@@ -1,6 +1,6 @@
 'use client';
 
-import { FilterOutlined, SearchOutlined } from '@ant-design/icons';
+import { ClearOutlined, FilterOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Drawer, Grid, Tooltip } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { FilterChips, type ActiveFilterChip } from './FilterChips';
@@ -14,10 +14,9 @@ export function FilterBar({
     activeChips,
     onClearAllAction,
     moreFilters,
-    /** Sterowanie z zewnątrz (np. przycisk w headerze). */
+    onActiveChangeAction,
     open,
     onOpenChangeAction,
-    /** Czy pokazywać wewnętrzny przycisk otwierający Drawer. */
     showTrigger = true,
 }: {
     search?: string;
@@ -28,6 +27,7 @@ export function FilterBar({
     activeChips?: ActiveFilterChip[];
     onClearAllAction?: () => void;
     moreFilters?: React.ReactNode;
+    onActiveChangeAction?: (active: boolean) => void;
     open?: boolean;
     onOpenChangeAction?: (next: boolean) => void;
     showTrigger?: boolean;
@@ -44,11 +44,9 @@ export function FilterBar({
         onOpenChangeAction?.(next);
     };
 
-    // Jeśli user ma aktywne filtry, nie utrudniaj — drawer może być szybciej dostępny.
-    // (Nie otwieramy automatycznie, ale trigger dostaje stan "primary".)
     useEffect(() => {
-        // no-op — zostawione na przyszłość jeśli będziemy zapamiętywać stan
-    }, [hasActive]);
+        onActiveChangeAction?.(hasActive);
+    }, [hasActive, onActiveChangeAction]);
 
     const drawerBody = (
         <div className="grid gap-3">
@@ -68,30 +66,38 @@ export function FilterBar({
             {quickToggles ? <div className="flex flex-wrap gap-2">{quickToggles}</div> : null}
             {moreFilters ? <div className="grid gap-3">{moreFilters}</div> : null}
             <FilterChips chips={chips} />
+
+            {onClearAllAction ? (
+                <Button
+                    block
+                    type={hasActive ? 'primary' : 'default'}
+                    icon={<ClearOutlined />}
+                    disabled={!hasActive}
+                    onClick={onClearAllAction}
+                >
+                    Wyczysc filtry
+                </Button>
+            ) : null}
         </div>
     );
 
     const screens = Grid.useBreakpoint();
     const isDesktop = Boolean(screens.lg);
-
-    const desktopWidth = 520;
-    const mobileMaxHeight = '70dvh';
+    const mobileMaxHeight = '105dvh';
 
     return (
         <>
-            {showTrigger || onClearAllAction ? (
+            {showTrigger ? (
                 <div className="flex items-center justify-end gap-2">
-                    {showTrigger ? (
-                        <Tooltip title={hasActive ? 'Filtry (aktywne)' : 'Filtry'}>
-                            <Button
-                                type={hasActive ? 'primary' : 'default'}
-                                size="middle"
-                                icon={<FilterOutlined />}
-                                onClick={() => setOpen(true)}
-                                aria-label="Filtry"
-                            />
-                        </Tooltip>
-                    ) : null}
+                    <Tooltip title={hasActive ? 'Filtry (aktywne)' : 'Filtry'}>
+                        <Button
+                            type={hasActive ? 'primary' : 'default'}
+                            size="middle"
+                            icon={<FilterOutlined />}
+                            onClick={() => setOpen(true)}
+                            aria-label="Filtry"
+                        />
+                    </Tooltip>
                 </div>
             ) : null}
 
@@ -100,11 +106,10 @@ export function FilterBar({
                 open={drawerOpen}
                 onClose={() => setOpen(false)}
                 placement={isDesktop ? 'right' : 'bottom'}
-                size={isDesktop ? 'default' : 'default'}
+                size="default"
                 closable
                 styles={{
                     section: {
-                        ...({}),
                         maxWidth: '100vw',
                     },
                     body: {

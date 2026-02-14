@@ -1,18 +1,18 @@
-import { Modal, message, notification } from 'antd';
+﻿import { message, notification, type ModalFuncProps } from 'antd';
 
 export const UI_FEEDBACK_STANDARD = {
-  toast: 'Używaj krótkich toastów (message.*) dla powodzeń i lekkich walidacji formularza.',
-  blockingModal: 'Używaj modala blokującego wyłącznie przy akcjach nieodwracalnych (usuniecie, reset).',
-  errors: 'Komunikat błędu: co się nie udało + wskazówka naprawcza (np. odśwież, sprawdź połączenie).',
+  toast: 'Uzywaj krotkich toastow (message.*) dla powodzen i lekkich walidacji formularza.',
+  blockingModal: 'Uzywaj modala blokujacego wylacznie przy akcjach nieodwracalnych (usuniecie, reset).',
+  errors: 'Komunikat bledu: co sie nie udalo + wskazowka naprawcza (np. odswiez, sprawdz polaczenie).',
 } as const;
 
-export function getErrorMessage(error: unknown, fallback = 'Wystąpił nieoczekiwany błąd.'): string {
+export function getErrorMessage(error: unknown, fallback = 'Wystapil nieoczekiwany blad.'): string {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message || fallback;
   return fallback;
 }
 
-function withHint(content: string, hint = 'Spróbuj ponownie za chwilę.') {
+function withHint(content: string, hint = 'Sprobuj ponownie za chwile.') {
   return `${content} ${hint}`.trim();
 }
 
@@ -28,16 +28,22 @@ export function notifyWarning(content: string) {
   message.warning(content);
 }
 
-export function notifyApiError(error: unknown, fallback = 'Nie udało się wykonać operacji.') {
+export function notifyApiError(error: unknown, fallback = 'Nie udalo sie wykonac operacji.') {
   notification.error({
-    message: 'Błąd API',
-    description: withHint(getErrorMessage(error, fallback), 'Sprawdź dane i połączenie, a potem spróbuj ponownie.'),
+    message: 'Blad API',
+    description: withHint(getErrorMessage(error, fallback), 'Sprawdz dane i polaczenie, a potem sprobuj ponownie.'),
   });
 }
 
 export async function responseError(res: Response, fallback: string): Promise<Error> {
   const text = await res.text().catch(() => '');
   return new Error(text || fallback);
+}
+
+let modalConfirmHandler: ((config: ModalFuncProps) => void) | null = null;
+
+export function bindConfirmActionModal(handler: ((config: ModalFuncProps) => void) | null) {
+  modalConfirmHandler = handler;
 }
 
 export function confirmAction(options: {
@@ -48,14 +54,24 @@ export function confirmAction(options: {
   danger?: boolean;
   onOk: () => Promise<void>;
 }) {
-  Modal.confirm({
-    title: options.title,
-    content: options.content,
-    okText: options.okText ?? 'Potwierdź',
-    cancelText: options.cancelText ?? 'Anuluj',
-    okButtonProps: { danger: options.danger },
-    onOk: async () => {
-      await options.onOk();
-    },
-  });
+  if (modalConfirmHandler) {
+    modalConfirmHandler({
+      title: options.title,
+      content: options.content,
+      okText: options.okText ?? 'Potwierdz',
+      cancelText: options.cancelText ?? 'Anuluj',
+      okButtonProps: { danger: options.danger },
+      onOk: async () => {
+        await options.onOk();
+      },
+    });
+    return;
+  }
+
+  if (typeof window !== 'undefined') {
+    const prompt = [options.title, options.content].filter(Boolean).join('\n\n');
+    const accepted = window.confirm(prompt);
+    if (!accepted) return;
+    void options.onOk();
+  }
 }
