@@ -9,6 +9,7 @@ import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectToo
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 type Kind = 'caps' | 'parts' | 'reach' | 'exp';
+type UIFactionLimit = { tag: string; tier1: number | null; tier2: number | null; tier3: number | null };
 
 /* ==== typy broni zgodne z logiką override ==== */
 type EffectKind = 'WEAPON' | 'CRITICAL';
@@ -18,6 +19,8 @@ type UIEffect = {
     name: string;
     kind: EffectKind;
     valueInt: number | null;
+    valueText?: string | null;
+    effectMode?: 'ADD' | 'REMOVE';
 };
 type UIProfile = {
     id: string;
@@ -85,6 +88,7 @@ export function ArmyDashboardClient({
     tier,
     factionId,
     factionName,
+    factionLimits,
     resources,
     units,
     rating,
@@ -98,6 +102,7 @@ export function ArmyDashboardClient({
     tier: number;
     factionId: string;
     factionName: string;
+    factionLimits: UIFactionLimit[];
     resources: Record<Kind, number>;
     units: UnitListItem[];
     rating: number;
@@ -112,6 +117,7 @@ export function ArmyDashboardClient({
             tier={tier}
             factionId={factionId}
             factionName={factionName}
+            factionLimits={factionLimits}
             resources={resources}
             units={units}
             rating={rating}
@@ -128,6 +134,7 @@ function ArmyDashboardClientInner({
     tier,
     factionId,
     factionName,
+    factionLimits,
     resources,
     units,
     rating,
@@ -140,6 +147,7 @@ function ArmyDashboardClientInner({
     tier: number;
     factionId: string;
     factionName: string;
+    factionLimits: UIFactionLimit[];
     resources: Record<Kind, number>;
     units: UnitListItem[];
     rating: number;
@@ -246,6 +254,12 @@ function ArmyDashboardClientInner({
         });
     }, [filter, units, groups, hideInactive]);
 
+    const limitForTier = (l: UIFactionLimit, t: number): number | null => {
+        if (t <= 1) return l.tier1;
+        if (t === 2) return l.tier2;
+        return l.tier3;
+    };
+
     /* ---------- SPECIAL (kompakt) ---------- */
     function SpecialCompact({
                                 base,
@@ -289,15 +303,20 @@ function ArmyDashboardClientInner({
     }
 
     /* ---------- helper: X -> valueInt ---------- */
-    function formatEffect(name: string, valueInt: number | null): string {
-        if (valueInt == null) return name;
-        const out = name.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
-        if (out !== name) return out;
-        return `${name} (${valueInt})`;
+    function formatEffect(name: string, valueInt: number | null, valueText?: string | null): string {
+        let out = name;
+        if (valueInt != null) {
+            const replaced = out.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
+            out = replaced !== out ? replaced : `${out} (${valueInt})`;
+        }
+        if (valueText && valueText.trim()) {
+            out += ` [${valueText.trim()}]`;
+        }
+        return out;
     }
 
     function EffectChip({ e }: { e: UIEffect }) {
-        const label = formatEffect(e.name, e.valueInt);
+        const label = formatEffect(e.name, e.valueInt, e.valueText);
         if (e.effectId) {
             return (
                 <EffectTooltip
@@ -328,27 +347,36 @@ function ArmyDashboardClientInner({
     /* ---------- helper: wylicz finalne pola broni ---------- */
     function computeWeaponDisplay(w: UnitListItem['weapons'][number]) {
         const rev = [...w.selectedProfileIds].reverse();
-        const overId = rev.find((id) => {
+        const typeOverId = rev.find((id) => {
             const p = w.profiles.find((pp) => pp.id === id);
-            return Boolean(p && (p.typeOverride != null || p.testOverride != null));
+            return Boolean(p && p.typeOverride != null);
+        });
+        const testOverId = rev.find((id) => {
+            const p = w.profiles.find((pp) => pp.id === id);
+            return Boolean(p && p.testOverride != null);
         });
 
-        const over = overId ? w.profiles.find((pp) => pp.id === overId) ?? null : null;
+        const typeOver = typeOverId ? w.profiles.find((pp) => pp.id === typeOverId) ?? null : null;
+        const testOver = testOverId ? w.profiles.find((pp) => pp.id === testOverId) ?? null : null;
 
-        const type = over?.typeOverride ?? w.baseType;
-        const test = over?.testOverride ?? w.baseTest;
+        const type = typeOver?.typeOverride ?? w.baseType;
+        const test = testOver?.testOverride ?? w.baseTest;
 
+        const effectKey = (e: UIEffect) => (e.effectId ? `id:${e.effectId}` : `${e.kind}:${e.name}:${e.valueInt ?? ''}:${e.valueText ?? ''}`);
         const agg = new Map<string, UIEffect>();
         for (const e of w.baseEffects) {
-            const key = `${e.kind}:${e.name}:${e.valueInt ?? ''}`;
-            agg.set(key, e);
+            agg.set(effectKey(e), { ...e, effectMode: 'ADD' });
         }
         for (const pId of w.selectedProfileIds) {
             const p = w.profiles.find((pp) => pp.id === pId);
             if (!p) continue;
             for (const e of p.effects) {
-                const key = `${e.kind}:${e.name}:${e.valueInt ?? ''}`;
-                agg.set(key, e);
+                const key = effectKey(e);
+                if ((e.effectMode ?? 'ADD') === 'REMOVE') {
+                    agg.delete(key);
+                } else {
+                    agg.set(key, { ...e, effectMode: 'ADD' });
+                }
             }
         }
 
@@ -538,7 +566,7 @@ function ArmyDashboardClientInner({
                     {u.weapons.map((w, idx) => {
                         const d = computeWeaponDisplay(w);
                         return (
-                            <div key={idx} className="rounded-xl border border-zinc-800 bg-zinc-950">
+                            <div key={idx} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                                 <div className="block min-[400px]:hidden">
                                     <div className="grid grid-cols-[36%_64%] border-t first:border-t-0 border-zinc-800">
                                         <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Weapon</div>
@@ -570,8 +598,6 @@ function ArmyDashboardClientInner({
                                                 <th className="px-2 py-1 text-left">Test</th>
                                                 <th className="px-2 py-1 text-left">Traits</th>
                                                 <th className="px-2 py-1 text-left">Critical Effect</th>
-                                                <th className="px-2 py-1 text-left">Parts</th>
-                                                <th className="px-2 py-1 text-left">Rating</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -584,8 +610,6 @@ function ArmyDashboardClientInner({
                                                 <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
                                                     <EffectsInline effects={d.allEffects} kind="CRITICAL" />
                                                 </td>
-                                                <td className="px-2 py-1">—</td>
-                                                <td className="px-2 py-1">—</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -864,13 +888,13 @@ function ArmyDashboardClientInner({
     }, []);
 
     return (
-        <main className="mx-auto max-w-screen-sm px-3 pb-24">
+        <main className="mx-auto max-w-screen-sm overflow-x-hidden px-3 pb-24">
             {/* META */}
-            <div className="mt-3 flex items-center justify-between text-xs text-zinc-400">
-                <div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
+                <div className="min-w-0 truncate">
                     <span className="font-medium text-zinc-300">{armyName}</span> • {factionName} • Tier {tier}
                 </div>
-                <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px]">
+                <div className="shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px]">
                     Rating: <span className="font-semibold text-zinc-200">{rating}</span>
                 </div>
             </div>
@@ -915,6 +939,36 @@ function ArmyDashboardClientInner({
                                 </div>
                             ))}
                         </div>
+                    </section>
+
+                    <section className="mt-3 vault-panel p-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium">Limity frakcji</div>
+                            <div className="text-[11px] text-zinc-400">Aktywny tier: T{tier}</div>
+                        </div>
+
+                        {factionLimits.length === 0 ? (
+                            <div className="text-sm text-zinc-500">Brak zdefiniowanych limitów dla tej frakcji.</div>
+                        ) : (
+                            <div className="grid gap-2">
+                                {factionLimits.map((l, idx) => {
+                                    const active = limitForTier(l, tier);
+                                    return (
+                                        <div key={`${l.tag}_${idx}`} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                                            <div className="text-sm font-medium leading-snug break-words">{l.tag}</div>
+                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T1: {l.tier1 ?? '-'}</span>
+                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T2: {l.tier2 ?? '-'}</span>
+                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T3: {l.tier3 ?? '-'}</span>
+                                                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-200">
+                                                    Aktywny: {active ?? '-'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </section>
 
                     {/* FILTER */}
@@ -1230,6 +1284,8 @@ type UITemplate = {
 type UIWeaponTemplateEffect = {
     effectId: string;
     valueInt: number | null;
+    valueText?: string | null;
+    effectMode?: 'ADD' | 'REMOVE';
     effect: { id: string; name: string; kind: 'WEAPON' | 'CRITICAL'; description: string; requiresValue: boolean };
 };
 
@@ -1394,23 +1450,28 @@ function AddUnitSheet({
         </button>
     );
 
-    function formatEffectName(name: string, valueInt: number | null): string {
-        if (valueInt == null) return name;
-        const out = name.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
-        if (out !== name) return out;
-        return `${name} (${valueInt})`;
+    function formatEffectName(name: string, valueInt: number | null, valueText?: string | null): string {
+        let out = name;
+        if (valueInt != null) {
+            const replaced = out.replace(/\(\s*X\s*\)/g, String(valueInt)).replace(/\bX\b/g, String(valueInt));
+            out = replaced !== out ? replaced : `${out} (${valueInt})`;
+        }
+        if (valueText && valueText.trim()) {
+            out += ` [${valueText.trim()}]`;
+        }
+        return out;
     }
 
     function WeaponDetails({ w }: { w: UIWeaponTemplate | null }) {
         if (!w) return <div className="text-[11px] text-zinc-500">Brak danych broni</div>;
 
-        function EffectSpan({ e }: { e: UIWeaponTemplateEffect }) {
-            const label = formatEffectName(e.effect.name, e.valueInt);
+        function EffectSpan({ e, prefix = '', className = '' }: { e: UIWeaponTemplateEffect; prefix?: string; className?: string }) {
+            const label = `${prefix}${formatEffectName(e.effect.name, e.valueInt, e.valueText)}`;
             return (
                 <EffectTooltip
                     effectId={e.effect.id}
                     label={label}
-                    className="cursor-help underline decoration-dotted underline-offset-2"
+                    className={`cursor-help underline decoration-dotted underline-offset-2 ${className}`.trim()}
                 />
             );
         }
@@ -1449,78 +1510,85 @@ function AddUnitSheet({
                 }),
         ];
 
+        function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
+            const text = (raw ?? '').trim();
+            if (!text) return { type: '-', range: '-' };
+
+            const rangeMatch = text.match(/\(([^)]*)\)/);
+            const range = rangeMatch?.[1]?.trim() ?? '-';
+
+            const type = text
+                .replace(/\([^)]*\)/g, '')
+                .replace(/\s*-\s*$/g, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+            return { type: type || '-', range };
+        }
+
+        const typeLabels = rows.map((r) => splitTypeAndRange(r.type).type).filter((t) => t !== '-');
+        const uniqTypes = [...new Set(typeLabels)];
+        const weaponTypeLabel = uniqTypes.length === 0 ? '-' : uniqTypes.length === 1 ? uniqTypes[0] : `${uniqTypes[0]}+`;
+        const isMeleeWeapon = typeLabels.some((t) => t.toLowerCase().includes('melee'));
+
         const renderEffects = (arr: UIWeaponTemplateEffect[]) => {
-            if (!arr.length) return <span>—</span>;
+            if (!arr.length) return <span>-</span>;
             return (
-                <ul className="list-disc pl-4 space-y-0.5">
+                <div className="space-y-0.5">
                     {arr.map((t, i) => (
-                        <li key={`${t.effectId}_${i}`}>
-                            <EffectSpan e={t} />
-                        </li>
+                        <div key={`${t.effectId}_${i}`} className="whitespace-normal break-all">
+                            {(t.effectMode ?? 'ADD') === 'REMOVE' ? (
+                                <EffectSpan e={t} prefix="- " className="text-red-300" />
+                            ) : (
+                                <EffectSpan e={t} />
+                            )}
+                        </div>
                     ))}
-                </ul>
+                </div>
             );
         };
 
         return (
             <div className="mt-1 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                {/* < 400px: tabela pionowa */}
-                <div className="block min-[400px]:hidden">
-                    {rows.map((r, idx) => {
-                        const title = r.kind === 'BASE' ? 'Bazowe' : `Upgrade #${r.order ?? idx}`;
-                        const fields: Array<[string, React.ReactNode]> = [
-                            ['Wariant', <span key="v" className="font-semibold text-zinc-100">{title}</span>],
-                            ['Type', r.type || '—'],
-                            ['Test', r.test || '—'],
-                            ['Traits', renderEffects(r.traits)],
-                            ['Critical Effect', renderEffects(r.crits)],
-                            ['Parts', r.parts != null ? String(r.parts) : '—'],
-                            ['Rating', r.rating != null ? String(r.rating) : '—'],
-                        ];
-                        return (
-                            <div key={r.key} className={idx === 0 ? '' : 'border-t border-zinc-800'}>
-                                {fields.map(([label, value]) => (
-                                    <div key={label} className="grid grid-cols-[36%_64%] border-t first:border-t-0 border-zinc-800">
-                                        <div className="bg-zinc-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-300">{label}</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words text-zinc-200">{value}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        );
-                    })}
+                <div className="flex items-center gap-2 border-b border-zinc-800 px-2 py-1.5">
+                    <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
+                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-
-                {/* ≥ 400px: tabela horyzontalna */}
-                <div className="hidden min-[400px]:block overflow-x-auto">
-                    <table className="w-full table-auto text-sm">
+                <div className="max-w-full overflow-x-auto">
+                    <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                         <thead>
                             <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
-                                <th className="px-2 py-1 text-left">Type</th>
-                                <th className="px-2 py-1 text-left">Test</th>
-                                <th className="px-2 py-1 text-left">Traits</th>
-                                <th className="px-2 py-1 text-left">Critical Effect</th>
-                                <th className="px-2 py-1 text-left">Parts</th>
-                                <th className="px-2 py-1 text-left">Rating</th>
+                                {!isMeleeWeapon ? <th className="w-[10%] px-1 py-1 text-left">Z</th> : null}
+                                <th className={(isMeleeWeapon ? 'w-[16%]' : 'w-[12%]') + ' px-1 py-1 text-left'}>Test</th>
+                                <th className={(isMeleeWeapon ? 'w-[34%]' : 'w-[30%]') + ' px-1 py-1 text-left'}>Traits</th>
+                                <th className={(isMeleeWeapon ? 'w-[30%]' : 'w-[28%]') + ' px-1 py-1 text-left'}>
+                                    <span className="sm:hidden">Crit</span>
+                                    <span className="hidden sm:inline">Critical Effect</span>
+                                </th>
+                                <th className={(isMeleeWeapon ? 'w-[10%]' : 'w-[10%]') + ' px-1 py-1 text-center'}>P</th>
+                                <th className={(isMeleeWeapon ? 'w-[10%]' : 'w-[10%]') + ' px-1 py-1 text-center'}>R</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((r) => (
-                                <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
-                                    <td className="px-2 py-1 whitespace-normal break-words">{r.type || '—'}</td>
-                                    <td className="px-2 py-1 whitespace-normal break-words">{r.test || '—'}</td>
-                                    <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">{renderEffects(r.traits)}</td>
-                                    <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">{renderEffects(r.crits)}</td>
-                                    <td className="px-2 py-1">{r.parts != null ? r.parts : '—'}</td>
-                                    <td className="px-2 py-1">{r.rating != null ? r.rating : '—'}</td>
-                                </tr>
-                            ))}
+                            {rows.map((r) => {
+                                const { range } = splitTypeAndRange(r.type);
+                                return (
+                                    <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
+                                        {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range || '-'}</td> : null}
+                                        <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test || '-'}</td>
+                                        <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
+                                        <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
+                                        <td className="px-1 py-1 text-center tabular-nums">{r.parts != null ? r.parts : '-'}</td>
+                                        <td className="px-1 py-1 text-center tabular-nums">{r.rating != null ? r.rating : '-'}</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
             </div>
         );
     }
-
     function SpecialRow({ t }: { t: UITemplate }) {
         const s = t.stats;
         return (
@@ -1545,10 +1613,10 @@ function AddUnitSheet({
     }
 
     return (
-        <div className="fixed inset-0 z-20">
+        <div className="fixed inset-0 z-20 overflow-x-hidden">
             <button aria-label="Zamknij" onClick={onClose} className="absolute inset-0 bg-black/60" />
 
-            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
                 <div className="p-4 pb-3">
                     <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                     <div className="flex items-start justify-between gap-2">
@@ -1587,7 +1655,7 @@ function AddUnitSheet({
                      </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 pb-3">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3">
                     <div className="grid gap-2">
                         {list.map((t) => {
                             const isSel = t.id === selT;

@@ -32,13 +32,13 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     a: true,
                     l: true,
                     baseRating: true,
-                    startPerks: { select: { perk: { select: { id: true, name: true, description: true, isInnate: true } } } },
+                    startPerks: { select: { perk: { select: { id: true, name: true, description: true, isInnate: true, statKey: true, minValue: true } } } },
                 },
             },
             upgrades: true,
             weapons: true,
             chosenPerks: {
-                select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true } } },
+                select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true, statKey: true, minValue: true } } },
                 orderBy: { perkId: 'asc' },
             },
         },
@@ -66,9 +66,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         const profiles =
             t?.profiles.map((p) => ({
                 id: p.id,
-                // zastosuj override na bazie
-                type: p.typeOverride ?? t.baseType ?? '',
-                test: p.testOverride ?? t.baseTest ?? '',
+                type: p.typeOverride ?? null,
+                test: p.testOverride ?? null,
                 parts: p.partsOverride ?? t.baseParts ?? null,
                 rating: p.ratingDelta ?? null,
                 effects: p.effects.map((e) => ({
@@ -77,6 +76,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: e.effect.name,
                     kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: e.valueInt,
+                    valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                 })),
             })) ?? [];
 
@@ -84,6 +85,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             id: w.id,
             name: t?.name ?? `#${w.templateId.slice(0, 6)}`,
             selectedProfileIds: [...selected],
+            baseType: t?.baseType ?? '',
+            baseTest: t?.baseTest ?? '',
             baseEffects:
                 t?.baseEffects.map((be) => ({
                     id: be.effectId,
@@ -91,6 +94,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
+                    valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: 'ADD' as const,
                 })) ?? [],
             profiles,
         };
@@ -136,6 +141,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                             name: sp.perk.name,
                             description: sp.perk.description ?? '',
                             isInnate: Boolean(sp.perk.isInnate ?? true),
+                            statKey: (sp.perk as unknown as { statKey?: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | null }).statKey ?? null,
+                            minValue: (sp.perk as unknown as { minValue?: number | null }).minValue ?? null,
                         })),
                         // perki wybrane w armii
                         ...unit.chosenPerks.map((cp) => ({
@@ -143,6 +150,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                             name: cp.perk.name,
                             description: cp.perk.description ?? '',
                             isInnate: Boolean(cp.perk.isInnate ?? false),
+                            statKey: (cp.perk as unknown as { statKey?: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | null }).statKey ?? null,
+                            minValue: (cp.perk as unknown as { minValue?: number | null }).minValue ?? null,
                         })),
                     ]
                         // deduplikacja po id perka

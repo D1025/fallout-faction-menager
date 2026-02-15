@@ -2,7 +2,12 @@ import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { z } from 'zod';
 
-const EffectRef = z.object({ effectId: z.string(), valueInt: z.number().nullable().optional() });
+const EffectRef = z.object({
+    effectId: z.string(),
+    valueInt: z.number().nullable().optional(),
+    valueText: z.string().trim().nullable().optional(),
+    effectMode: z.enum(['ADD', 'REMOVE']).default('ADD'),
+});
 const ProfileInput = z.object({
     order: z.number().int().min(0).default(0),
     typeOverride: z.string().nullable().optional(),
@@ -53,7 +58,12 @@ export async function POST(req: Request) {
 
         if (baseEffects.length) {
             await tx.weaponBaseEffect.createMany({
-                data: baseEffects.map((e) => ({ weaponId: t.id, effectId: e.effectId, valueInt: e.valueInt ?? null })),
+                data: baseEffects.map((e) => ({
+                    weaponId: t.id,
+                    effectId: e.effectId,
+                    valueInt: e.valueInt ?? null,
+                    valueText: e.valueText ?? null,
+                })),
             });
         }
 
@@ -70,7 +80,13 @@ export async function POST(req: Request) {
             });
             if (p.effects.length) {
                 await tx.weaponProfileEffect.createMany({
-                    data: p.effects.map((e) => ({ profileId: prof.id, effectId: e.effectId, valueInt: e.valueInt ?? null })),
+                    data: p.effects.map((e) => ({
+                        profileId: prof.id,
+                        effectId: e.effectId,
+                        valueInt: e.valueInt ?? null,
+                        valueText: e.valueText ?? null,
+                        effectMode: e.effectMode ?? 'ADD',
+                    })),
                 });
             }
         }

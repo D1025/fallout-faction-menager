@@ -112,24 +112,28 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                     <div className="text-xs text-zinc-400 mb-1">Limity</div>
 
                     {form.limits.map((l, i) => (
-                        <div key={i} className="mb-2 grid grid-cols-5 gap-2 items-center">
-                            <input
-                                value={l.tag}
-                                onChange={(e) => updateLimit(i, { tag: e.target.value })}
-                                placeholder="tag"
-                                className="col-span-2 vault-input px-2 py-1 text-sm"
-                            />
-                            {(['tier1', 'tier2', 'tier3'] as const).map((k) => (
+                        <div key={i} className="mb-2 rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
                                 <input
-                                    key={k}
-                                    inputMode="numeric"
-                                    placeholder={k.replace('tier', 'T')}
-                                    value={l[k] ?? ''}
-                                    onChange={(e) => updateLimit(i, { [k]: numOrNull(e.target.value) } as Partial<FactionLimit>)}
-                                    className="vault-input px-2 py-1 text-sm"
+                                    value={l.tag}
+                                    onChange={(e) => updateLimit(i, { tag: e.target.value })}
+                                    placeholder="Tag limitu (np. CHAMPION / ELITE SUPPORT)"
+                                    className="sm:col-span-6 vault-input px-2 py-1 text-sm"
                                 />
-                            ))}
-                            <button onClick={() => removeLimit(i)} className="text-xs text-red-300">Usuń</button>
+                                <div className="grid grid-cols-3 gap-2 sm:col-span-5">
+                                    {(['tier1', 'tier2', 'tier3'] as const).map((k) => (
+                                        <input
+                                            key={k}
+                                            inputMode="numeric"
+                                            placeholder={k.replace('tier', 'T')}
+                                            value={l[k] ?? ''}
+                                            onChange={(e) => updateLimit(i, { [k]: numOrNull(e.target.value) } as Partial<FactionLimit>)}
+                                            className="vault-input px-2 py-1 text-sm"
+                                        />
+                                    ))}
+                                </div>
+                                <button onClick={() => removeLimit(i)} className="sm:col-span-1 justify-self-end text-xs text-red-300">Usuń</button>
+                            </div>
                         </div>
                     ))}
 
@@ -171,8 +175,19 @@ export function AdminFactionsClient({ initial }: { initial: Faction[] }) {
                                 <div className="font-medium">{f.name}</div>
                                 <div className="text-xs text-zinc-400">{f.limits.length} limit(y)</div>
                             </div>
-                            <div className="mt-1 text-xs text-zinc-500">
-                                {f.limits.map((l) => `${l.tag}: ${l.tier1 ?? '–'}/${l.tier2 ?? '–'}/${l.tier3 ?? '–'}`).join(' • ')}
+                            <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
+                                {f.limits.length === 0 ? (
+                                    <span className="text-zinc-500">Brak limitów</span>
+                                ) : (
+                                    f.limits.map((l, idx) => (
+                                        <span key={`${l.tag}_${idx}`} className="inline-flex max-w-full items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-900 px-2 py-0.5">
+                                            <span className="max-w-[16rem] break-words text-zinc-300">{l.tag}</span>
+                                            <span className="shrink-0 text-zinc-500">
+                                                {l.tier1 ?? '-'} / {l.tier2 ?? '-'} / {l.tier3 ?? '-'}
+                                            </span>
+                                        </span>
+                                    ))
+                                )}
                             </div>
                         </button>
                         <div className="mt-2">

@@ -27,6 +27,8 @@ type SubfactionDelegate = {
 type WeaponEffectRow = {
     effectId: string;
     valueInt: number | null;
+    valueText?: string | null;
+    effectMode?: 'ADD' | 'REMOVE';
     effect: { id: string; name: string; kind: 'WEAPON' | 'CRITICAL'; description: string; requiresValue: boolean };
 };
 
@@ -187,6 +189,8 @@ export async function GET(req: NextRequest) {
             baseEffects: (w.baseEffects ?? []).map((be) => ({
                 effectId: be.effectId,
                 valueInt: be.valueInt ?? null,
+                valueText: (be as { valueText?: string | null }).valueText ?? null,
+                effectMode: 'ADD' as const,
                 effect: {
                     id: be.effect.id,
                     name: be.effect.name,
@@ -208,6 +212,8 @@ export async function GET(req: NextRequest) {
                     effects: (p.effects ?? []).map((e) => ({
                         effectId: e.effectId,
                         valueInt: e.valueInt ?? null,
+                        valueText: (e as { valueText?: string | null }).valueText ?? null,
+                        effectMode: (e as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                         effect: {
                             id: e.effect.id,
                             name: e.effect.name,

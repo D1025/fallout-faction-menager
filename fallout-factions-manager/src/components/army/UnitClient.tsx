@@ -1,7 +1,7 @@
 // src/components/army/UnitClient.tsx
 'use client';
 
-import { CheckOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
@@ -12,21 +12,24 @@ import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 type EffectKind = 'WEAPON' | 'CRITICAL';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
+type SpecialStatKey = Exclude<UiStatKey, 'HP'>;
 
 type WeaponProfileUI = {
     id: string;
-    type: string;
-    test: string;
+    type: string | null;
+    test: string | null;
     parts: number | null;
     rating: number | null; // delta
-    effects: { id: string; effectId?: string; name: string; valueInt: number | null; kind: EffectKind }[];
+    effects: { id: string; effectId?: string; name: string; valueInt: number | null; valueText?: string | null; kind: EffectKind; effectMode?: 'ADD' | 'REMOVE' }[];
 };
 
 type WeaponUI = {
     id: string; // WeaponInstance.id
     name: string;
     selectedProfileIds: string[]; // multi
-    baseEffects: { id: string; effectId?: string; name: string; valueInt: number | null; kind: EffectKind }[];
+    baseType: string;
+    baseTest: string;
+    baseEffects: { id: string; effectId?: string; name: string; valueInt: number | null; valueText?: string | null; kind: EffectKind; effectMode?: 'ADD' | 'REMOVE' }[];
     profiles: WeaponProfileUI[];
 };
 
@@ -35,7 +38,7 @@ type Perk = {
     id: string;
     name: string;
     requiresValue: boolean;
-    statKey: Exclude<UiStatKey, 'HP'> | null;
+    statKey: SpecialStatKey | null;
     minValue: number | null;
     isInnate: boolean;
     category: 'REGULAR' | 'AUTOMATRON';
@@ -49,6 +52,8 @@ function normalizeRoleTag(tag: string | null | undefined): UnitTemplateTag | nul
     if (t === 'CHAMPION' || t === 'GRUNT' || t === 'COMPANION' || t === 'LEGENDS') return t as UnitTemplateTag;
     return null;
 }
+
+const SPECIAL_ORDER: SpecialStatKey[] = ['S', 'P', 'E', 'C', 'I', 'A', 'L'];
 
 function TagChip({ tag }: { tag: UnitTemplateTag | null }) {
     if (!tag) return null;
@@ -95,7 +100,7 @@ export function UnitClient({
     weapons: WeaponUI[];
     photoPath?: string | null;
     startPerkNames?: string[];
-    ownedPerks?: Array<{ id: string; name: string; description: string; isInnate: boolean }>;
+    ownedPerks?: Array<{ id: string; name: string; description: string; isInnate: boolean; statKey?: SpecialStatKey | null; minValue?: number | null }>;
 }) {
     const router = useRouter();
     const [tmpLeader, setTmpLeader] = useState(Boolean(temporaryLeader));
@@ -121,8 +126,8 @@ export function UnitClient({
         router.refresh();
     }
 
-    // cache-busting: po zmianie zdjęcia przeglądarka potrafi trzymać stary obraz z cache
-    const [photoBuster, setPhotoBuster] = useState<number>(() => Date.now());
+    // cache-busting: po zmianie zdjÄ™cia przeglÄ…darka potrafi trzymaÄ‡ stary obraz z cache
+    const [photoBuster, setPhotoBuster] = useState<number>(0);
     useEffect(() => {
         setPhotoBuster(Date.now());
     }, [photoPath]);
@@ -134,7 +139,7 @@ export function UnitClient({
         setPhotoMissing(false);
     }, [photoBuster, unitId]);
 
-    // ===== Łączne bonusy z ulepszeń (w tym rany – ujemne) =====
+    // ===== ĹÄ…czne bonusy z ulepszeĹ„ (w tym rany â€“ ujemne) =====
     const bonus = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const u of upgrades) {
@@ -165,7 +170,11 @@ export function UnitClient({
 
     // ===== Perki (lista do dodawania) =====
     const [perks, setPerks] = useState<Perk[]>([]);
-    const [perkId, setPerkId] = useState<string>('');
+    const [perkPickerOpen, setPerkPickerOpen] = useState(false);
+    const [perkSearch, setPerkSearch] = useState('');
+    const [perkCategory, setPerkCategory] = useState<'ALL' | SpecialStatKey>('ALL');
+    const [perkSort, setPerkSort] = useState<'CATEGORY' | 'NAME' | 'REQ_ASC' | 'REQ_DESC'>('CATEGORY');
+    const [addingPerkId, setAddingPerkId] = useState<string | null>(null);
     useEffect(() => {
         (async () => {
             try {
@@ -179,20 +188,57 @@ export function UnitClient({
 
     const ownedSet = useMemo(() => new Set((ownedPerks ?? []).map((p) => p.id)), [ownedPerks]);
 
-    const availablePerks = useMemo(() => {
+    const specialPerks = useMemo(() => {
         return perks
             .filter((p) => {
-                if (p.isInnate) return false;
+                const isSpecialLinked = Boolean(p.statKey && p.minValue != null);
+                if (!isSpecialLinked) return false;
                 if (hasAllTheToys) return p.category === 'AUTOMATRON';
                 return p.category !== 'AUTOMATRON';
             })
-            .filter((p) => {
-                if (!p.statKey || p.minValue == null) return true;
-                const k = p.statKey as Exclude<UiStatKey, 'HP'>;
-                return (finalStats[k] ?? 0) >= p.minValue;
-            })
-            .filter((p) => !ownedSet.has(p.id));
+            .filter((p) => !ownedSet.has(p.id))
+            .map((p) => {
+                const statKey = p.statKey as SpecialStatKey;
+                const minValue = p.minValue as number;
+                const currentValue = finalStats[statKey] ?? 0;
+                return {
+                    ...p,
+                    statKey,
+                    minValue,
+                    currentValue,
+                    meetsRequirement: currentValue >= minValue,
+                };
+            });
     }, [perks, finalStats, hasAllTheToys, ownedSet]);
+
+    const filteredPerks = useMemo(() => {
+        let list = specialPerks;
+        if (perkCategory !== 'ALL') {
+            list = list.filter((p) => p.statKey === perkCategory);
+        }
+        const q = perkSearch.trim().toLowerCase();
+        if (q) {
+            list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q));
+        }
+        const out = [...list];
+        out.sort((a, b) => {
+            if (perkSort === 'NAME') return a.name.localeCompare(b.name, 'pl');
+            if (perkSort === 'REQ_ASC') {
+                if (a.minValue !== b.minValue) return a.minValue - b.minValue;
+                return a.name.localeCompare(b.name, 'pl');
+            }
+            if (perkSort === 'REQ_DESC') {
+                if (a.minValue !== b.minValue) return b.minValue - a.minValue;
+                return a.name.localeCompare(b.name, 'pl');
+            }
+            const aRank = SPECIAL_ORDER.indexOf(a.statKey);
+            const bRank = SPECIAL_ORDER.indexOf(b.statKey);
+            if (aRank !== bRank) return aRank - bRank;
+            if (a.minValue !== b.minValue) return a.minValue - b.minValue;
+            return a.name.localeCompare(b.name, 'pl');
+        });
+        return out;
+    }, [specialPerks, perkCategory, perkSearch, perkSort]);
 
     // ===== Akcje =====
     async function setProfiles(weaponInstanceId: string, profileIds: string[]) {
@@ -215,7 +261,7 @@ export function UnitClient({
         const res = await fetch(`/api/units/${unitId}/upgrades`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // może być ujemny
+            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // moĹĽe byÄ‡ ujemny
         });
         if (!res.ok) {
             notifyApiError('Nie udało się dodać ulepszenia');
@@ -233,29 +279,41 @@ export function UnitClient({
         location.reload();
     }
 
-    async function addPerk() {
-        if (!perkId) return;
-        const selected = perks.find((p) => p.id === perkId);
-        if (selected?.requiresValue) {
-            notifyWarning('Ten perk wymaga wartości – na razie nieobsługiwane dla chosenPerkIds.');
+    async function addPerk(nextPerkId: string) {
+        if (!nextPerkId) return;
+        const selected = specialPerks.find((p) => p.id === nextPerkId);
+        if (!selected) {
+            notifyWarning('Nie znaleziono wybranego perka.');
             return;
         }
-        const res = await fetch(`/api/units/${unitId}/perks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ perkId }),
-        });
-        if (!res.ok) {
-            notifyApiError('Nie udało się dodać perka');
+        if (!selected.meetsRequirement) {
+            notifyWarning(`Wymaganie niespelnione: ${selected.statKey} ${selected.minValue} (masz ${selected.currentValue}).`);
             return;
         }
-        setPerkId('');
-        location.reload();
+        if (selected.requiresValue) {
+            notifyWarning('Ten perk wymaga wartosci - na razie nieobslugiwane dla chosenPerkIds.');
+            return;
+        }
+
+        setAddingPerkId(nextPerkId);
+        try {
+            const res = await fetch(`/api/units/${unitId}/perks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ perkId: nextPerkId }),
+            });
+            if (!res.ok) {
+                notifyApiError('Nie udalo sie dodac perka');
+                return;
+            }
+            setPerkPickerOpen(false);
+            location.reload();
+        } finally {
+            setAddingPerkId(null);
+        }
     }
 
     async function removePerk(removeId: string) {
-        const selectedOwned = (ownedPerks ?? []).find((p) => p.id === removeId);
-        if (selectedOwned?.isInnate) return;
         const res = await fetch(`/api/units/${unitId}/perks`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
@@ -263,13 +321,13 @@ export function UnitClient({
         });
         if (!res.ok) {
             const t = await res.text().catch(() => '');
-            notifyApiError(t || 'Nie udało się usunąć perka');
+            notifyApiError(t || 'Nie udało się™ usunąć perka');
             return;
         }
         location.reload();
     }
 
-    /* ===== SPECIAL kompakt z poprawnym +/− ===== */
+    /* ===== SPECIAL kompakt z poprawnym +/â’ ===== */
     function renderSpecialCompact() {
         const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
         const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
@@ -305,25 +363,32 @@ export function UnitClient({
         );
     }
 
-    /* ===== helper do efektów: X → valueInt ===== */
-    function formatEffect(name: string, valueInt: number | null): string {
-        if (valueInt == null) return name;
-        let replaced = name.replace(/\(\s*X\s*\)/g, String(valueInt));
-        replaced = replaced.replace(/\bX\b/g, String(valueInt));
-        if (replaced !== name) return replaced;
-        return `${name} (${valueInt})`;
+    /* ===== helper do efektĂłw: X â†’ valueInt ===== */
+    function formatEffect(name: string, valueInt: number | null, valueText?: string | null): string {
+        let out = name;
+        if (valueInt != null) {
+            let replaced = out.replace(/\(\s*X\s*\)/g, String(valueInt));
+            replaced = replaced.replace(/\bX\b/g, String(valueInt));
+            out = replaced !== out ? replaced : `${out} (${valueInt})`;
+        }
+        if (valueText && valueText.trim()) {
+            out += ` [${valueText.trim()}]`;
+        }
+        return out;
     }
 
     function EffectSpan({
         name,
         valueInt,
+        valueText,
         effectId,
     }: {
         name: string;
         valueInt: number | null;
+        valueText?: string | null;
         effectId?: string;
     }) {
-        const label = formatEffect(name, valueInt);
+        const label = formatEffect(name, valueInt, valueText);
         if (effectId) {
             return (
                 <EffectTooltip
@@ -336,13 +401,13 @@ export function UnitClient({
         return <span>{label}</span>;
     }
 
-    /* ===== Karta broni (bez zmian funkcjonalnych) ===== */
+    /* ===== Karta broni ===== */
     function WeaponCard({ w }: { w: WeaponUI }) {
         const [selected, setSelected] = useState<string[]>(w.selectedProfileIds);
 
-        type EffectRef = { name: string; valueInt: number | null; effectId?: string };
+        type EffectRef = { name: string; valueInt: number | null; valueText?: string | null; effectId?: string; effectMode?: 'ADD' | 'REMOVE' };
 
-        // preload efektów na start
+        // preload efektow na start
         const preloadIds = useMemo(() => {
             const ids: string[] = [];
             for (const e of w.baseEffects) if (e.effectId) ids.push(e.effectId);
@@ -361,60 +426,48 @@ export function UnitClient({
 
         const baseTraits: EffectRef[] = w.baseEffects
             .filter((e) => e.kind === 'WEAPON')
-            .map((e) => ({ name: e.name, valueInt: e.valueInt, effectId: e.effectId }));
+            .map((e) => ({ name: e.name, valueInt: e.valueInt, valueText: e.valueText ?? null, effectId: e.effectId, effectMode: 'ADD' }));
         const baseCrits: EffectRef[] = w.baseEffects
             .filter((e) => e.kind === 'CRITICAL')
-            .map((e) => ({ name: e.name, valueInt: e.valueInt, effectId: e.effectId }));
+            .map((e) => ({ name: e.name, valueInt: e.valueInt, valueText: e.valueText ?? null, effectId: e.effectId, effectMode: 'ADD' }));
 
-        type Row =
-            | {
-                  kind: 'BASE';
-                  type: string;
-                  test: string | null;
-                  traits: EffectRef[];
-                  crits: EffectRef[];
-                  parts: number | null;
-                  rating: number | null;
-                  profileId?: undefined;
-              }
-            | {
-                  kind: 'PROFILE';
-                  type: string;
-                  test: string | null;
-                  traits: EffectRef[];
-                  crits: EffectRef[];
-                  parts: number | null;
-                  rating: number | null;
-                  profileId: string;
-              };
+        type Row = {
+            kind: 'BASE' | 'PROFILE';
+            key: string;
+            type: string | null;
+            test: string | null;
+            traits: EffectRef[];
+            crits: EffectRef[];
+            parts: number | null;
+            rating: number | null;
+            profileId?: string;
+        };
 
         const rows: Row[] = [];
-
-        if (baseTraits.length || baseCrits.length) {
-            const t = w.profiles[0]?.type ?? '—';
-            rows.push({
-                kind: 'BASE',
-                type: t,
-                test: null,
-                traits: baseTraits,
-                crits: baseCrits,
-                parts: null,
-                rating: null,
-            });
-        }
+        rows.push({
+            kind: 'BASE',
+            key: 'BASE',
+            type: w.baseType || '-',
+            test: w.baseTest || '-',
+            traits: baseTraits,
+            crits: baseCrits,
+            parts: null,
+            rating: null,
+        });
 
         for (const p of w.profiles) {
             const traits: EffectRef[] = p.effects
                 .filter((e) => e.kind === 'WEAPON')
-                .map((e) => ({ name: e.name, valueInt: e.valueInt, effectId: e.effectId }));
+                .map((e) => ({ name: e.name, valueInt: e.valueInt, valueText: e.valueText ?? null, effectId: e.effectId, effectMode: e.effectMode ?? 'ADD' }));
             const crits: EffectRef[] = p.effects
                 .filter((e) => e.kind === 'CRITICAL')
-                .map((e) => ({ name: e.name, valueInt: e.valueInt, effectId: e.effectId }));
+                .map((e) => ({ name: e.name, valueInt: e.valueInt, valueText: e.valueText ?? null, effectId: e.effectId, effectMode: e.effectMode ?? 'ADD' }));
             rows.push({
                 kind: 'PROFILE',
+                key: p.id,
                 profileId: p.id,
                 type: p.type,
-                test: p.test || null,
+                test: p.test,
                 traits,
                 crits,
                 parts: p.parts,
@@ -422,177 +475,116 @@ export function UnitClient({
             });
         }
 
-        const allSameType = rows.every((r) => r.type === rows[0]?.type);
-        const mergedType = allSameType && rows.length > 0;
+        function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
+            const text = (raw ?? '').trim();
+            if (!text) return { type: '-', range: '-' };
+
+            const rangeMatch = text.match(/\(([^)]*)\)/);
+            const range = rangeMatch?.[1]?.trim() ?? '-';
+
+            const type = text
+                .replace(/\([^)]*\)/g, '')
+                .replace(/\s*-\s*$/g, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+            return { type: type || '-', range };
+        }
+
+        const typeLabels = rows.map((r) => splitTypeAndRange(r.type).type).filter((t) => t !== '-');
+        const uniqTypes = [...new Set(typeLabels)];
+        const weaponTypeLabel = uniqTypes.length === 0 ? '-' : uniqTypes.length === 1 ? uniqTypes[0] : `${uniqTypes[0]}+`;
+        const isMeleeWeapon = typeLabels.some((t) => t.toLowerCase().includes('melee'));
+
+        const renderEffects = (arr: EffectRef[]) => {
+            if (!arr.length) return <span>-</span>;
+            return (
+                <div className="space-y-0.5">
+                    {arr.map((item, idx) => (
+                        <div
+                            key={`${item.effectId ?? item.name}_${idx}`}
+                            className={'whitespace-normal break-all ' + ((item.effectMode ?? 'ADD') === 'REMOVE' ? 'text-red-300' : '')}
+                        >
+                            <EffectSpan
+                                name={(item.effectMode ?? 'ADD') === 'REMOVE' ? `- ${item.name}` : item.name}
+                                valueInt={item.valueInt}
+                                valueText={item.valueText}
+                                effectId={item.effectId}
+                            />
+                        </div>
+                    ))}
+                </div>
+            );
+        };
 
         return (
             <div className="vault-panel p-3">
-                <div className="mb-1 font-medium">{w.name}</div>
-
-                {/* < 400px: pionowe karty */}
-                <div className="block min-[400px]:hidden">
-                    <div className="grid gap-2">
-                        {rows.map((r, idx) => {
-                            const isSel = r.kind === 'PROFILE' ? selected.includes(r.profileId) : false;
-                            return (
-                                <div key={idx} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                                    <div className="flex items-center justify-between border-b border-zinc-800 px-2 py-1.5">
-                                        <div className="text-xs font-semibold uppercase tracking-wide text-teal-50 bg-teal-700/70 px-2 py-0.5 rounded">
-                                            {r.kind === 'BASE' ? 'BASE' : r.type || '—'}
-                                        </div>
-                                        {r.kind === 'PROFILE' ? (
-                                            <button
-                                                onClick={() => void toggle(r.profileId, !isSel)}
-                                                className={
-                                                    'h-7 w-7 rounded-lg text-lg leading-none ' +
-                                                    (isSel ? 'bg-emerald-600 text-emerald-50' : 'bg-emerald-500 text-emerald-950')
-                                                }
-                                                title={isSel ? 'Usuń profil' : 'Dodaj profil'}
-                                                aria-label={isSel ? 'Usuń profil' : 'Dodaj profil'}
-                                            >
-                                                {isSel ? <CheckOutlined /> : <PlusOutlined />}
-                                            </button>
-                                        ) : (
-                                            <div className="h-7 w-7" />
-                                        )}
-                                    </div>
-
-                                    {(() => {
-                                        const fields: Array<[string, React.ReactNode]> = [
-                                            ['Test', r.test ?? '—'],
-                                            [
-                                                'Traits',
-                                                r.traits.length ? (
-                                                    <span>
-                                                        {r.traits.map((t, i) => (
-                                                            <span key={i}>
-                                                                <EffectSpan name={t.name} valueInt={t.valueInt} effectId={t.effectId} />
-                                                                {i < r.traits.length - 1 ? ', ' : ''}
-                                                            </span>
-                                                        ))}
-                                                    </span>
-                                                ) : (
-                                                    '—'
-                                                ),
-                                            ],
-                                            [
-                                                'Critical Effect',
-                                                r.crits.length ? (
-                                                    <span>
-                                                        {r.crits.map((c, i) => (
-                                                            <span key={i}>
-                                                                <EffectSpan name={c.name} valueInt={c.valueInt} effectId={c.effectId} />
-                                                                {i < r.crits.length - 1 ? ', ' : ''}
-                                                            </span>
-                                                        ))}
-                                                    </span>
-                                                ) : (
-                                                    '—'
-                                                ),
-                                            ],
-                                            ['Parts', r.parts != null ? String(r.parts) : '—'],
-                                            ['Rating', r.rating != null ? String(r.rating) : '—'],
-                                        ];
-
-                                        return fields.map(([label, value]) => (
-                                            <div key={label} className="grid grid-cols-[36%_64%] border-t first:border-t-0 border-zinc-800">
-                                                <div className="bg-zinc-900 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-300">
-                                                    {label}
-                                                </div>
-                                                <div className="px-2 py-1 text-sm whitespace-normal break-words">{value}</div>
-                                            </div>
-                                        ));
-                                    })()}
-                                </div>
-                            );
-                        })}
-                    </div>
+                <div className="mb-1 flex items-center gap-2">
+                    <div className="font-medium">{w.name}</div>
+                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-
-                {/* ≥ 400px: tabela horyzontalna */}
-                <div className="hidden min-[400px]:block overflow-x-auto">
-                    <table className="w-full table-auto text-sm">
-                        <thead>
-                            <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
-                                <th className="px-2 py-1 text-left">Type</th>
-                                <th className="px-2 py-1 text-left">Test</th>
-                                <th className="px-2 py-1 text-left">Traits</th>
-                                <th className="px-2 py-1 text-left">Critical Effect</th>
-                                <th className="px-2 py-1 text-left">Parts</th>
-                                <th className="px-2 py-1 text-left">Rating</th>
-                                <th className="px-2 py-1 text-left"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows.map((r, idx) => {
-                                const isSel = r.kind === 'PROFILE' ? selected.includes(r.profileId) : false;
-                                return (
-                                    <tr key={idx} className="border-t border-zinc-800 align-top bg-zinc-950">
-                                        {mergedType ? (
-                                            idx === 0 ? (
-                                                <td className="px-2 py-1 whitespace-normal break-words" rowSpan={rows.length}>
-                                                    {r.type || '—'}
-                                                </td>
-                                            ) : null
-                                        ) : (
-                                            <td className="px-2 py-1 whitespace-normal break-words">{r.type || '—'}</td>
-                                        )}
-                                        <td className="px-2 py-1 whitespace-normal break-words">{r.test ?? '—'}</td>
-                                        <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
-                                            {r.traits.length ? (
-                                                <ul className="list-disc pl-4 space-y-0.5">
-                                                    {r.traits.map((t, i) => (
-                                                        <li key={i}>
-                                                            <EffectSpan name={t.name} valueInt={t.valueInt} effectId={t.effectId} />
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                '—'
-                                            )}
-                                        </td>
-                                        <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
-                                            {r.crits.length ? (
-                                                <ul className="list-disc pl-4 space-y-0.5">
-                                                    {r.crits.map((c, i) => (
-                                                        <li key={i}>
-                                                            <EffectSpan name={c.name} valueInt={c.valueInt} effectId={c.effectId} />
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            ) : (
-                                                '—'
-                                            )}
-                                        </td>
-                                        <td className="px-2 py-1">{r.parts != null ? r.parts : '—'}</td>
-                                        <td className="px-2 py-1">{r.rating != null ? r.rating : '—'}</td>
-                                        <td className="px-2 py-1">
-                                            {r.kind === 'PROFILE' ? (
-                                                <button
-                                                    onClick={() => void toggle(r.profileId, !isSel)}
-                                                    className={
-                                                        'h-8 w-8 rounded-lg text-lg leading-none ' +
-                                                        (isSel ? 'bg-emerald-600 text-emerald-50' : 'bg-emerald-500 text-emerald-950')
+                <div className="mt-1 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                    <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'max-w-full overflow-x-auto'}>
+                        <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
+                            <thead>
+                                <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
+                                    {!isMeleeWeapon ? <th className="w-[10%] px-1 py-1 text-left">Z</th> : null}
+                                    <th className={(isMeleeWeapon ? 'w-[14%]' : 'w-[12%]') + ' px-1 py-1 text-left'}>Test</th>
+                                    <th className={(isMeleeWeapon ? 'w-[29%]' : 'w-[27%]') + ' px-1 py-1 text-left'}>Traits</th>
+                                    <th className={(isMeleeWeapon ? 'w-[29%]' : 'w-[26%]') + ' px-1 py-1 text-left'}>
+                                        <span className="sm:hidden">Crit</span>
+                                        <span className="hidden sm:inline">Critical Effect</span>
+                                    </th>
+                                    <th className={(isMeleeWeapon ? 'w-[8%]' : 'w-[8%]') + ' px-1 py-1 text-center'}>P</th>
+                                    <th className={(isMeleeWeapon ? 'w-[8%]' : 'w-[8%]') + ' px-1 py-1 text-center'}>R</th>
+                                    <th className={(isMeleeWeapon ? 'w-[10%]' : 'w-[9%]') + ' px-0.5 py-1 text-center'}>U</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.map((r) => {
+                                    const isSel = r.kind === 'PROFILE' && r.profileId ? selected.includes(r.profileId) : false;
+                                    const { range } = splitTypeAndRange(r.type);
+                                    return (
+                                        <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
+                                            {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range}</td> : null}
+                                            <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test ?? '-'}</td>
+                                            <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
+                                            <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
+                                            <td className="px-1 py-1 text-center tabular-nums">{r.parts != null ? r.parts : '-'}</td>
+                                            <td className="px-1 py-1 text-center tabular-nums">{r.rating != null ? r.rating : '-'}</td>
+                                            <td className="px-0.5 py-1 text-center">
+                                                {(() => {
+                                                    if (r.kind !== 'PROFILE' || !r.profileId) {
+                                                        return <span className="text-zinc-500">-</span>;
                                                     }
-                                                    title={isSel ? 'Usuń profil' : 'Dodaj profil'}
-                                                    aria-label={isSel ? 'Usuń profil' : 'Dodaj profil'}
-                                                >
-                                                    {isSel ? <CheckOutlined /> : <PlusOutlined />}
-                                                </button>
-                                            ) : (
-                                                <span className="text-zinc-500">—</span>
-                                            )}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                                    const profileId = r.profileId;
+                                                    return (
+                                                        <button
+                                                            onClick={() => void toggle(profileId, !isSel)}
+                                                            className={
+                                                                'h-6 w-6 rounded-md border text-xs font-semibold leading-none ' +
+                                                                (isSel
+                                                                    ? 'border-emerald-500/50 bg-emerald-700/40 text-emerald-100'
+                                                                    : 'border-emerald-500/50 bg-emerald-500 text-emerald-950')
+                                                            }
+                                                            title={isSel ? 'Cofnij ulepszenie' : 'Dodaj ulepszenie'}
+                                                            aria-label={isSel ? 'Cofnij ulepszenie' : 'Dodaj ulepszenie'}
+                                                        >
+                                                            {isSel ? <CheckOutlined /> : <PlusOutlined />}
+                                                        </button>
+                                                    );
+                                                })()}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         );
     }
-
     const [pick, setPick] = useState<File | null>(null);
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -658,7 +650,7 @@ export function UnitClient({
                                 onError={() => setPhotoMissing(true)}
                             />
                         ) : (
-                            <div className="grid h-full w-full place-items-center text-xs text-zinc-500">Brak zdjęcia</div>
+                            <div className="grid h-full w-full place-items-center text-xs text-zinc-500">Brak zdjÄ™cia</div>
                         )}
                     </div>
 
@@ -687,7 +679,7 @@ export function UnitClient({
                             </div>
                         ) : null}
 
-                        <div className="mt-1 text-[11px] text-zinc-400">Zdjęcie jest przypisane do tej instancji w armii.</div>
+                        <div className="mt-1 text-[11px] text-zinc-400">ZdjÄ™cie jest przypisane do tej instancji w armii.</div>
 
                         <div className="mt-2 flex flex-wrap gap-2">
                             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
@@ -703,14 +695,14 @@ export function UnitClient({
                                         e.currentTarget.value = '';
                                         if (!file) return;
 
-                                        // wejściowa walidacja (zanim otworzymy crop)
+                                        // wejĹ›ciowa walidacja (zanim otworzymy crop)
                                         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
                                         if (!allowed.includes(file.type)) {
-                                            notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
+                                             notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
                                             return;
                                         }
-                                        if (file.size > 10 * 1024 * 1024) {
-                                            notifyWarning('Plik za duży. Wybierz zdjęcie do 10MB.');
+                                        if (file.size > 2 * 1024 * 1024) {
+                                            notifyWarning('Plik za duży. Wybierz zdjęcie do 2MB.');
                                             return;
                                         }
 
@@ -734,7 +726,7 @@ export function UnitClient({
                 </div>
             </section>
 
-            {/* Nagłówek + SPECIAL */}
+            {/* NagĹ‚Ăłwek + SPECIAL */}
             <section className="mt-3 vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 font-semibold truncate">{name}</div>
@@ -750,7 +742,7 @@ export function UnitClient({
                 <div className="mt-3">{renderSpecialCompact()}</div>
             </section>
 
-            {/* Broń */}
+            {/* BroĹ„ */}
             <section className="mt-4">
                 <div className="text-sm font-medium">Broń</div>
                 <div className="mt-2 grid gap-3">
@@ -765,7 +757,7 @@ export function UnitClient({
             <section className="mt-4 vault-panel p-3">
                 <div className="text-sm font-medium">Ulepszenia</div>
 
-                {/* Panel dodawania – pozwala na wartości ujemne */}
+                {/* Panel dodawania â€“ pozwala na wartoĹ›ci ujemne */}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select
                         value={upStat}
@@ -883,7 +875,7 @@ export function UnitClient({
                                 <div className="min-w-0">
                                     <div className="font-medium">{p.name}</div>
                                 </div>
-                                {!p.isInnate ? (
+                                {!p.isInnate || (p.statKey != null && p.minValue != null) ? (
                                     <button
                                         type="button"
                                         onClick={() => void removePerk(p.id)}
@@ -898,32 +890,159 @@ export function UnitClient({
                                     </span>
                                 )}
                             </div>
-                            <div className="mt-1 text-sm text-zinc-300 whitespace-pre-wrap">{p.description || '—'}</div>
+                            <div className="mt-1 text-sm text-zinc-300 whitespace-pre-wrap">{p.description || 'â€”'}</div>
                         </div>
                     ))}
-                    {(ownedPerks ?? []).length === 0 && <div className="text-sm text-zinc-500">Brak perków.</div>}
+                    {(ownedPerks ?? []).length === 0 && <div className="text-sm text-zinc-500">Brak perkĂłw.</div>}
                 </div>
 
                 {/* Dodawanie */}
-                <div className="mt-4 flex items-center gap-2">
-                    <select
-                        value={perkId}
-                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPerkId(e.target.value)}
-                        className="flex-1 vault-input px-2 py-1"
+                <div className="mt-4 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-zinc-500">
+                        Dostepne SPECIAL: <span className="font-semibold text-zinc-300">{specialPerks.length}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setPerkPickerOpen(true)}
+                        className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950"
                     >
-                        <option value="">— wybierz perka —</option>
-                        {availablePerks.map((p) => (
-                            <option key={p.id} value={p.id} disabled={p.requiresValue}>
-                                {p.name}
-                                {p.requiresValue ? ' (wymaga wartości — nieobsługiwane)' : ''}
-                            </option>
-                        ))}
-                    </select>
-                    <button onClick={() => void addPerk()} className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950">
-                        Dodaj
+                        Dodaj perk
                     </button>
                 </div>
             </section>
+
+            {perkPickerOpen && (
+                <div className="fixed inset-0 z-30 overflow-x-hidden">
+                    <button
+                        aria-label="Zamknij"
+                        onClick={() => setPerkPickerOpen(false)}
+                        className="absolute inset-0 bg-black/60"
+                    />
+
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+                        <div className="p-4 pb-3">
+                            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="text-sm font-semibold">Dodaj perk SPECIAL</div>
+                                    <div className="mt-0.5 text-[11px] text-zinc-400">Wyszukuj, filtruj i dodawaj perki z wymaganiami SPECIAL.</div>
+                                </div>
+                                <button
+                                    onClick={() => setPerkPickerOpen(false)}
+                                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                                >
+                                    Zamknij
+                                </button>
+                            </div>
+
+                            <div className="mt-3">
+                                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                                    <SearchOutlined className="text-zinc-400" />
+                                    <input
+                                        value={perkSearch}
+                                        onChange={(e) => setPerkSearch(e.target.value)}
+                                        className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                        placeholder="Szukaj perka..."
+                                    />
+                                    {perkSearch && (
+                                        <button
+                                            onClick={() => setPerkSearch('')}
+                                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
+                                            aria-label="Wyczysc"
+                                        >
+                                            <CloseOutlined />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {(['ALL', ...SPECIAL_ORDER] as Array<'ALL' | SpecialStatKey>).map((k) => {
+                                    const active = perkCategory === k;
+                                    return (
+                                        <button
+                                            key={k}
+                                            type="button"
+                                            onClick={() => setPerkCategory(k)}
+                                            className={
+                                                'rounded-full border px-2.5 py-1 text-xs font-medium ' +
+                                                (active
+                                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                            }
+                                        >
+                                            {k === 'ALL' ? 'Wszystkie' : k}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="mt-3 flex items-center gap-2">
+                                <select
+                                    value={perkSort}
+                                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                                        setPerkSort(e.target.value as 'CATEGORY' | 'NAME' | 'REQ_ASC' | 'REQ_DESC')
+                                    }
+                                    className="vault-input px-2 py-1 text-xs"
+                                >
+                                    <option value="CATEGORY">Sort: kategorie SPECIAL</option>
+                                    <option value="REQ_ASC">Sort: wymaganie rosnaco</option>
+                                    <option value="REQ_DESC">Sort: wymaganie malejaco</option>
+                                    <option value="NAME">Sort: nazwa A-Z</option>
+                                </select>
+                                <div className="text-[11px] text-zinc-500">
+                                    Wyniki: <span className="font-semibold text-zinc-300">{filteredPerks.length}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                            <div className="grid gap-2">
+                                {filteredPerks.map((p) => {
+                                    const canAdd = p.meetsRequirement && !p.requiresValue && addingPerkId == null;
+                                    return (
+                                        <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium">{p.name}</div>
+                                                    <div className="mt-1 text-[11px] text-zinc-400">
+                                                        Wymaganie: {p.statKey} {p.minValue} • Masz: {p.currentValue}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canAdd || addingPerkId === p.id}
+                                                    onClick={() => void addPerk(p.id)}
+                                                    className={
+                                                        'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
+                                                        (canAdd
+                                                            ? 'bg-emerald-500 text-emerald-950'
+                                                            : 'border border-zinc-700 bg-zinc-900 text-zinc-500')
+                                                    }
+                                                >
+                                                    {addingPerkId === p.id ? 'Dodawanie...' : 'Dodaj'}
+                                                </button>
+                                            </div>
+                                            <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{p.description || '—'}</div>
+                                            {p.requiresValue ? (
+                                                <div className="mt-2 text-xs text-amber-300">Ten perk wymaga valueInt (jeszcze nieobslugiwane).</div>
+                                            ) : null}
+                                            {!p.meetsRequirement ? (
+                                                <div className="mt-2 text-xs text-red-300">Niespelnione wymaganie SPECIAL.</div>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                                {filteredPerks.length === 0 ? (
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
+                                        Brak perkow dla aktualnych filtrow.
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {pick && (
                 <PhotoCropperModal
@@ -939,3 +1058,4 @@ export function UnitClient({
 }
 
 // (intentionally no re-export alias here)
+

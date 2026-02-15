@@ -26,6 +26,11 @@ enum EffectKind {
   CRITICAL
 }
 
+enum WeaponProfileEffectMode {
+  ADD
+  REMOVE
+}
+
 enum PerkBehavior {
   NONE
   COMPANION_ROBOT
@@ -203,6 +208,7 @@ model WeaponBaseEffect {
   weaponId String
   effectId String
   valueInt Int?
+  valueText String?
 
   weapon WeaponTemplate @relation(fields: [weaponId], references: [id])
   effect Effect         @relation(fields: [effectId], references: [id])
@@ -247,6 +253,8 @@ model WeaponProfileEffect {
   profileId String
   effectId  String
   valueInt  Int?
+  valueText String?
+  effectMode WeaponProfileEffectMode @default(ADD)
 
   profile WeaponProfile @relation(fields: [profileId], references: [id])
   effect  Effect        @relation(fields: [effectId], references: [id])

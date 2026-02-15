@@ -17,6 +17,12 @@ function readString(obj: unknown, key: string): string | null {
     return typeof v === 'string' ? v : null;
 }
 
+function readNumber(obj: unknown, key: string): number | null {
+    if (!obj || typeof obj !== 'object') return null;
+    const v = (obj as Record<string, unknown>)[key];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
 type UnitChosenPerkDelegate = {
     create(args: { data: { unitId: string; perkId: string; valueInt: number | null }; select: { id: true } }): Promise<{ id: string }>;
     findMany(args: { where: { unitId: string }; select: { perkId: true; valueInt: true }; orderBy: { perkId: 'asc' | 'desc' } }): Promise<Array<{ perkId: string; valueInt: number | null }>>;
@@ -71,18 +77,34 @@ export async function POST(req: Request, ctx: Ctx) {
     const perkRequiresValue = readBool(perkAny, 'requiresValue');
     const perkIsInnate = readBool(perkAny, 'isInnate');
     const perkCategory = (readString(perkAny, 'category') ?? 'REGULAR') as 'REGULAR' | 'AUTOMATRON';
+    const perkStatKey = (readString(perkAny, 'statKey') ?? '').trim().toUpperCase();
+    const perkMinValue = readNumber(perkAny, 'minValue');
+    const isSpecialLinked = Boolean(perkStatKey && perkMinValue != null);
 
-    if (perkIsInnate) {
+    if (perkIsInnate && !isSpecialLinked) {
         return new Response(JSON.stringify({ error: 'Perk is INNATE and cannot be added to unit in army.' }), { status: 400 });
     }
+
+    if (!isSpecialLinked) {
+        return new Response(JSON.stringify({ error: 'Only SPECIAL-linked perks can be added here.' }), { status: 400 });
+    }
+    const requiredMinValue = perkMinValue as number;
 
     // sprawdź czy jednostka ma startowy INNATE perk "ALL THE TOYS"
     const unitWithStartPerks = await prisma.unitInstance.findUnique({
         where: { id: unitId },
         select: {
             id: true,
+            upgrades: { select: { statKey: true, delta: true } },
             unit: {
                 select: {
+                    s: true,
+                    p: true,
+                    e: true,
+                    c: true,
+                    i: true,
+                    a: true,
+                    l: true,
                     startPerks: { select: { perk: { select: { name: true } } } },
                 },
             },
@@ -99,6 +121,32 @@ export async function POST(req: Request, ctx: Ctx) {
 
     if (perkCategory === 'REGULAR' && hasAllTheToys) {
         return new Response(JSON.stringify({ error: 'This unit has ALL THE TOYS and can only take Automatron perks.' }), { status: 400 });
+    }
+
+    const finalSpecial: Record<'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number> = {
+        S: unitWithStartPerks.unit.s,
+        P: unitWithStartPerks.unit.p,
+        E: unitWithStartPerks.unit.e,
+        C: unitWithStartPerks.unit.c,
+        I: unitWithStartPerks.unit.i,
+        A: unitWithStartPerks.unit.a,
+        L: unitWithStartPerks.unit.l,
+    };
+    for (const up of unitWithStartPerks.upgrades) {
+        const key = (up.statKey ?? '').toUpperCase();
+        if (key === 'S' || key === 'P' || key === 'E' || key === 'C' || key === 'I' || key === 'A' || key === 'L') {
+            finalSpecial[key] += up.delta;
+        }
+    }
+
+    if (perkStatKey !== 'S' && perkStatKey !== 'P' && perkStatKey !== 'E' && perkStatKey !== 'C' && perkStatKey !== 'I' && perkStatKey !== 'A' && perkStatKey !== 'L') {
+        return new Response(JSON.stringify({ error: 'Perk has invalid SPECIAL requirement.' }), { status: 400 });
+    }
+    if (finalSpecial[perkStatKey] < requiredMinValue) {
+        return new Response(
+            JSON.stringify({ error: `SPECIAL requirement not met: ${perkStatKey} ${requiredMinValue} (current ${finalSpecial[perkStatKey]}).` }),
+            { status: 400 },
+        );
     }
 
     if (perkRequiresValue) {
@@ -151,7 +199,10 @@ export async function DELETE(req: Request, ctx: Ctx) {
     const perkAny = await prisma.perk.findUnique({ where: { id: perkId } });
     if (!perkAny) return new Response('NOT_FOUND', { status: 404 });
     const perkIsInnate = readBool(perkAny, 'isInnate');
-    if (perkIsInnate) {
+    const perkStatKey = (readString(perkAny, 'statKey') ?? '').trim().toUpperCase();
+    const perkMinValue = readNumber(perkAny, 'minValue');
+    const isSpecialLinked = Boolean(perkStatKey && perkMinValue != null);
+    if (perkIsInnate && !isSpecialLinked) {
         return new Response(JSON.stringify({ error: 'INNATE perks cannot be removed.' }), { status: 400 });
     }
 

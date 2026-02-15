@@ -3,6 +3,7 @@ import {
     PrismaClient,
     Prisma,
     EffectKind,
+    StatKeySpecial,
     UserRole,
 } from '@prisma/client';
 import { randomBytes, scryptSync } from 'crypto';
@@ -82,8 +83,12 @@ export type WeaponProfileInput = {
     partsOverride?: number | null;
     ratingDelta?: number | null;
     rating?: number | null;
-    effects?: Array<{ name: string; kind: EffectKind; valueInt?: number | null }>;
+    // effectMode:
+    // - 'ADD' (default): dodaje efekt do profilu
+    // - 'REMOVE': usuwa efekt bazowy o tym samym effectId (name+kind)
+    effects?: Array<{ name: string; kind: EffectKind; valueInt?: number | null; valueText?: string | null; effectMode?: 'ADD' | 'REMOVE' }>;
 };
+type ProfileEffectSeed = NonNullable<WeaponProfileInput['effects']>[number];
 
 export type WeaponBundle = {
     name: string;
@@ -95,7 +100,7 @@ export type WeaponBundle = {
         baseParts?: number | null;
         baseRating?: number | null;
     };
-    baseEffects?: Array<{ name: string; kind: EffectKind; valueInt?: number | null }>;
+    baseEffects?: Array<{ name: string; kind: EffectKind; valueInt?: number | null; valueText?: string | null }>;
     profiles?: WeaponProfileInput[];
 };
 
@@ -131,8 +136,14 @@ async function upsertWeaponBundle(
         for (const be of baseEffects) {
             const id = effectIds.get(effectKey(be.name, be.kind));
             if (!id) throw new Error(`Brak efektu: ${be.name} (${be.kind}) Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž zasiej efekty wczeĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…ÄąĹźniej`);
+            const baseEffectData: Prisma.WeaponBaseEffectUncheckedCreateInput & { valueText?: string | null } = {
+                weaponId: template.id,
+                effectId: id,
+                valueInt: be.valueInt ?? null,
+                valueText: be.valueText ?? null,
+            };
             await tx.weaponBaseEffect.create({
-                data: { weaponId: template.id, effectId: id, valueInt: be.valueInt ?? null },
+                data: baseEffectData,
             });
         }
 
@@ -158,8 +169,18 @@ async function upsertWeaponBundle(
             for (const pe of p.effects ?? []) {
                 const id = effectIds.get(effectKey(pe.name, pe.kind));
                 if (!id) throw new Error(`Brak efektu dla profilu: ${pe.name} (${pe.kind})`);
+                const profileEffectData: Prisma.WeaponProfileEffectUncheckedCreateInput & {
+                    valueText?: string | null;
+                    effectMode: 'ADD' | 'REMOVE';
+                } = {
+                    profileId: profile.id,
+                    effectId: id,
+                    valueInt: pe.valueInt ?? null,
+                    valueText: pe.valueText ?? null,
+                    effectMode: pe.effectMode ?? 'ADD',
+                };
                 await tx.weaponProfileEffect.create({
-                    data: { profileId: profile.id, effectId: id, valueInt: pe.valueInt ?? null },
+                    data: profileEffectData,
                 });
             }
         }
@@ -372,17 +393,25 @@ type PerkSpec = {
     name: string;
     description: string;
     category?: 'REGULAR' | 'AUTOMATRON';
+    isInnate?: boolean;
+    statKey?: StatKeySpecial | null;
+    minValue?: number | null;
 };
 
 async function ensurePerk(spec: PerkSpec) {
+    const isSpecialLinked = spec.statKey != null && spec.minValue != null;
+    const isInnate = spec.isInnate ?? !isSpecialLinked;
+
     const existing = await prisma.perk.findFirst({ where: { name: spec.name } });
     if (existing) {
         return prisma.perk.update({
             where: { id: existing.id },
             data: {
                 description: spec.description,
-                isInnate: true,
+                isInnate,
                 category: spec.category ?? 'REGULAR',
+                statKey: spec.statKey ?? null,
+                minValue: spec.minValue ?? null,
             },
         });
     }
@@ -390,8 +419,10 @@ async function ensurePerk(spec: PerkSpec) {
         data: {
             name: spec.name,
             description: spec.description,
-            isInnate: true,
+            isInnate,
             category: spec.category ?? 'REGULAR',
+            statKey: spec.statKey ?? null,
+            minValue: spec.minValue ?? null,
             requiresValue: false,
             startAllowed: false,
             behavior: 'NONE',
@@ -408,6 +439,116 @@ function uniqByName(perks: PerkSpec[]): PerkSpec[] {
     return [...m.values()];
 }
 
+function applySpecialRequirements(perks: PerkSpec[]): PerkSpec[] {
+    const reqByName = new Map<string, { statKey: StatKeySpecial; minValue: number }>();
+    const keyOf = (name: string): string => name.trim().toUpperCase().replace(/[’‘`]/g, "'");
+
+    const assign = (statKey: StatKeySpecial, pairs: Array<[string, number]>) => {
+        for (const [name, minValue] of pairs) {
+            reqByName.set(keyOf(name), { statKey, minValue });
+        }
+    };
+
+    assign('S', [
+        ['STRONG BACK', 3],
+        ['BASHER', 4],
+        ['BIG LEAGUES', 4],
+        ['DRAG', 4],
+        ['STEADY AIM', 4],
+        ['MANCATCHER', 5],
+        ['CHARGE', 5],
+        ['WIDE SWINGS', 6],
+        ['GRENADIER', 6],
+        ['FREIGHT TRAIN', 6],
+        ['IRON FIST', 7],
+    ]);
+    assign('P', [
+        ['WAYFINDER', 3],
+        ['HOBBLE', 3],
+        ['SNIPER', 4],
+        ['OVERWATCH', 4],
+        ['SPOTTER', 4],
+        ['PENETRATOR', 5],
+        ['PICKPOCKET', 5],
+        ['CALLED SHOT', 6],
+        ['RIFLEMAN', 6],
+        ['AWARENESS', 7],
+    ]);
+    assign('E', [
+        ['STONEWALL', 3],
+        ['SELFLESS', 3],
+        ['RAD RESISTANT', 4],
+        ['IMMORTAL', 4],
+        ['BULLET MAGNET', 5],
+        ['ODD ANATOMY', 5],
+        ['CANNIBAL', 5],
+        ['TOUGHNESS', 6],
+        ['UNENDING STAMINA', 6],
+        ['LIFEGIVER', 7],
+    ]);
+    assign('C', [
+        ['WARDEN', 3],
+        ['FAST TALKER', 3],
+        ['LIEUTENANT', 4],
+        ['INSPIRATIONAL', 4],
+        ['LONE WANDERER', 5],
+        ['UNASSUMING', 5],
+        ['PARTYBOY/GIRL', 5],
+        ['INTIMIDATION', 6],
+        ['ANIMAL FRIEND', 6],
+        ['MANEUVER', 6],
+        ['CAP COLLECTOR', 7],
+    ]);
+    assign('I', [
+        ['ADAPTABLE', 3],
+        ['SAVANT', 4],
+        ['INFORMANT', 4],
+        ['SCRAPPER', 4],
+        ['CHEMIST', 5],
+        ['STRATEGIST', 5],
+        ['MEDIC', 6],
+        ['TRIGONOMETRY', 6],
+        ['CORONER', 6],
+        ['DEVIOUS', 5],
+        ['PREVIOUS', 5],
+        ['GUN NUT', 7],
+    ]);
+    assign('A', [
+        ['SPRINT', 3],
+        ['PARTING SHOT', 4],
+        ['HIDDEN', 4],
+        ['BLITZ', 4],
+        ['GUNSLINGER', 5],
+        ['FIRE AND MOVE', 6],
+        ['HIT THE DECK', 6],
+        ['GUNS AKIMBO', 6],
+        ['REFLEXES', 7],
+        ['MOVING TARGET', 7],
+    ]);
+    assign('L', [
+        ['MALFUNCTION', 2],
+        ['RICOCHET', 2],
+        ['FORTUNE FINDER', 2],
+        ['LEND LUCK', 3],
+        ['LUCKY CHARM', 3],
+        ['FOUR LEAF CLOVER', 3],
+        ['BLOODY MESS', 3],
+        ["GRIM REAPER'S SPRINT", 4],
+        ['BETTER CRITICALS', 4],
+        ['MYSTERIOUS STRANGER', 4],
+    ]);
+
+    return perks.map((perk) => {
+        const req = reqByName.get(keyOf(perk.name));
+        if (!req) return perk;
+        return {
+            ...perk,
+            statKey: perk.statKey ?? req.statKey,
+            minValue: perk.minValue ?? req.minValue,
+        };
+    });
+}
+
 /* ========================== MAIN ========================== */
 
 async function main(): Promise<void> {
@@ -422,9 +563,9 @@ async function main(): Promise<void> {
 
 
     /* 1b) PERKI (wbudowane, INNATE) */
-    const PERKS: PerkSpec[] = uniqByName([
+    const PERKS: PerkSpec[] = applySpecialRequirements(uniqByName([
         { name: 'EYE CATCHING', description: 'This model always counts as being Wide Open.' },
-        { name: 'FLIGHT', description: 'This model is unaffected by the Proximity of Enemy models and can take the Get Moving Action while Engaged. This model does not count vertical movement towards its total allowed when climbing, and is always considered to have an Agility greater than the elevation difference when dropping from a Terrain Feature.' },
+        { name: 'FLIGHT', description: 'This model is unaffected by the Proximity of Enemy models and can take the Get Moving Action while Engaged. This model does not count vertical movement towards its total allowed when climbing, and is always considered to have an Agility greater than the elevation difference when dropping from a Terrain Feature.', category: 'AUTOMATRON' },
         { name: 'HARDY', description: 'This model cannot Suffer Fatigue. It can still Take Fatigue by performing Actions or other effects.' },
         { name: 'KABOOM!', description: 'This model gains the following Uranium Fever Action. Action: Uranium Fever (Unengaged/Engaged): All models (Friendly and Enemy) within 3â€ť Suffer sufficient Harm to reach their Harm Limit. This model is Incapacitated. This model does not roll on the Aftermath Table; it just rolls on the Serious Injury Table.' },
         { name: 'KEEP UP!', description: 'After a Friendly Champion model in Base contact completes a Back Off or Get Moving Action, this model may move into Base contact with that Friendly Champion model.' },
@@ -432,7 +573,7 @@ async function main(): Promise<void> {
         { name: 'MAKING A WITHDRAWAL', description: 'When this model would cause an Enemy model to Suffer an Injury or Harm, the opposing player may reduce their Stash by 5 Caps per Injury and Harm. For every 5 Caps removed, this modelâ€™s crew gains 5 Caps and the Enemy model Suffers one less Injury or Harm, as appropriate.' },
         { name: 'MIND CONTROL', description: 'This model can make an Open Fire Actions using weapons carried by an Enemy model within its Control Area. Visibility is checked from the Enemy model with the weapon being used by the model with the Mind Control Perk. During this Open Fire Action, this model uses its own Luck statistic and the appropriate Test statistic value from the Enemy model. Weapons with the One & Done Trait cannot be used via this Perk.' },
 
-        { name: 'ALL THE TOYS', description: 'When taking the Crew Training Story Action with this model, you spend Parts rather than XP to purchase Upgrades. This model gains Automatron Perks rather than regular Perks.', category: 'REGULAR' },
+        { name: 'ALL THE TOYS', description: 'When taking the Crew Training Story Action with this model, spend Parts rather than XP to purchase Upgrades. This model gains Automatron Perks rather than regular Perks. When this model gains a second, fourth, sixth, or eighth Upgrade, it also gains an Automatron Perk.', category: 'REGULAR' },
 
         { name: "ATOM'S GLOW", description: 'When this model makes an attack against an Enemy model, and either this model or the Target are within 3â€ť of a Radiation Token, treat this modelâ€™s Luck as being 1 higher.' },
         { name: 'BEAST', description: "This model can't become a crew's Leader, nor gain new Perks." },
@@ -550,16 +691,16 @@ async function main(): Promise<void> {
         { name: 'MYSTERIOUS STRANGER', description: 'At the start of each Round after the first, this model controller may make a Mysterious Stranger Test. If passed, deploy a friendly Mysterious Stranger model in Base contact with the battlefield edge closest to this model.' },
 
         // Automatron perks
-        { name: 'CLUSTER BOMBS', description: 'After performing a Get Moving Action, this model may use the Cluster Bombs weapon without Taking Fatigue.', category: 'AUTOMATRON' },
-        { name: 'FAT MAN LAUNCHER', description: 'This model crew may use the Fat Man Ploy.', category: 'AUTOMATRON' },
-        { name: 'GAS LAUNCHER', description: 'When an Enemy model Engages a model with this Perk, the Enemy controller rolls two dice and may Suffer 1 Fatigue if either die scores higher than Enemy Intelligence.', category: 'AUTOMATRON' },
+        { name: 'CLUSTER BOMBS', description: 'After performing a Get Moving Action, this model may use the Cluster Bombs weapon without Taking Fatigue. Weapon profile: Cluster Bombs, Grenade (3"), 2A, Traits: Area (2"), CQB.', category: 'AUTOMATRON' },
+        { name: 'FAT MAN LAUNCHER', description: 'This model crew may use the Fat Man Ploy. Ploy: Fat Man. You may enact this Ploy at the end of any Round if a Friendly model with this Perk is on the Battlefield and is not Incapacitated. A Friendly model with this Perk makes a Ranged Attack Action using the Fat Man weapon. Weapon profile: Fat Man, Heavy (18"), 5S, Traits: Area (2"), CQB, Irradiate, One & Done.', category: 'AUTOMATRON' },
+        { name: 'GAS LAUNCHER', description: 'When an Enemy model Engages a model with this Perk, the Enemy model controller rolls two dice. If any score higher than the Enemy model Intelligence, it Suffers 1 Fatigue.', category: 'AUTOMATRON' },
         { name: 'HOOK ARM', description: 'This model Melee weapon gains the Duel Trait.', category: 'AUTOMATRON' },
         { name: 'RADIATION COILS', description: 'This model counts as a Radiation Token.', category: 'AUTOMATRON' },
-        { name: 'RECON SENSORS', description: 'When another Friendly model within 3 inches makes a Ranged Attack with a Rifle, it adds an additional Bonus Die to the Dice Pool.', category: 'AUTOMATRON' },
-        { name: 'REGENERATION FIELD', description: 'When a Friendly model without this Perk is selected as the Active model, if that Friendly model is within 3 inches of a model with this Perk, it Recovers a Harm.', category: 'AUTOMATRON' },
-        { name: 'SENSOR ARRAY', description: 'During Step 2 of an Open Fire Action, this model uses the Charisma of the crew Leader instead of its own when declaring Supporting Fire.', category: 'AUTOMATRON' },
+        { name: 'RECON SENSORS', description: 'When another Friendly model within 3" of this model makes a Ranged Attack with a Rifle, it adds an additional Bonus Die to the Dice Pool.', category: 'AUTOMATRON' },
+        { name: 'REGENERATION FIELD', description: 'When a Friendly model without the Regeneration Field Perk is selected as the Active model, if that Friendly model is within 3" of a model with this Perk, it Recovers a Harm.', category: 'AUTOMATRON' },
+        { name: 'SENSOR ARRAY', description: 'During Step 2 of an Open Fire Action, this model uses the Charisma of the crew Leader instead of its own when declaring Supporting Fire. Models that give Supporting Fire do not Take Fatigue.', category: 'AUTOMATRON' },
         { name: 'UNSTABLE', description: 'This model suffers 1 Harm rather than Taking Fatigue for its first Action each Round.', category: 'AUTOMATRON' },
-    ]);
+    ]));
 
     await Promise.all(PERKS.map(ensurePerk));
     console.log(`Perks seeded: ${PERKS.length}`);
@@ -605,14 +746,23 @@ async function main(): Promise<void> {
     const effects = await Promise.all(EFFECTS.map(ensureEffect));
     const effectIds = new Map<string, string>(effects.map((e) => [effectKey(e.name, e.kind), e.id]));
 
-    const wfx = (name: string, valueInt?: number): { name: string; kind: EffectKind; valueInt?: number } =>
+    const wfx = (name: string, valueInt?: number, valueText?: string): ProfileEffectSeed =>
         valueInt == null
-            ? { name, kind: EffectKind.WEAPON }
-            : { name, kind: EffectKind.WEAPON, valueInt };
-    const cfx = (name: string, valueInt?: number): { name: string; kind: EffectKind; valueInt?: number } =>
+            ? { name, kind: EffectKind.WEAPON, valueText: valueText ?? null, effectMode: 'ADD' }
+            : { name, kind: EffectKind.WEAPON, valueInt, valueText: valueText ?? null, effectMode: 'ADD' };
+    const wfxR = (name: string, valueInt?: number, valueText?: string): ProfileEffectSeed =>
         valueInt == null
-            ? { name, kind: EffectKind.CRITICAL }
-            : { name, kind: EffectKind.CRITICAL, valueInt };
+            ? { name, kind: EffectKind.WEAPON, valueText: valueText ?? null, effectMode: 'REMOVE' }
+            : { name, kind: EffectKind.WEAPON, valueInt, valueText: valueText ?? null, effectMode: 'REMOVE' };
+    const cfx = (name: string, valueInt?: number, valueText?: string): ProfileEffectSeed =>
+        valueInt == null
+            ? { name, kind: EffectKind.CRITICAL, valueText: valueText ?? null, effectMode: 'ADD' }
+            : { name, kind: EffectKind.CRITICAL, valueInt, valueText: valueText ?? null, effectMode: 'ADD' };
+    const cfxR = (name: string, valueInt?: number, valueText?: string): ProfileEffectSeed =>
+        valueInt == null
+            ? { name, kind: EffectKind.CRITICAL, valueText: valueText ?? null, effectMode: 'REMOVE' }
+            : { name, kind: EffectKind.CRITICAL, valueInt, valueText: valueText ?? null, effectMode: 'REMOVE' };
+            
 
     const weaponBundles: WeaponBundle[] = [
         {
@@ -629,9 +779,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (10")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), wfx('Fast')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 4, ratingDelta: 6 },
-                { order: 3, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 2, ratingDelta: 5, effects: [cfx('Suppress', 1)] },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: '4A', partsOverride: 4, ratingDelta: 6 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 5, effects: [cfx('Suppress', 1)] },
             ],
         },
         {
@@ -639,8 +789,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (18")', baseTest: '4P' },
             baseEffects: [cfx('Ignite', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 2, ratingDelta: 7 },
-                { order: 2, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 3, ratingDelta: 8, effects: [wfx('Fast')] },
+                { order: 1, typeOverride: 'Rifle (22")', testOverride: null, partsOverride: 2, ratingDelta: 7 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Fast')] },
             ],
         },
         {
@@ -648,9 +798,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (18")', baseTest: '4P' },
             baseEffects: [cfx('Meltdown')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (18")', testOverride: '4P', partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2), cfx('Meltdown')] },
-                { order: 2, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 3, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (22")', testOverride: '5P', partsOverride: 4, ratingDelta: 8 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2)] },
+                { order: 2, typeOverride: 'Rifle (22")', testOverride: null, partsOverride: 3, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: '5P', partsOverride: 4, ratingDelta: 8 },
             ],
         },
         {
@@ -669,7 +819,10 @@ async function main(): Promise<void> {
             name: "Officer's Sword",
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [wfx('Fast'), cfx('Pierce')],
-            profiles: [{ order: 1, testOverride: '5S', partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] }],
+            profiles: [
+                { order: 1, testOverride: '5S', partsOverride: 2, ratingDelta: 6 },
+                { order: 1, testOverride: null, partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] }
+            ],
         },
         {
             name: 'Hand Weapon',
@@ -677,14 +830,14 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Fast')],
             profiles: [
                 { order: 1, testOverride: '4S', partsOverride: 3, ratingDelta: 4 },
-                { order: 2, testOverride: '4S', partsOverride: 3, ratingDelta: 4, effects: [cfx('Maim')] },
+                { order: 2, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [cfx('Maim')] },
             ],
         },
         {
             name: 'Ripper',
             base: { baseType: 'Melee', baseTest: '5S' },
             baseEffects: [wfx('Fast'), cfx('Maim')],
-            profiles: [{ order: 1, testOverride: '5S', partsOverride: 4, ratingDelta: 8, effects: [cfx('Pierce')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Pierce')] }],
         },
         {
             name: 'Sledgehammer',
@@ -692,7 +845,7 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Unwieldy', 5), wfx('Wind Up'), cfx('Maim')],
             profiles: [
                 { order: 1, testOverride: '5S', partsOverride: 2, ratingDelta: 6 },
-                { order: 2, testOverride: '5S', partsOverride: 3, ratingDelta: 6, effects: [cfx('Suppress', 1)] },
+                { order: 2, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [cfx('Suppress', 1)] },
             ],
         },
         {
@@ -700,8 +853,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Melee', baseTest: '6S' },
             baseEffects: [wfx('Unwieldy', 6), cfx('Maim')],
             profiles: [
-                { order: 1, testOverride: '6S', partsOverride: 3, ratingDelta: 7, effects: [wfx('Wind Up')] },
-                { order: 2, testOverride: '6S', partsOverride: 3, ratingDelta: 7, effects: [cfx('Suppress', 1)] },
+                { order: 1, testOverride: null, partsOverride: 3, ratingDelta: 7, effects: [wfx('Wind Up')] },
+                { order: 2, testOverride: null, partsOverride: 3, ratingDelta: 7, effects: [cfx('Suppress', 1)] },
             ],
         },
         {
@@ -714,21 +867,21 @@ async function main(): Promise<void> {
             name: 'Deathclaw Gauntlet',
             base: { baseType: 'Melee', baseTest: '5S' },
             baseEffects: [wfx('Wind Up'), cfx('Pierce')],
-            profiles: [{ order: 1, testOverride: '5S', partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] }],
         },
         {
             name: 'Pole Hook',
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [wfx('Overwhelm'), cfx('Seize')],
-            profiles: [{ order: 1, testOverride: '4S', partsOverride: 3, ratingDelta: 4, effects: [wfx('Wind Up')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [wfx('Wind Up')] }],
         },
         {
             name: 'Shishkebab',
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [cfx('Ignite', 2)],
             profiles: [
-                { order: 1, testOverride: '4S', partsOverride: 4, ratingDelta: 8, effects: [cfx('Ignite', 3)] },
-                { order: 2, testOverride: '4S', partsOverride: 3, ratingDelta: 6, effects: [wfx('Fast')] },
+                { order: 1, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Ignite', 3)] },
+                { order: 2, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [wfx('Fast')] },
             ],
         },
         {
@@ -736,21 +889,21 @@ async function main(): Promise<void> {
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [wfx('Fast'), wfx('Non-Lethal'), cfx('Suppress', 1)],
             profiles: [
-                { order: 1, testOverride: '4S', partsOverride: 3, ratingDelta: 4 },
-                { order: 2, testOverride: '4S', partsOverride: 2, ratingDelta: 2, effects: [cfx('Suppress', 2)] },
+                { order: 1, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [wfxR('Non-Lethal')] },
+                { order: 2, testOverride: null, partsOverride: 2, ratingDelta: 2, effects: [cfx('Suppress', 2)] },
             ],
         },
         {
             name: 'Electro Suppressor',
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [cfx('Suppress', 3)],
-            profiles: [{ order: 1, testOverride: '4S', partsOverride: 1, ratingDelta: 3, effects: [wfx('Wind Up')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 1, ratingDelta: 3, effects: [wfx('Wind Up')] }],
         },
         {
             name: 'Meat Hook',
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [cfx('Pierce')],
-            profiles: [{ order: 1, testOverride: '4S', partsOverride: 3, ratingDelta: 6, effects: [cfx('Seize')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [cfx('Seize')] }],
         },
         {
             name: 'Assaultron Claws',
@@ -758,7 +911,7 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Fast'), cfx('Maim')],
             profiles: [
                 { order: 1, testOverride: '5S', partsOverride: 4, ratingDelta: 6 },
-                { order: 2, testOverride: '5S', partsOverride: 4, ratingDelta: 8, effects: [cfx('Pierce')] },
+                { order: 2, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Pierce')] },
             ],
         },
         {
@@ -778,9 +931,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Melee', baseTest: '6S' },
             baseEffects: [wfx('Unwieldy', 6), wfx('Wind Up')],
             profiles: [
-                { order: 1, testOverride: '6S', partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2)] },
-                { order: 2, testOverride: '6S', partsOverride: 7, ratingDelta: 12, effects: [cfx('Meltdown')] },
-                { order: 3, testOverride: '6S', partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
+                { order: 1, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2)] },
+                { order: 2, testOverride: null, partsOverride: 7, ratingDelta: 12, effects: [cfx('Meltdown')] },
+                { order: 3, testOverride: null, partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
             ],
         },
         {
@@ -789,14 +942,14 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Fast'), cfx('Suppress', 2)],
             profiles: [
                 { order: 1, testOverride: '5S', partsOverride: 4, ratingDelta: 6 },
-                { order: 2, testOverride: '5S', partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] },
+                { order: 2, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] },
             ],
         },
         {
             name: 'Stun Baton',
             base: { baseType: 'Melee', baseTest: '4S' },
             baseEffects: [cfx('Suppress', 2)],
-            profiles: [{ order: 1, testOverride: '4S', partsOverride: 2, ratingDelta: 6, effects: [wfx('Wind Up')] }],
+            profiles: [{ order: 1, testOverride: null, partsOverride: 2, ratingDelta: 6, effects: [wfx('Wind Up')] }],
         },
         {
             name: 'Mothman Sonic Wave',
@@ -821,8 +974,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (14")', baseTest: '4A' },
             baseEffects: [wfx('Aim', 1), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (18")', testOverride: '4A', partsOverride: 3, ratingDelta: 10 },
-                { order: 2, typeOverride: 'Pistol (18")', testOverride: '4A', partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 2)] },
+                { order: 1, typeOverride: 'Pistol (18")', testOverride: null, partsOverride: 3, ratingDelta: 10 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 2)] },
             ],
         },
         {
@@ -830,8 +983,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '4A' },
             baseEffects: [cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 3, ratingDelta: 7, effects: [cfx('Ignite', 1)] },
-                { order: 2, typeOverride: 'Pistol (12")', testOverride: '5A', partsOverride: 2, ratingDelta: 6 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 7, effects: [cfx('Ignite', 1)] },
+                { order: 2, typeOverride: null, testOverride: '5A', partsOverride: 2, ratingDelta: 6 },
             ],
         },
         {
@@ -839,8 +992,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (8")', baseTest: '4A' },
             baseEffects: [wfx('CQB'), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 3, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 3, ratingDelta: 4 },
+                { order: 1, typeOverride: 'Pistol (12")', testOverride: null, partsOverride: 3, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -848,8 +1001,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (10")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), cfx('Ignite', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 3 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 4, ratingDelta: 7, effects: [wfx('Fast')] },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 3 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 7, effects: [wfx('Fast')] },
             ],
         },
         {
@@ -857,8 +1010,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '3A' },
             baseEffects: [wfx('Aim', 1), wfx('CQB'), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (16")', testOverride: '3A', partsOverride: 2, ratingDelta: 3 },
-                { order: 2, typeOverride: 'Pistol (16")', testOverride: '3A', partsOverride: 2, ratingDelta: 4 },
+                { order: 1, typeOverride: 'Pistol (16")', testOverride: null, partsOverride: 2, ratingDelta: 3 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 4, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -866,9 +1019,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (8")', baseTest: '4A' },
             baseEffects: [wfx('CQB')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 2, ratingDelta: 3 },
-                { order: 2, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 2, ratingDelta: 3, effects: [wfx('Aim', 1)] },
-                { order: 3, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 2, ratingDelta: 3, effects: [cfx('Suppress', 1)] },
+                { order: 1, typeOverride: 'Pistol (12")', testOverride: null, partsOverride: 2, ratingDelta: 3 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 3, effects: [wfx('Aim', 1)] },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 3, effects: [cfx('Suppress', 1)] },
             ],
         },
         {
@@ -876,9 +1029,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '4A' },
             baseEffects: [wfx('CQB'), wfx('Fast'), cfx('Meltdown')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (12")', testOverride: '4A', partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2)] },
-                { order: 2, typeOverride: 'Pistol (16")', testOverride: '4A', partsOverride: 3, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Pistol (16")', testOverride: '5A', partsOverride: 4, ratingDelta: 8 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 2)] },
+                { order: 2, typeOverride: 'Pistol (16")', testOverride: null, partsOverride: 3, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: '5A', partsOverride: 4, ratingDelta: 8 },
             ],
         },
         {
@@ -886,8 +1039,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (8")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), cfx('Poison', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (8")', testOverride: '4A', partsOverride: 3, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Pistol (8")', testOverride: '4A', partsOverride: 4, ratingDelta: 6, effects: [cfx('Poison', 3)] },
+                { order: 1, typeOverride: null, testOverride: '4A', partsOverride: 3, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 6, effects: [cfx('Poison', 3)] },
             ],
         },
         {
@@ -895,8 +1048,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '4A' },
             baseEffects: [wfx('Slow'), cfx('Meltdown')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 3, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 5, ratingDelta: 10 },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 3, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [wfxR('Slow')] },
             ],
         },
         {
@@ -904,9 +1057,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (14")', baseTest: '3A' },
             baseEffects: [cfx('Ignite', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (16")', testOverride: '3A', partsOverride: 2, ratingDelta: 3 },
-                { order: 2, typeOverride: 'Pistol (16")', testOverride: '3A', partsOverride: 4, ratingDelta: 8, effects: [wfx('Fast')] },
-                { order: 3, typeOverride: 'Pistol (16")', testOverride: '3A', partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 3)] },
+                { order: 1, typeOverride: 'Pistol (16")', testOverride: null, partsOverride: 2, ratingDelta: 3 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [wfx('Fast')] },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [cfx('Ignite', 3)] },
             ],
         },
         {
@@ -914,8 +1067,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (5")', baseTest: '5A' },
             baseEffects: [wfx('CQB'), wfx('Running Shot'), wfx('Slow'), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (5")', testOverride: '5A', partsOverride: 3, ratingDelta: 4, effects: [wfx('Running Shot')] },
-                { order: 2, typeOverride: 'Pistol (5")', testOverride: '5A', partsOverride: 3, ratingDelta: 4 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [wfxR('CQB')] },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [wfxR('Slow')]},
             ],
         },
         {
@@ -923,8 +1076,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (10")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), cfx('Ignite', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 4 },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: '3A', partsOverride: 2, ratingDelta: 4, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -932,9 +1085,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (10")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), wfx('Fast'), wfx('Silenced')],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 2, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 4, ratingDelta: 6 },
-                { order: 3, typeOverride: 'Pistol (14")', testOverride: '4A', partsOverride: 2, ratingDelta: 5, effects: [cfx('Suppress', 1)] },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: '4A', partsOverride: 4, ratingDelta: 6 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 5, effects: [cfx('Suppress', 1)] },
             ],
         },
         {
@@ -942,8 +1095,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '3A' },
             baseEffects: [wfx('CQB'), cfx('Poison', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 3 },
-                { order: 2, typeOverride: 'Pistol (14")', testOverride: '3A', partsOverride: 2, ratingDelta: 4 },
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 3 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 4, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -951,8 +1104,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Pistol (12")', baseTest: '2A' },
             baseEffects: [wfx('CQB'), wfx('Fast'), cfx('Suppress', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Pistol (12")', testOverride: '3A', partsOverride: 4, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Pistol (12")', testOverride: '3A', partsOverride: 2, ratingDelta: 4, effects: [wfx('Fast')] },
+                { order: 1, typeOverride: null, testOverride: '3A', partsOverride: 4, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 4, effects: [wfx('Fast'), wfxR('CQB')] },
             ],
         },
         {
@@ -990,8 +1143,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (20")', baseTest: '4P' },
             baseEffects: [wfx('Storm', 1), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (20")', testOverride: '5P', partsOverride: 3, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (20")', testOverride: '5P', partsOverride: 5, ratingDelta: 12, effects: [wfx('Fast')] },
+                { order: 1, typeOverride: null, testOverride: '5P', partsOverride: 3, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Fast')] },
             ],
         },
         {
@@ -999,8 +1152,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (12")', baseTest: '3P' },
             baseEffects: [wfx('Storm', 2), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (12")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (12")', testOverride: '4P', partsOverride: 6, ratingDelta: 8, effects: [wfx('Storm', 3)] },
+                { order: 1, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 6, ratingDelta: 8, effects: [wfx('Storm', 3)] },
             ],
         },
         {
@@ -1008,8 +1161,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (16")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 1), wfx('Storm', 1), cfx('Suppress', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (20")', testOverride: '3P', partsOverride: 2, ratingDelta: 5 },
-                { order: 2, typeOverride: 'Rifle (20")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 1, typeOverride: 'Rifle (20")', testOverride: null, partsOverride: 2, ratingDelta: 5 },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
             ],
         },
         {
@@ -1017,9 +1170,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (22")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 1), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (26")', testOverride: '3P', partsOverride: 2, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (26")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (26")', testOverride: '4P', partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
+                { order: 1, typeOverride: 'Rifle (26")', testOverride: null, partsOverride: 2, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
             ],
         },
         {
@@ -1027,9 +1180,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (24")', baseTest: '4P' },
             baseEffects: [wfx('Fast'), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (30")', testOverride: '4P', partsOverride: 3, ratingDelta: 9 },
-                { order: 2, typeOverride: 'Rifle (30")', testOverride: '5P', partsOverride: 3, ratingDelta: 10 },
-                { order: 3, typeOverride: 'Rifle (30")', testOverride: '5P', partsOverride: 2, ratingDelta: 6, effects: [wfx('Bladed')] },
+                { order: 1, typeOverride: 'Rifle (30")', testOverride: null, partsOverride: 3, ratingDelta: 9 },
+                { order: 2, typeOverride: null, testOverride: '5P', partsOverride: 3, ratingDelta: 10 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 6, effects: [wfx('Bladed')] },
             ],
         },
         {
@@ -1037,8 +1190,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (20")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 1), cfx('Suppress', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (24")', testOverride: '3P', partsOverride: 3, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (24")', testOverride: '4P', partsOverride: 3, ratingDelta: 6 },
+                { order: 1, typeOverride: 'Rifle (24")', testOverride: null, partsOverride: 3, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 3, ratingDelta: 6 },
             ],
         },
         {
@@ -1046,9 +1199,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (24")', baseTest: '4P' },
             baseEffects: [wfx('Aim', 1), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (28")', testOverride: '4P', partsOverride: 2, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (28")', testOverride: '5P', partsOverride: 4, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (28")', testOverride: '5P', partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
+                { order: 1, typeOverride: 'Rifle (28")', testOverride: null, partsOverride: 2, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: '5P', partsOverride: 4, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
             ],
         },
         {
@@ -1056,8 +1209,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (20")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 1), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (20")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (20")', testOverride: '4P', partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 2)] },
+                { order: 1, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 2)] },
             ],
         },
         {
@@ -1065,8 +1218,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (8")', baseTest: '4P' },
             baseEffects: [wfx('CQB'), wfx('Storm', 2), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (10")', testOverride: '4P', partsOverride: 3, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (10")', testOverride: '5P', partsOverride: 4, ratingDelta: 8, effects: [wfx('Storm', 1)] },
+                { order: 1, typeOverride: 'Rifle (10")', testOverride: null, partsOverride: 3, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: '5P', partsOverride: 4, ratingDelta: 8, effects: [wfx('Storm', 1)] },
             ],
         },
         {
@@ -1074,8 +1227,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (20")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 2), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (24")', testOverride: '3P', partsOverride: 3, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (24")', testOverride: '3P', partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 3)] },
+                { order: 1, typeOverride: 'Rifle (24")', testOverride: null, partsOverride: 3, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 3)] },
             ],
         },
         {
@@ -1083,8 +1236,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (16")', baseTest: '4P' },
             baseEffects: [cfx('Suppress', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (16")', testOverride: '4P', partsOverride: 4, ratingDelta: 8, effects: [wfx('Fast')] },
-                { order: 2, typeOverride: 'Rifle (16")', testOverride: '4P', partsOverride: 4, ratingDelta: 8, effects: [cfx('Suppress', 2)] },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [wfx('Fast')] },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Suppress', 2)] },
             ],
         },
         {
@@ -1092,9 +1245,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (16")', baseTest: '2P' },
             baseEffects: [wfx('Aim', 2), cfx('Poison', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (20")', testOverride: '2P', partsOverride: 4, ratingDelta: 15 },
-                { order: 2, typeOverride: 'Rifle (20")', testOverride: '3P', partsOverride: 3, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (20")', testOverride: '3P', partsOverride: 5, ratingDelta: 10, effects: [cfx('Suppress', 3)] },
+                { order: 1, typeOverride: 'Rifle (20")', testOverride: null, partsOverride: 4, ratingDelta: 15 },
+                { order: 2, typeOverride: null, testOverride: '3P', partsOverride: 3, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 10, effects: [cfx('Suppress', 3)] },
             ],
         },
         {
@@ -1102,9 +1255,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (18")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 1), wfx('Bladed'), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (22")', testOverride: '3P', partsOverride: 2, ratingDelta: 7 },
-                { order: 2, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
+                { order: 1, typeOverride: 'Rifle (22")', testOverride: null, partsOverride: 2, ratingDelta: 7 },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
             ],
         },
         {
@@ -1112,8 +1265,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (14")', baseTest: '3P' },
             baseEffects: [wfx('Storm', 2), cfx('Poison', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (14")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (14")', testOverride: '4P', partsOverride: 4, ratingDelta: 6, effects: [cfx('Poison', 3)] },
+                { order: 1, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 6, effects: [cfx('Poison', 3)] },
             ],
         },
         {
@@ -1121,8 +1274,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (30")', baseTest: '4P' },
             baseEffects: [wfx('Aim', 2), cfx('Suppress', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (30")', testOverride: '5P', partsOverride: 3, ratingDelta: 10 },
-                { order: 2, typeOverride: 'Rifle (30")', testOverride: '5P', partsOverride: 2, ratingDelta: 6, effects: [wfx('Bladed')] },
+                { order: 1, typeOverride: null, testOverride: '5P', partsOverride: 3, ratingDelta: 10 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 6, effects: [wfx('Bladed')] },
             ],
         },
         {
@@ -1130,9 +1283,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (24")', baseTest: '3P' },
             baseEffects: [wfx('Aim', 2), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (30")', testOverride: '3P', partsOverride: 3, ratingDelta: 4 },
-                { order: 2, typeOverride: 'Rifle (30")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 3, typeOverride: 'Rifle (30")', testOverride: '4P', partsOverride: 4, ratingDelta: 10, effects: [wfx('Aim', 3)] },
+                { order: 1, typeOverride: 'Rifle (30")', testOverride: null, partsOverride: 3, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 10, effects: [wfx('Aim', 3)] },
             ],
         },
         {
@@ -1140,8 +1293,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (12")', baseTest: '3P' },
             baseEffects: [wfx('CQB'), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (12")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (12")', testOverride: '4P', partsOverride: 2, ratingDelta: 4 },
+                { order: 1, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 4, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -1149,8 +1302,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (12")', baseTest: '3P' },
             baseEffects: [wfx('Bladed'), cfx('Suppress', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (12")', testOverride: '3P', partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
-                { order: 2, typeOverride: 'Rifle (12")', testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
+                { order: 2, typeOverride: null, testOverride: '4P', partsOverride: 4, ratingDelta: 8 },
             ],
         },
         {
@@ -1158,8 +1311,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (30")', baseTest: '2P' },
             baseEffects: [wfx('Aim', 3), cfx('Suppress', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (36")', testOverride: '2P', partsOverride: 2, ratingDelta: 6 },
-                { order: 2, typeOverride: 'Rifle (36")', testOverride: '3P', partsOverride: 4, ratingDelta: 5 },
+                { order: 1, typeOverride: 'Rifle (36")', testOverride: null, partsOverride: 2, ratingDelta: 6 },
+                { order: 2, typeOverride: null, testOverride: '3P', partsOverride: 4, ratingDelta: 5 },
             ],
         },
         {
@@ -1167,8 +1320,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (36")', baseTest: '2P' },
             baseEffects: [wfx('Aim', 3), cfx('Showstopper')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (36")', testOverride: '3P', partsOverride: 8, ratingDelta: 10 },
-                { order: 2, typeOverride: 'Rifle (36")', testOverride: '3P', partsOverride: 8, ratingDelta: 10, effects: [cfx('Pierce')] },
+                { order: 1, typeOverride: null, testOverride: '3P', partsOverride: 8, ratingDelta: 10 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 8, ratingDelta: 10, effects: [cfx('Pierce')] },
             ],
         },
         {
@@ -1176,8 +1329,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (16")', baseTest: '3P' },
             baseEffects: [wfx('Fast')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (16")', testOverride: '4P', partsOverride: 3, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (16")', testOverride: '4P', partsOverride: 3, ratingDelta: 5, effects: [cfx('Pierce')] },
+                { order: 1, typeOverride: null, testOverride: '4P', partsOverride: 3, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 5, effects: [cfx('Pierce')] },
             ],
         },
         {
@@ -1185,9 +1338,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (10")', baseTest: '4P' },
             baseEffects: [wfx('Storm', 1), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (14")', testOverride: '4P', partsOverride: 4, ratingDelta: 10 },
-                { order: 2, typeOverride: 'Rifle (14")', testOverride: '5P', partsOverride: 5, ratingDelta: 12 },
-                { order: 3, typeOverride: 'Rifle (14")', testOverride: '5P', partsOverride: 3, ratingDelta: 8, effects: [wfx('Fast')] },
+                { order: 1, typeOverride: 'Rifle (14")', testOverride: null, partsOverride: 4, ratingDelta: 10 },
+                { order: 2, typeOverride: null, testOverride: '5P', partsOverride: 5, ratingDelta: 12 },
+                { order: 3, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Fast')] },
             ],
         },
         {
@@ -1195,9 +1348,9 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (18")', baseTest: '4P' },
             baseEffects: [cfx('Suppress', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 2, ratingDelta: 8 },
-                { order: 2, typeOverride: 'Rifle (22")', testOverride: '4P', partsOverride: 4, ratingDelta: 10, effects: [cfx('Suppress', 3)] },
-                { order: 3, typeOverride: 'Rifle (22")', testOverride: '5P', partsOverride: 3, ratingDelta: 8 },
+                { order: 1, typeOverride: 'Rifle (22")', testOverride: null, partsOverride: 2, ratingDelta: 8 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 10, effects: [cfx('Suppress', 3)] },
+                { order: 3, typeOverride: null, testOverride: '5P', partsOverride: 3, ratingDelta: 8 },
             ],
         },
         {
@@ -1205,8 +1358,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (16")', baseTest: '5P' },
             baseEffects: [wfx('CQB'), cfx('Meltdown')],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (16")', testOverride: '5P', partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 1)] },
-                { order: 2, typeOverride: 'Rifle (16")', testOverride: '5P', partsOverride: 7, ratingDelta: 12 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 6, effects: [wfx('Aim', 1)] },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 7, ratingDelta: 12, effects: [wfxR('CQB')] },
             ],
         },
         {
@@ -1214,8 +1367,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Rifle (14")', baseTest: '3P' },
             baseEffects: [wfx('Storm', 2), cfx('Suppress', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Rifle (18")', testOverride: '3P', partsOverride: 2, ratingDelta: 5 },
-                { order: 2, typeOverride: 'Rifle (18")', testOverride: '3P', partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] },
+                { order: 1, typeOverride: 'Rifle (18")', testOverride: null, partsOverride: 2, ratingDelta: 5 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Maim')] },
             ],
         },
         {
@@ -1223,8 +1376,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (6")', baseTest: '4S' },
             baseEffects: [wfx('Area', 2), wfx('CQB'), cfx('Ignite', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (6")', testOverride: '5S', partsOverride: 4, ratingDelta: 11 },
-                { order: 2, typeOverride: 'Heavy (9")', testOverride: '5S', partsOverride: 5, ratingDelta: 12 },
+                { order: 1, typeOverride: null, testOverride: '5S', partsOverride: 4, ratingDelta: 11 },
+                { order: 2, typeOverride: 'Heavy (9")', testOverride: null, partsOverride: 5, ratingDelta: 12 },
             ],
         },
         {
@@ -1232,8 +1385,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (10")', baseTest: '3S' },
             baseEffects: [wfx('Creative Projectiles'), cfx('Suppress', 1)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (14")', testOverride: '4S', partsOverride: 3, ratingDelta: 5 },
-                { order: 2, typeOverride: 'Heavy (14")', testOverride: '4S', partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
+                { order: 1, typeOverride: 'Heavy (14")', testOverride: null, partsOverride: 3, ratingDelta: 5 },
+                { order: 2, typeOverride: null, testOverride: '4S', partsOverride: 3, ratingDelta: 5, effects: [cfx('Suppress', 2)] },
             ],
         },
         {
@@ -1241,8 +1394,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (16")', baseTest: '4S' },
             baseEffects: [wfx('Area', 1), wfx('Slow'), cfx('Ignite', 2)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (20")', testOverride: '4S', partsOverride: 5, ratingDelta: 12 },
-                { order: 2, typeOverride: 'Heavy (20")', testOverride: '4S', partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire'), wfx('Storm', 3)] },
+                { order: 1, typeOverride: 'Heavy (20")', testOverride: null, partsOverride: 5, ratingDelta: 12 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1”), Storm (3")'), wfxR('Area', 1)] },
             ],
         },
         {
@@ -1250,16 +1403,16 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (14")', baseTest: '4S' },
             baseEffects: [wfx('Slow'), wfx('Storm', 3), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (14")', testOverride: '4S', partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire')] },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1”), Storm (3")'), wfxR('Storm', 3)] },
             ],
         },
         {
             name: 'Missile Launcher',
-            base: { baseType: 'Heavy (26")', baseTest: '5S' },
-            baseEffects: [wfx('Area', 3), wfx('Slow'), cfx('Maim')],
+            base: { baseType: 'Heavy (26")', baseTest: '4S' },
+            baseEffects: [wfx('Area', 2), wfx('Slow'), cfx('Maim')],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (26")', testOverride: '5S', partsOverride: 5, ratingDelta: 12, effects: [cfx('Suppress', 2)] },
-                { order: 2, typeOverride: 'Heavy (26")', testOverride: '6S', partsOverride: 3, ratingDelta: 6 },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [cfx('Suppress', 2)] },
+                { order: 2, typeOverride: null, testOverride: '6S', partsOverride: 3, ratingDelta: 6, effects: [wfxR('Area', 2)] },
             ],
         },
         {
@@ -1267,8 +1420,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (16")', baseTest: '5S' },
             baseEffects: [wfx('Aim', 1), wfx('Slow'), cfx('Haul', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (20")', testOverride: '5S', partsOverride: 5, ratingDelta: 12 },
-                { order: 2, typeOverride: 'Heavy (20")', testOverride: '5S', partsOverride: 5, ratingDelta: 12, effects: [cfx('Maim')] },
+                { order: 1, typeOverride: 'Heavy (20")', testOverride: null, partsOverride: 5, ratingDelta: 12 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [cfx('Maim')] },
             ],
         },
         {
@@ -1276,8 +1429,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (10")', baseTest: '4S' },
             baseEffects: [wfx('Area', 1), wfx('CQB'), cfx('Ignite', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (14")', testOverride: '4S', partsOverride: 4, ratingDelta: 11 },
-                { order: 2, typeOverride: 'Heavy (14")', testOverride: '5S', partsOverride: 5, ratingDelta: 12 },
+                { order: 1, typeOverride: 'Heavy (14")', testOverride: null, partsOverride: 4, ratingDelta: 11 },
+                { order: 2, typeOverride: null, testOverride: '5S', partsOverride: 5, ratingDelta: 12 },
             ],
         },
         {
@@ -1285,8 +1438,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (16")', baseTest: '6S' },
             baseEffects: [wfx('Aim', 1), wfx('Slow'), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (16")', testOverride: '6S', partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
-                { order: 2, typeOverride: 'Heavy (16")', testOverride: '6S', partsOverride: 5, ratingDelta: 12, effects: [cfx('Haul', 2)] },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 3, ratingDelta: 8, effects: [wfx('Aim', 2)] },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [cfx('Haul', 2)] },
             ],
         },
         {
@@ -1294,8 +1447,8 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (10")', baseTest: '5S' },
             baseEffects: [wfx('Slow'), wfx('Storm', 3)],
             profiles: [
-                { order: 1, typeOverride: 'Heavy (12")', testOverride: '5S', partsOverride: 4, ratingDelta: 10 },
-                { order: 2, typeOverride: 'Heavy (12")', testOverride: '5S', partsOverride: 5, ratingDelta: 12, effects: [cfx('Maim')] },
+                { order: 1, typeOverride: 'Heavy (12")', testOverride: null, partsOverride: 4, ratingDelta: 10 },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [cfx('Maim')] },
             ],
         },
         {
@@ -1354,6 +1507,7 @@ async function main(): Promise<void> {
     };
 
     if (!seedCoreData) {
+        console.log('INFO: Seed demo factions/units skipped: database is not empty.');
         console.log('INFO: Seed demo factions/units skipped: database is not empty.');
         return;
     }

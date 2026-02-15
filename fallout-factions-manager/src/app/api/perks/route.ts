@@ -7,6 +7,7 @@ export async function GET() {
         select: {
             id: true,
             name: true,
+            description: true,
             requiresValue: true,
             statKey: true,
             minValue: true,

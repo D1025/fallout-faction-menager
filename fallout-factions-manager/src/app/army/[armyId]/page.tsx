@@ -17,7 +17,16 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const army = await prisma.army.findUnique({
         where: { id: armyId },
         include: {
-            faction: { select: { id: true, name: true } },
+            faction: {
+                select: {
+                    id: true,
+                    name: true,
+                    limits: {
+                        select: { tag: true, tier1: true, tier2: true, tier3: true },
+                        orderBy: { tag: 'asc' },
+                    },
+                },
+            },
             units: {
                 include: {
                     unit: {
@@ -113,6 +122,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
+                    valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: 'ADD' as const,
                 })) ?? [];
 
             const profiles =
@@ -126,6 +137,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         name: e.effect.name,
                         kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                         valueInt: e.valueInt,
+                        valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                        effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                     })),
                     parts: ('parts' in p ? (p as unknown as { parts: number | null }).parts : null) ?? null,
                     rating: ('ratingDelta' in p ? (p as unknown as { ratingDelta: number | null }).ratingDelta : null) ?? null,
@@ -168,6 +181,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             tier={army.tier}
             factionId={army.faction.id}
             factionName={army.faction.name}
+            factionLimits={army.faction.limits.map((l) => ({
+                tag: l.tag,
+                tier1: l.tier1 ?? null,
+                tier2: l.tier2 ?? null,
+                tier3: l.tier3 ?? null,
+            }))}
             resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
             units={uiUnits}
             rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}

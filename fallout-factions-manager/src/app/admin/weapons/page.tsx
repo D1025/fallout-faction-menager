@@ -32,6 +32,7 @@ export default async function WeaponsAdminPage() {
         baseEffects: (w.baseEffects ?? []).map((be) => ({
             effectId: be.effectId,
             valueInt: be.valueInt ?? null,
+            valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
             effect: {
                 id: be.effect.id,
                 name: be.effect.name,
@@ -52,6 +53,8 @@ export default async function WeaponsAdminPage() {
             effects: p.effects.map((e) => ({
                 effectId: e.effectId,
                 valueInt: e.valueInt ?? null,
+                valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                 effect: {
                     id: e.effect.id,
                     name: e.effect.name,

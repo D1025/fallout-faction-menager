@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const ProfileEffectInput = z.object({
     effectId: z.string().min(1),
     valueInt: z.number().int().nullable().optional(),
+    valueText: z.string().trim().nullable().optional(),
+    effectMode: z.enum(['ADD', 'REMOVE']).default('ADD'),
 });
 
 export const WeaponUpgradeSchema = z.object({

@@ -295,10 +295,10 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
 
 function LimitBadge({ tag, values }: { tag: string; values: (number | null | undefined)[] }) {
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
-      <span className="font-medium">{tag}</span>
-      <span className="text-zinc-500">{values.map((v) => (v ?? '–')).join('/')}</span>
-    </span>
+        <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+            <span className="max-w-[12rem] truncate font-medium" title={tag}>{tag}</span>
+            <span className="shrink-0 text-zinc-500">{values.map((v) => (v ?? '-')).join('/')}</span>
+        </span>
     );
 }
 
@@ -475,35 +475,39 @@ function EditorSheet({
                         </div>
                         <div className="mt-2 grid gap-2">
                             {draft.limits.map((l, idx) => (
-                                <div key={idx} className="grid grid-cols-7 items-center gap-2 rounded-xl border border-zinc-800 p-2">
-                                    <input
-                                        value={l.tag}
-                                        onChange={(e) => setLimit(idx, 'tag', e.target.value)}
-                                        placeholder="Tag (np. LEADER)"
-                                        className="col-span-3 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier1 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T1"
-                                        onChange={(e) => setLimit(idx, 'tier1', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier2 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T2"
-                                        onChange={(e) => setLimit(idx, 'tier2', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier3 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T3"
-                                        onChange={(e) => setLimit(idx, 'tier3', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <button onClick={() => removeLimit(idx)} className="text-xs text-red-300">Usuń</button>
+                                <div key={idx} className="rounded-xl border border-zinc-800 p-2">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
+                                        <input
+                                            value={l.tag}
+                                            onChange={(e) => setLimit(idx, 'tag', e.target.value)}
+                                            placeholder="Tag limitu (np. CHAMPION / ELITE SUPPORT)"
+                                            className="sm:col-span-6 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                        />
+                                        <div className="grid grid-cols-3 gap-2 sm:col-span-5">
+                                            <input
+                                                value={l.tier1 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T1"
+                                                onChange={(e) => setLimit(idx, 'tier1', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                            <input
+                                                value={l.tier2 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T2"
+                                                onChange={(e) => setLimit(idx, 'tier2', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                            <input
+                                                value={l.tier3 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T3"
+                                                onChange={(e) => setLimit(idx, 'tier3', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                        </div>
+                                        <button onClick={() => removeLimit(idx)} className="sm:col-span-1 justify-self-end text-xs text-red-300">Usuń</button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

@@ -9,6 +9,7 @@ import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 /* ===== Typy słownika efektów ===== */
 export type EffectKind = 'WEAPON' | 'CRITICAL';
+export type ProfileEffectMode = 'ADD' | 'REMOVE';
 
 export interface DictEffect {
     id: string;
@@ -19,7 +20,7 @@ export interface DictEffect {
 }
 
 /* ===== Typy formularza (wejście/wyjście API admina) ===== */
-type EffectRef = { effectId: string; valueInt?: number | null };
+type EffectRef = { effectId: string; valueInt?: number | null; valueText?: string | null; effectMode?: ProfileEffectMode };
 
 type ProfileForm = {
     order: number;
@@ -53,7 +54,7 @@ type WeaponListItem = {
     baseTest: string;
     baseParts: number | null;
     baseRating: number | null;
-    baseEffects: { effectId: string; valueInt: number | null; effect: DictEffect }[];
+    baseEffects: { effectId: string; valueInt: number | null; valueText?: string | null; effect: DictEffect }[];
     profiles: {
         id: string;
         order: number;
@@ -61,7 +62,7 @@ type WeaponListItem = {
         testOverride: string | null;
         partsOverride: number | null;
         ratingDelta: number | null;
-        effects: { effectId: string; valueInt: number | null; effect: DictEffect }[];
+        effects: { effectId: string; valueInt: number | null; valueText?: string | null; effectMode?: ProfileEffectMode; effect: DictEffect }[];
     }[];
 };
 
@@ -166,7 +167,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     function addProfileEffect(i: number): void {
         setForm((f) => {
             const list = [...f.profiles];
-            list[i] = { ...list[i], effects: [...list[i].effects, { effectId: '' }] };
+            list[i] = { ...list[i], effects: [...list[i].effects, { effectId: '', effectMode: 'ADD' }] };
             return { ...f, profiles: list };
         });
     }
@@ -426,9 +427,9 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     {form.baseEffects.map((be, i) => {
                         const ef = effects.find((e) => e.id === be.effectId);
                         return (
-                            <div key={i} className="mb-1 grid grid-cols-5 items-center gap-2">
+                            <div key={i} className="mb-1 grid grid-cols-12 items-center gap-2">
                                 <select
-                                    className="col-span-3 vault-input px-2 py-1 text-sm"
+                                    className="col-span-5 vault-input px-2 py-1 text-sm"
                                     value={be.effectId}
                                     onChange={(e) => patchBaseEffect(i, { effectId: e.target.value })}
                                 >
@@ -443,14 +444,20 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                     <input
                                         inputMode="numeric"
                                         placeholder="X"
-                                        className="vault-input px-2 py-1 text-sm"
+                                        className="col-span-2 vault-input px-2 py-1 text-sm"
                                         value={be.valueInt ?? ''}
                                         onChange={(e) => patchBaseEffect(i, { valueInt: numOrNull(e.target.value) })}
                                     />
                                 ) : (
-                                    <div className="text-xs text-zinc-500">—</div>
+                                    <div className="col-span-2 text-xs text-zinc-500">—</div>
                                 )}
-                                <button className="text-xs text-red-300" onClick={() => removeBaseEffect(i)}>
+                                <input
+                                    placeholder='Detale (np. Area (1"), Storm (3"))'
+                                    className="col-span-4 vault-input px-2 py-1 text-sm"
+                                    value={be.valueText ?? ''}
+                                    onChange={(e) => patchBaseEffect(i, { valueText: e.target.value.trim() || null })}
+                                />
+                                <button className="col-span-1 text-xs text-red-300" onClick={() => removeBaseEffect(i)}>
                                     Usuń
                                 </button>
                             </div>
@@ -509,9 +516,9 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                 {p.effects.map((ef, j) => {
                                     const def = effects.find((e) => e.id === ef.effectId);
                                     return (
-                                        <div key={j} className="mb-1 grid grid-cols-5 items-center gap-2">
+                                        <div key={j} className="mb-1 grid grid-cols-12 items-center gap-2">
                                             <select
-                                                className="col-span-3 vault-input px-2 py-1 text-sm"
+                                                className="col-span-4 vault-input px-2 py-1 text-sm"
                                                 value={ef.effectId}
                                                 onChange={(e) => patchProfileEffect(i, j, { effectId: e.target.value })}
                                             >
@@ -522,18 +529,33 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                     </option>
                                                 ))}
                                             </select>
+                                            <select
+                                                className="col-span-2 vault-input px-2 py-1 text-sm"
+                                                value={ef.effectMode ?? 'ADD'}
+                                                onChange={(e) => patchProfileEffect(i, j, { effectMode: e.target.value as ProfileEffectMode })}
+                                                title="Tryb efektu"
+                                            >
+                                                <option value="ADD">+ Dodaj</option>
+                                                <option value="REMOVE">- Usuń</option>
+                                            </select>
                                             {def?.requiresValue ? (
                                                 <input
                                                     inputMode="numeric"
                                                     placeholder="X"
-                                                    className="vault-input px-2 py-1 text-sm"
+                                                    className="col-span-2 vault-input px-2 py-1 text-sm"
                                                     value={ef.valueInt ?? ''}
                                                     onChange={(e) => patchProfileEffect(i, j, { valueInt: numOrNull(e.target.value) })}
                                                 />
                                             ) : (
-                                                <div className="text-xs text-zinc-500">—</div>
+                                                <div className="col-span-2 text-xs text-zinc-500">—</div>
                                             )}
-                                            <button className="text-xs text-red-300" onClick={() => removeProfileEffect(i, j)}>
+                                            <input
+                                                placeholder='Detale (np. Area (1"), Storm (3"))'
+                                                className="col-span-3 vault-input px-2 py-1 text-sm"
+                                                value={ef.valueText ?? ''}
+                                                onChange={(e) => patchProfileEffect(i, j, { valueText: e.target.value.trim() || null })}
+                                            />
+                                            <button className="col-span-1 text-xs text-red-300" onClick={() => removeProfileEffect(i, j)}>
                                                 Usuń
                                             </button>
                                         </div>
@@ -639,7 +661,11 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                         baseTest: w.baseTest ?? '',
                                         baseParts: w.baseParts ?? null,
                                         baseRating: w.baseRating ?? null,
-                                        baseEffects: w.baseEffects.map((be) => ({ effectId: be.effectId, valueInt: be.valueInt })),
+                                        baseEffects: w.baseEffects.map((be) => ({
+                                            effectId: be.effectId,
+                                            valueInt: be.valueInt,
+                                            valueText: be.valueText ?? null,
+                                        })),
                                         profiles: w.profiles
                                             .slice()
                                             .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -649,7 +675,12 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                 testOverride: p.testOverride ?? null,
                                                 partsOverride: p.partsOverride ?? null,
                                                 ratingDelta: p.ratingDelta ?? null,
-                                                effects: p.effects.map((e) => ({ effectId: e.effectId, valueInt: e.valueInt })),
+                                                effects: p.effects.map((e) => ({
+                                                    effectId: e.effectId,
+                                                    valueInt: e.valueInt,
+                                                    valueText: e.valueText ?? null,
+                                                    effectMode: e.effectMode ?? 'ADD',
+                                                })),
                                             })),
                                     })
                                 }
