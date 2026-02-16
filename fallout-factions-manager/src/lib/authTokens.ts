@@ -230,6 +230,13 @@ export function isProduction(): boolean {
     return process.env.NODE_ENV === 'production';
 }
 
+export function shouldUseSecureCookies(): boolean {
+    const raw = (process.env.AUTH_COOKIE_SECURE ?? '').trim().toLowerCase();
+    if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return true;
+    if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false;
+    return isProduction();
+}
+
 export function accessTtlSec(): number {
     return ACCESS_TTL_SEC;
 }

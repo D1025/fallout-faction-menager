@@ -2,7 +2,14 @@ import { cookies } from 'next/headers';
 import { createHash, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { hashPassword, verifyPassword } from '@/lib/password';
-import { ACCESS_COOKIE_NAME, isProduction, issueTokenPair, accessTtlSec, refreshTtlSec, REFRESH_COOKIE_NAME } from '@/lib/authTokens';
+import {
+    ACCESS_COOKIE_NAME,
+    issueTokenPair,
+    accessTtlSec,
+    refreshTtlSec,
+    REFRESH_COOKIE_NAME,
+    shouldUseSecureCookies,
+} from '@/lib/authTokens';
 import { normalizePasswordTransportHash } from '@/lib/auth/passwordTransport';
 import { prisma } from '@/server/prisma';
 
@@ -15,7 +22,7 @@ const LoginSchema = z.object({
 });
 
 function setAuthCookies(store: Awaited<ReturnType<typeof cookies>>, pair: Awaited<ReturnType<typeof issueTokenPair>>) {
-    const secure = isProduction();
+    const secure = shouldUseSecureCookies();
     store.set(ACCESS_COOKIE_NAME, pair.accessToken, {
         httpOnly: true,
         secure,

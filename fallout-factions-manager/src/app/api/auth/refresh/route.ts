@@ -2,10 +2,10 @@ import { cookies } from 'next/headers';
 import {
     ACCESS_COOKIE_NAME,
     accessTtlSec,
-    isProduction,
     issueTokenPair,
     REFRESH_COOKIE_NAME,
     refreshTtlSec,
+    shouldUseSecureCookies,
     userFromPayload,
     verifyRefreshToken,
 } from '@/lib/authTokens';
@@ -14,7 +14,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function clearAuthCookies(store: Awaited<ReturnType<typeof cookies>>) {
-    const secure = isProduction();
+    const secure = shouldUseSecureCookies();
     store.set(ACCESS_COOKIE_NAME, '', {
         httpOnly: true,
         secure,
@@ -32,7 +32,7 @@ function clearAuthCookies(store: Awaited<ReturnType<typeof cookies>>) {
 }
 
 function setAuthCookies(store: Awaited<ReturnType<typeof cookies>>, pair: Awaited<ReturnType<typeof issueTokenPair>>) {
-    const secure = isProduction();
+    const secure = shouldUseSecureCookies();
     store.set(ACCESS_COOKIE_NAME, pair.accessToken, {
         httpOnly: true,
         secure,

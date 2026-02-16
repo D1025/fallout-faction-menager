@@ -1,11 +1,11 @@
 import { cookies } from 'next/headers';
-import { ACCESS_COOKIE_NAME, isProduction, REFRESH_COOKIE_NAME } from '@/lib/authTokens';
+import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, shouldUseSecureCookies } from '@/lib/authTokens';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function clearAuthCookies(store: Awaited<ReturnType<typeof cookies>>) {
-    const secure = isProduction();
+    const secure = shouldUseSecureCookies();
     store.set(ACCESS_COOKIE_NAME, '', {
         httpOnly: true,
         secure,
