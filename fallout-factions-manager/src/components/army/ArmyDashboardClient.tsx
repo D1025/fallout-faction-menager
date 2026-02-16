@@ -1256,26 +1256,18 @@ function ArmyDashboardClientInner({
         const saving = busy === kind;
 
         return (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                <div className="flex items-start justify-between gap-3">
-                    <div>
-                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
-                            <span className="text-sm">{meta.icon}</span>
-                            <span>{meta.label}</span>
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">{meta.hint}</div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
+                        <span className="text-sm">{meta.icon}</span>
+                        <span>{meta.label}</span>
                     </div>
-                    <div className="text-right">
-                        <div className="tabular-nums text-3xl font-semibold leading-none text-zinc-100">{value}</div>
-                        <div className={'mt-1 text-[10px] ' + (saving ? 'text-emerald-300' : 'text-zinc-500')}>
-                            {saving ? 'Saving...' : 'Synced'}
-                        </div>
-                    </div>
+                    <div className="tabular-nums text-2xl font-semibold leading-none text-zinc-100">{value}</div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-[44px_1fr_44px] items-center gap-2">
+                <div className="mt-2 grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
                     <button
-                        className="h-11 w-11 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        className="h-10 w-10 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
                         onClick={() => void setValue(kind, value - 1)}
                         disabled={saving}
                         aria-label={`Decrease ${meta.label}`}
@@ -1300,10 +1292,10 @@ function ArmyDashboardClientInner({
                                 void setValue(kind, n((e.currentTarget as HTMLInputElement).value, value));
                             }
                         }}
-                        className="h-11 min-w-0 vault-input px-3 text-center text-xl font-semibold tabular-nums"
+                        className="h-10 min-w-0 vault-input px-3 text-center text-lg font-semibold tabular-nums"
                     />
                     <button
-                        className="h-11 w-11 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        className="h-10 w-10 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
                         onClick={() => void setValue(kind, value + 1)}
                         disabled={saving}
                         aria-label={`Increase ${meta.label}`}
@@ -1316,7 +1308,7 @@ function ArmyDashboardClientInner({
                     {meta.quick.map((d) => (
                         <button
                             key={`${kind}_${d}`}
-                            className="h-8 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
+                            className="h-7 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
                             onClick={() => void setValue(kind, Math.max(0, value + d))}
                             disabled={saving}
                         >
@@ -1324,7 +1316,7 @@ function ArmyDashboardClientInner({
                         </button>
                     ))}
                     <button
-                        className="h-8 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
+                        className="h-7 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
                         onClick={() => void setValue(kind, 0)}
                         disabled={saving || value === 0}
                         title={`Reset ${meta.label}`}
@@ -1551,9 +1543,8 @@ function ArmyDashboardClientInner({
                         <div className="vault-panel p-3">
                             <div className="mb-2">
                                 <div className="text-sm font-medium">Resource values</div>
-                                <div className="text-[11px] text-zinc-500">Adjust numeric values. Type a number and press Enter to save quickly.</div>
                             </div>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-2">
                                 {EDIT_RESOURCE_ORDER.map((k) => (
                                     <ResourceValueCard key={k} kind={k} />
                                 ))}
