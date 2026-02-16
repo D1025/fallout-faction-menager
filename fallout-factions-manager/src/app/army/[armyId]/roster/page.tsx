@@ -19,11 +19,11 @@ export default async function Page({
         },
     });
 
-    if (!army) return <div className="p-4 text-red-300">Nie znaleziono armii.</div>;
+    if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
 
     const rows = army.units.map((u) => ({
         id: u.id,
-        name: u.id.slice(0, 6), // TODO: podmień na nazwę z UnitTemplate
+        name: u.id.slice(0, 6), // TODO: replace with UnitTemplate name
         wounds: u.wounds,
         present: u.present,
         weaponsCount: u.weapons.length,

@@ -6,7 +6,7 @@ import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default function PerksAdminPage() {
     return (
-        <MobilePageShell title="Perki (admin)" backHref="/admin">
+        <MobilePageShell title="Perks (admin)" backHref="/admin">
             <AdminPerksClient />
         </MobilePageShell>
     );

@@ -1,9 +1,9 @@
-'use client';
+﻿'use client';
 
+import { PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 import type { SubfactionDTO, UnitTemplateDTO } from '@/app/admin/subfactions/page';
-import { PlusOutlined } from '@ant-design/icons';
 
 type FactionDTO = { id: string; name: string };
 
@@ -80,7 +80,7 @@ export function AdminSubfactionsClient({
 
     const unitList = useMemo(() => {
         if (!selectedFactionId) return [];
-        // Pokazujemy: globalne + przypisane do frakcji
+        // Show global templates and templates assigned to this faction.
         return unitTemplates.filter((u) => u.isGlobal || u.factionIds.includes(selectedFactionId));
     }, [unitTemplates, selectedFactionId]);
 
@@ -91,7 +91,7 @@ export function AdminSubfactionsClient({
         if (!selectedFactionId) return;
         const name = newName.trim();
         if (name.length < 2) {
-            notifyWarning('Nazwa subfrakcji min. 2 znaki');
+            notifyWarning('Subfaction name must be at least 2 characters');
             return;
         }
         setBusy(true);
@@ -101,7 +101,7 @@ export function AdminSubfactionsClient({
             setNewName('');
             setEditorId(created.id);
         } catch (e) {
-            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
+            notifyApiError(errMsg(e), 'Subfaction operation failed');
         } finally {
             setBusy(false);
         }
@@ -110,14 +110,12 @@ export function AdminSubfactionsClient({
     return (
         <div className="app-shell pt-2">
             <div className="vault-panel p-3">
-                <p className="ff-panel-headline">Admin / Subfrakcje</p>
-                <p className="text-sm vault-muted">
-                    Konfiguruj warianty frakcji i kontroluj liste dozwolonych lub blokowanych jednostek.
-                </p>
+                <p className="ff-panel-headline">Admin / Subfactions</p>
+                <p className="vault-muted text-sm">Configure faction variants and control allowed or blocked unit lists.</p>
             </div>
 
             <div className="vault-panel p-3">
-                <div className="text-sm font-semibold">Wybierz frakcję</div>
+                <div className="text-sm font-semibold">Select faction</div>
                 <select
                     value={selectedFactionId}
                     onChange={(e) => {
@@ -137,18 +135,18 @@ export function AdminSubfactionsClient({
                     <input
                         value={newName}
                         onChange={(e) => setNewName(e.target.value)}
-                        placeholder="Nowa subfrakcja"
+                        placeholder="New subfaction"
                         className="flex-1 vault-input px-3 py-2 text-sm"
                     />
                     <button
                         disabled={busy || !selectedFactionId}
                         onClick={() => void create()}
-                        className="ff-btn ff-btn-primary ff-btn-icon-mobile disabled:opacity-50"
-                        aria-label="Dodaj subfrakcje"
-                        title="Dodaj subfrakcje"
+                        className="ff-btn ff-btn-icon-mobile ff-btn-primary disabled:opacity-50"
+                        aria-label="Add subfaction"
+                        title="Add subfaction"
                     >
                         <PlusOutlined className="ff-btn-icon" />
-                        <span className="ff-btn-label">Dodaj</span>
+                        <span className="ff-btn-label">Add</span>
                     </button>
                 </div>
             </div>
@@ -166,17 +164,13 @@ export function AdminSubfactionsClient({
                         <div className="flex items-center justify-between">
                             <div>
                                 <div className="font-medium">{s.name}</div>
-                                <div className="mt-1 text-xs text-zinc-400">
-                                    Allow: {s.unitAllowIds.length} • Deny: {s.unitDenyIds.length}
-                                </div>
+                                <div className="mt-1 text-xs text-zinc-400">Allow: {s.unitAllowIds.length} | Deny: {s.unitDenyIds.length}</div>
                             </div>
-                            <span className="text-xs text-zinc-400">edytuj</span>
+                            <span className="text-xs text-zinc-400">Edit</span>
                         </div>
                     </button>
                 ))}
-                {listForFaction.length === 0 && (
-                    <div className="text-sm text-zinc-500">Brak subfrakcji dla tej frakcji.</div>
-                )}
+                {listForFaction.length === 0 && <div className="text-sm text-zinc-500">No subfactions for this faction.</div>}
             </div>
 
             {selectedFaction && editor && (
@@ -216,10 +210,8 @@ function Editor({
 }) {
     const [name, setName] = useState(sub.name);
     const [q, setQ] = useState('');
-
     const [allowIds, setAllowIds] = useState<string[]>(sub.unitAllowIds);
     const [denyIds, setDenyIds] = useState<string[]>(sub.unitDenyIds);
-
     const [saving, setSaving] = useState(false);
 
     const filteredUnits = useMemo(() => {
@@ -233,27 +225,21 @@ function Editor({
     }
 
     function toggleAllow(id: string) {
-        setAllowIds((prev) => {
-            const next = toggle(prev, id);
-            return next;
-        });
-        // jeśli dodajemy allow, usuń z deny
+        setAllowIds((prev) => toggle(prev, id));
+        // If allow is selected, remove from deny.
         setDenyIds((prev) => prev.filter((x) => x !== id));
     }
 
     function toggleDeny(id: string) {
-        setDenyIds((prev) => {
-            const next = toggle(prev, id);
-            return next;
-        });
-        // jeśli dodajemy deny, usuń z allow
+        setDenyIds((prev) => toggle(prev, id));
+        // If deny is selected, remove from allow.
         setAllowIds((prev) => prev.filter((x) => x !== id));
     }
 
     async function saveName() {
         const n = name.trim();
         if (n.length < 2) {
-            notifyWarning('Nazwa min. 2 znaki');
+            notifyWarning('Name must be at least 2 characters');
             return;
         }
         setSaving(true);
@@ -261,7 +247,7 @@ function Editor({
             await patchSubfaction(sub.id, { name: n });
             onSaveLocal({ ...sub, name: n, unitAllowIds: allowIds, unitDenyIds: denyIds });
         } catch (e) {
-            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
+            notifyApiError(errMsg(e), 'Subfaction operation failed');
         } finally {
             setSaving(false);
         }
@@ -273,7 +259,7 @@ function Editor({
             await putSubfactionUnits(sub.id, { allowIds, denyIds });
             onSaveLocal({ ...sub, name: name.trim(), unitAllowIds: allowIds, unitDenyIds: denyIds });
         } catch (e) {
-            notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
+            notifyApiError(errMsg(e), 'Subfaction operation failed');
         } finally {
             setSaving(false);
         }
@@ -281,9 +267,9 @@ function Editor({
 
     async function del() {
         confirmAction({
-            title: `Usunąć subfrakcję „${sub.name}”?`,
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: `Delete subfaction "${sub.name}"?`,
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 setSaving(true);
@@ -291,7 +277,7 @@ function Editor({
                     await deleteSubfaction(sub.id);
                     onDeleteLocal(sub.id);
                 } catch (e) {
-                    notifyApiError(errMsg(e), 'Błąd operacji na subfrakcji');
+                    notifyApiError(errMsg(e), 'Subfaction operation failed');
                     throw e;
                 } finally {
                     setSaving(false);
@@ -302,52 +288,46 @@ function Editor({
 
     return (
         <div className="fixed inset-0 z-20">
-            <button aria-label="Zamknij" onClick={onClose} className="absolute inset-0 bg-black/60" />
-            <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl h-[90dvh] flex flex-col">
+            <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
+            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[90dvh] w-full max-w-screen-sm flex-col rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
                 <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
 
                 <div className="flex items-start justify-between gap-3">
                     <div>
-                        <div className="text-xs text-zinc-400">Frakcja: {factionName}</div>
-                        <div className="text-base font-semibold">Subfrakcja</div>
+                        <div className="text-xs text-zinc-400">Faction: {factionName}</div>
+                        <div className="text-base font-semibold">Subfaction</div>
                     </div>
                     <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
-                        Zamknij
+                        Close
                     </button>
                 </div>
 
                 <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                    <div className="text-xs text-zinc-400">Nazwa</div>
+                    <div className="text-xs text-zinc-400">Name</div>
                     <div className="mt-2 flex gap-2">
-                        <input
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                        />
+                        <input value={name} onChange={(e) => setName(e.target.value)} className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
                         <button
                             disabled={saving}
                             onClick={() => void saveName()}
                             className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-50"
                         >
-                            Zapisz
+                            Save
                         </button>
                     </div>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-3 flex-1 flex flex-col min-h-0">
-                    <div className="text-sm font-semibold">Jednostki (allow/deny)</div>
-                    <div className="mt-1 text-[11px] text-zinc-400">
-                        Allow dodaje jednostkę do subfrakcji. Deny blokuje jednostkę (wygrywa).
-                    </div>
+                <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="text-sm font-semibold">Units (allow/deny)</div>
+                    <div className="mt-1 text-[11px] text-zinc-400">Allow adds a unit to this subfaction. Deny blocks a unit and takes precedence.</div>
 
                     <input
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
-                        placeholder="Szukaj jednostki…"
+                        placeholder="Search units..."
                         className="mt-3 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
                     />
 
-                    <div className="mt-3 flex-1 overflow-y-auto pr-1">
+                    <div className="vault-scrollbar mt-3 flex-1 overflow-y-auto pr-1">
                         <div className="grid gap-2">
                             {filteredUnits.map((u) => {
                                 const isAllow = allowIds.includes(u.id);
@@ -356,12 +336,12 @@ function Editor({
                                     <div key={u.id} className="rounded-xl border border-zinc-800 bg-zinc-900 p-2">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="min-w-0">
-                                                <div className="text-sm font-medium truncate">{u.name}</div>
+                                                <div className="truncate text-sm font-medium">{u.name}</div>
                                                 <div className="text-[11px] text-zinc-500">
-                                                    {u.isGlobal ? 'GLOBAL' : `Przypisana do ${u.factionIds.length} frakcji`}
+                                                    {u.isGlobal ? 'GLOBAL' : `Assigned to ${u.factionIds.length} faction(s)`}
                                                 </div>
                                             </div>
-                                            <div className="flex gap-2 shrink-0">
+                                            <div className="flex shrink-0 gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleAllow(u.id)}
@@ -391,9 +371,7 @@ function Editor({
                                     </div>
                                 );
                             })}
-                            {filteredUnits.length === 0 && (
-                                <div className="text-sm text-zinc-500">Brak wyników.</div>
-                            )}
+                            {filteredUnits.length === 0 && <div className="text-sm text-zinc-500">No results.</div>}
                         </div>
                     </div>
 
@@ -403,14 +381,14 @@ function Editor({
                             onClick={() => void saveUnits()}
                             className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-50"
                         >
-                            Zapisz reguły
+                            Save rules
                         </button>
                         <button
                             disabled={saving}
                             onClick={() => void del()}
                             className="h-11 rounded-2xl border border-red-700 bg-red-900/30 px-4 text-sm text-red-200 disabled:opacity-50"
                         >
-                            Usuń
+                            Delete
                         </button>
                     </div>
                 </div>

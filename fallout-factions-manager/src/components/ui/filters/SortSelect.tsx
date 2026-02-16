@@ -6,7 +6,7 @@ export function SortSelect({
     value,
     onChange,
     options,
-    label = 'Sortowanie',
+    label = 'Sort',
 }: {
     value: string;
     onChange: (next: string) => void;

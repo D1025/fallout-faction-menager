@@ -1,17 +1,32 @@
 'use client';
 
-import { AppstoreOutlined, CloseOutlined, DeploymentUnitOutlined, DownOutlined, SearchOutlined, StarOutlined, UpOutlined } from '@ant-design/icons';
+import {
+    AppstoreOutlined,
+    CloseOutlined,
+    DeploymentUnitOutlined,
+    DownOutlined,
+    InfoCircleOutlined,
+    MedicineBoxOutlined,
+    SearchOutlined,
+    StarOutlined,
+    ThunderboltOutlined,
+    UpOutlined,
+    UserOutlined,
+} from '@ant-design/icons';
 import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
+import { Portal } from '@/components/ui/Portal';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
+import { RuleDescription } from '@/components/rules/RuleDescription';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
-type Kind = 'caps' | 'parts' | 'reach' | 'exp';
+type Kind = 'caps' | 'parts' | 'scout' | 'reach' | 'exp' | 'ploys';
+type CoreKind = Exclude<Kind, 'ploys'>;
 type UIFactionLimit = { tag: string; tier1: number | null; tier2: number | null; tier3: number | null };
 
-/* ==== typy broni zgodne z logiką override ==== */
+/* ==== weapon types aligned with override logic ==== */
 type EffectKind = 'WEAPON' | 'CRITICAL';
 type UIEffect = {
     id: string;
@@ -60,6 +75,7 @@ type UnitListItem = {
 
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
 type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
+type EditTabKey = 'VALUES' | 'CHEMS';
 
 /* ====== Goals API ====== */
 type Goal = {
@@ -76,6 +92,127 @@ type GoalsResponse = {
     set: { id: string; name: string } | null;
     goals: Goal[];
 };
+
+type UIChem = {
+    id: string;
+    name: string;
+    rarity: 'COMMON' | 'UNCOMMON';
+    costCaps: number;
+    effect: string;
+    sortOrder: number;
+    quantity: number;
+};
+
+type UITurfDefinition = {
+    id: string;
+    name: string;
+    description: string;
+    sortOrder: number;
+};
+
+type UILegacyFacility = { id: string; name: string };
+
+type HomeTurfResponse = {
+    hazardId: string | null;
+    hazardLegacy: string;
+    hazards: UITurfDefinition[];
+    facilities: UITurfDefinition[];
+    selectedFacilityIds: string[];
+    legacyFacilities: UILegacyFacility[];
+};
+
+type PopPos = { top: number; left: number; maxWidth: number };
+
+function StickyInfoTooltip({ title, description }: { title: string; description: string }) {
+    const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState<PopPos | null>(null);
+    const rootRef = useRef<HTMLSpanElement | null>(null);
+
+    function computePos() {
+        const el = rootRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const margin = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const maxWidth = Math.min(360, Math.max(240, Math.floor(vw * 0.88)));
+        let left = r.left + r.width / 2 - maxWidth / 2;
+        left = Math.max(margin, Math.min(left, vw - maxWidth - margin));
+        const desiredHeight = 150;
+        const belowTop = r.bottom + 8;
+        const aboveTop = r.top - desiredHeight - 8;
+        const hasRoomBelow = belowTop + desiredHeight + margin <= vh;
+        const top = hasRoomBelow ? belowTop : Math.max(margin, aboveTop);
+        setPos({ top, left, maxWidth });
+    }
+
+    useEffect(() => {
+        if (!open) return;
+        computePos();
+        const onScroll = () => computePos();
+        const onResize = () => computePos();
+        const onDown = (e: MouseEvent | TouchEvent) => {
+            const t = e.target as Node;
+            if (rootRef.current?.contains(t)) return;
+            setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
+        window.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', onResize);
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('touchstart', onDown, { passive: true });
+        window.addEventListener('keydown', onKey);
+        return () => {
+            window.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('touchstart', onDown);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    return (
+        <>
+            <span
+                ref={rootRef}
+                className="inline-flex h-7 w-7 shrink-0 cursor-help items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] text-zinc-400"
+                role="button"
+                tabIndex={0}
+                aria-label={`Description: ${title}`}
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpen((v) => !v);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setOpen((v) => !v);
+                    }
+                }}
+            >
+                <InfoCircleOutlined />
+            </span>
+            {open && pos ? (
+                <Portal>
+                    <div
+                        style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.maxWidth, zIndex: 1000 }}
+                        className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200 shadow-xl"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                    >
+                        <div className="font-semibold">{title}</div>
+                        <div className="mt-1 whitespace-pre-wrap text-zinc-300">{description}</div>
+                    </div>
+                </Portal>
+            ) : null}
+        </>
+    );
+}
 
 export type ArmyDashboardActions = {
     openFilters: () => void;
@@ -163,7 +300,14 @@ function ArmyDashboardClientInner({
     const [hideInactive, setHideInactive] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [tab, setTab] = useState<TabKey>('OVERVIEW');
+    const [editTab, setEditTab] = useState<EditTabKey>('VALUES');
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [chems, setChems] = useState<UIChem[]>([]);
+    const [loadingChems, setLoadingChems] = useState(false);
+    const [updatingChemId, setUpdatingChemId] = useState<string | null>(null);
+    const [chemsLoaded, setChemsLoaded] = useState(false);
+    const [chemQuery, setChemQuery] = useState('');
+    const [showOwnedChemsOnly, setShowOwnedChemsOnly] = useState(false);
 
     useEffect(() => setTotals(resources), [resources]);
 
@@ -179,17 +323,61 @@ function ArmyDashboardClientInner({
             if (!res.ok) throw new Error(await res.text());
             setTotals((t) => ({ ...t, [kind]: v }));
         } catch {
-            notifyApiError('Nie udało się zapisać zasobów');
+            notifyApiError('Failed to save resources');
         } finally {
             setBusy(null);
         }
     }
 
+    async function loadChems(force = false) {
+        if (loadingChems) return;
+        if (!force && chemsLoaded) return;
+        setLoadingChems(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/chems`, { cache: 'no-store' });
+            if (!res.ok) throw new Error();
+            const data = (await res.json()) as { chems?: UIChem[] };
+            setChems(
+                (data.chems ?? []).map((c) => ({
+                    ...c,
+                    quantity: Math.max(0, Math.min(3, Math.floor(c.quantity ?? 0))),
+                })),
+            );
+            setChemsLoaded(true);
+        } catch {
+            notifyApiError('Failed to load chem list');
+        } finally {
+            setLoadingChems(false);
+        }
+    }
+
+    async function setChemQuantity(chemId: string, nextQuantity: number) {
+        const next = Math.max(0, Math.min(3, Math.floor(nextQuantity)));
+        const prev = chems.find((c) => c.id === chemId)?.quantity ?? 0;
+        if (prev === next) return;
+
+        setUpdatingChemId(chemId);
+        setChems((arr) => arr.map((c) => (c.id === chemId ? { ...c, quantity: next } : c)));
+        try {
+            const res = await fetch(`/api/armies/${armyId}/chems`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chemId, quantity: next }),
+            });
+            if (!res.ok) throw new Error();
+        } catch {
+            setChems((arr) => arr.map((c) => (c.id === chemId ? { ...c, quantity: prev } : c)));
+            notifyApiError('Failed to save chem quantity');
+        } finally {
+            setUpdatingChemId(null);
+        }
+    }
+
     async function deleteUnit(unitId: string) {
         confirmAction({
-            title: 'Na pewno usunąć tę jednostkę z armii?',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete this unit from the army?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 setDeletingId(unitId);
@@ -201,7 +389,7 @@ function ArmyDashboardClientInner({
                     }
                     router.refresh();
                 } catch {
-                    notifyApiError('Nie udało się usunąć jednostki');
+                    notifyApiError('Failed to delete unit');
                     throw new Error('delete failed');
                 } finally {
                     setDeletingId(null);
@@ -259,6 +447,14 @@ function ArmyDashboardClientInner({
         if (t === 2) return l.tier2;
         return l.tier3;
     };
+
+    const activeFactionLimits = useMemo(
+        () =>
+            factionLimits
+                .map((l) => ({ tag: l.tag, active: limitForTier(l, tier) }))
+                .filter((x) => x.active != null),
+        [factionLimits, tier]
+    );
 
     /* ---------- SPECIAL (kompakt) ---------- */
     function SpecialCompact({
@@ -331,7 +527,7 @@ function ArmyDashboardClientInner({
 
     function EffectsInline({ effects, kind }: { effects: UIEffect[]; kind: UIEffect['kind'] }) {
         const items = effects.filter((x) => x.kind === kind);
-        if (items.length === 0) return <span>—</span>;
+        if (items.length === 0) return <span>-</span>;
         return (
             <span className="whitespace-normal break-words">
                 {items.map((e, idx) => (
@@ -344,7 +540,7 @@ function ArmyDashboardClientInner({
         );
     }
 
-    /* ---------- helper: wylicz finalne pola broni ---------- */
+    /* ---------- helper: compute final weapon fields ---------- */
     function computeWeaponDisplay(w: UnitListItem['weapons'][number]) {
         const rev = [...w.selectedProfileIds].reverse();
         const typeOverId = rev.find((id) => {
@@ -385,7 +581,20 @@ function ArmyDashboardClientInner({
         return { type, test, allEffects };
     }
 
-    /* ---------- Wiersz jednostki ---------- */
+    function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
+        const text = (raw ?? '').trim();
+        if (!text) return { type: '-', range: '-' };
+        const rangeMatch = text.match(/\(([^)]*)\)/);
+        const range = rangeMatch?.[1]?.trim() ?? '-';
+        const type = text
+            .replace(/\([^)]*\)/g, '')
+            .replace(/\s*-\s*$/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+        return { type: type || '-', range };
+    }
+
+    /* ---------- Wiersz units ---------- */
     function UnitRow({
                          u,
                          armyId: aId,
@@ -397,7 +606,7 @@ function ArmyDashboardClientInner({
         onDelete: () => void;
         deleting: boolean;
     }) {
-        // preload efektów dla tej jednostki (żeby tooltipy były natychmiast)
+        // preload effects for this unit (tooltips appear instantly)
         const effectIdsToPreload = useMemo(() => {
             const ids: string[] = [];
             for (const w of u.weapons) {
@@ -411,6 +620,8 @@ function ArmyDashboardClientInner({
         const [wounds, setWounds] = useState(u.wounds);
         const [absent, setAbsent] = useState(!u.present);
         const [tmpLeader, setTmpLeader] = useState(Boolean(u.temporaryLeader));
+        const [photoMissing, setPhotoMissing] = useState(false);
+        const profileSrc = `/api/units/${u.id}/photo/file`;
 
         async function savePresence(nextPresent: boolean) {
             const prev = absent;
@@ -423,7 +634,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setAbsent(prev);
-                notifyApiError('Nie udało się zapisać obecności.');
+                notifyApiError('Failed to save presence.');
                 return;
             }
 
@@ -441,7 +652,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setWounds(prev);
-                notifyApiError('Nie udało się zapisać ran.');
+                notifyApiError('Failed to save wounds.');
                 return;
             }
 
@@ -460,7 +671,7 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setTmpLeader(prev);
-                notifyApiError('Nie udało się zapisać Temporary Leader.');
+                notifyApiError('Failed to save Crew Leader.');
                 return;
             }
 
@@ -479,7 +690,7 @@ function ArmyDashboardClientInner({
                         e.stopPropagation();
                     }}
                 >
-                    {/* 0 = full HP (brak DMG). Każdy zaznaczony checkbox = 1 DMG */}
+                    {/* 0 = full HP (no DMG). Each checked box = 1 DMG */}
                     {Array.from({ length: maxHp }, (_, i) => {
                         const idx = i + 1; // 1..maxHp (kolejny punkt DMG)
                         const checked = idx <= dmg;
@@ -488,7 +699,7 @@ function ArmyDashboardClientInner({
                                 key={idx}
                                 type="button"
                                 onClick={() => {
-                                    // klik ustawia DMG do idx (jeśli klikasz już zaznaczony najwyższy, to cofamy o 1)
+                                    // click sets DMG to idx (if you click current highest checked box, it reverts by 1)
                                     const nextDmg = checked && dmg === idx ? idx - 1 : idx;
                                     void saveWounds(Math.max(0, Math.min(maxHp, nextDmg)));
                                 }}
@@ -498,8 +709,8 @@ function ArmyDashboardClientInner({
                                         ? 'border-red-700/60 bg-red-950/40'
                                         : 'border-zinc-700 bg-zinc-950')
                                 }
-                                aria-label={checked ? `DMG ${idx} (odkliknij)` : `Ustaw DMG na ${idx}`}
-                                title={checked ? `DMG ${idx}` : `Ustaw DMG: ${idx}`}
+                                aria-label={checked ? `DMG ${idx} (uncheck)` : `Set DMG to ${idx}`}
+                                title={checked ? `DMG ${idx}` : `Set DMG: ${idx}`}
                             >
                                 {/* checkbox */}
                                 <span
@@ -508,10 +719,10 @@ function ArmyDashboardClientInner({
                                         (checked ? 'text-red-200' : 'text-zinc-400')
                                     }
                                 >
-                                    {checked ? '■' : '□'}
+                                    {checked ? 'x' : 'o'}
                                 </span>
 
-                                {/* skreślenie dla DMG */}
+                                {/* strike-through for DMG */}
                                 {checked && (
                                     <span className="pointer-events-none absolute inset-0" aria-hidden="true">
                                         <span className="absolute left-1/2 top-1/2 h-[2px] w-[140%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-300/70" />
@@ -527,7 +738,25 @@ function ArmyDashboardClientInner({
         return (
             <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden vault-panel p-3">
                 <div className="flex items-center justify-between">
-                    <div className="font-medium">{u.templateName}</div>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
+                            {!photoMissing ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={profileSrc}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                    onError={() => setPhotoMissing(true)}
+                                />
+                            ) : (
+                                <div className="grid h-full w-full place-items-center text-zinc-500">
+                                    <UserOutlined />
+                                </div>
+                            )}
+                        </div>
+                        <div className="truncate font-medium">{u.templateName}</div>
+                    </div>
                     <div className="flex items-center gap-2">
                         {u.isLeader ? (
                             <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
@@ -536,7 +765,7 @@ function ArmyDashboardClientInner({
                         ) : null}
                         {tmpLeader ? (
                             <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                                TEMP LEADER
+                                CREW LEADER
                             </span>
                         ) : null}
                         <div className="text-xs text-zinc-400">
@@ -550,10 +779,10 @@ function ArmyDashboardClientInner({
                             }}
                             disabled={deleting}
                             className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
-                            aria-label="Usuń jednostkę"
-                            title="Usuń jednostkę"
+                            aria-label="Delete unit"
+                            title="Delete unit"
                         >
-                            {deleting ? 'Usuwanie…' : 'Usuń'}
+                            {deleting ? 'Deleting...' : 'Delete'}
                         </button>
                     </div>
                 </div>
@@ -565,49 +794,37 @@ function ArmyDashboardClientInner({
                 <div className="mt-2 grid gap-2">
                     {u.weapons.map((w, idx) => {
                         const d = computeWeaponDisplay(w);
+                        const typeParts = splitTypeAndRange(d.type);
+                        const isMeleeWeapon = typeParts.type.toLowerCase().includes('melee');
                         return (
                             <div key={idx} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                                <div className="block min-[400px]:hidden">
-                                    <div className="grid grid-cols-[36%_64%] border-t first:border-t-0 border-zinc-800">
-                                        <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Weapon</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words">{w.name}</div>
-                                    </div>
-                                    <div className="grid grid-cols-[36%_64%] border-t border-zinc-800">
-                                        <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Type</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words">{d.type}</div>
-                                    </div>
-                                    <div className="grid grid-cols-[36%_64%] border-t border-zinc-800">
-                                        <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Test</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words">{d.test}</div>
-                                    </div>
-                                    <div className="grid grid-cols-[36%_64%] border-t border-zinc-800">
-                                        <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Traits</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words"><EffectsInline effects={d.allEffects} kind="WEAPON" /></div>
-                                    </div>
-                                    <div className="grid grid-cols-[36%_64%] border-t border-zinc-800">
-                                        <div className="bg-teal-700/70 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-50">Critical Effect</div>
-                                        <div className="px-2 py-1 text-sm whitespace-normal break-words"><EffectsInline effects={d.allEffects} kind="CRITICAL" /></div>
-                                    </div>
+                                <div className="flex items-center gap-2 border-b border-zinc-800 px-2 py-1.5">
+                                    <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
+                                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{typeParts.type}</div>
                                 </div>
-
-                                <div className="hidden min-[400px]:block overflow-x-auto">
-                                    <table className="w-full table-auto text-sm">
+                                <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
+                                    <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                                         <thead>
                                             <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
-                                                <th className="px-2 py-1 text-left">Type</th>
-                                                <th className="px-2 py-1 text-left">Test</th>
-                                                <th className="px-2 py-1 text-left">Traits</th>
-                                                <th className="px-2 py-1 text-left">Critical Effect</th>
+                                                {!isMeleeWeapon ? <th className="w-[12%] px-1 py-1 text-left">Z</th> : null}
+                                                <th className={(isMeleeWeapon ? 'w-[16%]' : 'w-[14%]') + ' px-1 py-1 text-left'}>Test</th>
+                                                <th className={(isMeleeWeapon ? 'w-[43%]' : 'w-[38%]') + ' px-1 py-1 text-left'}>Traits</th>
+                                                <th className={(isMeleeWeapon ? 'w-[41%]' : 'w-[36%]') + ' px-1 py-1 text-left'}>
+                                                    <span className="sm:hidden">Crit</span>
+                                                    <span className="hidden sm:inline">Critical Effect</span>
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <tr className="border-t border-zinc-800 align-top">
-                                                <td className="px-2 py-1 whitespace-normal break-words">{d.type}</td>
-                                                <td className="px-2 py-1 whitespace-normal break-words">{d.test}</td>
-                                                <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
+                                            <tr className="border-t border-zinc-800 align-top bg-zinc-950">
+                                                {!isMeleeWeapon ? (
+                                                    <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{typeParts.range || '-'}</td>
+                                                ) : null}
+                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{d.test || '-'}</td>
+                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">
                                                     <EffectsInline effects={d.allEffects} kind="WEAPON" />
                                                 </td>
-                                                <td className="px-2 py-1 whitespace-normal break-words text-zinc-300">
+                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">
                                                     <EffectsInline effects={d.allEffects} kind="CRITICAL" />
                                                 </td>
                                             </tr>
@@ -637,15 +854,14 @@ function ArmyDashboardClientInner({
                             e.preventDefault();
                             e.stopPropagation();
                         }}
-                        title={u.isLeader ? 'Ustaw jako Temporary Leader w tej armii' : 'Ta jednostka nie ma tagu LEADER na templacie'}
+                        title="Set as Crew Leader in this army (only one active at a time)"
                     >
                         <input
                             type="checkbox"
                             checked={tmpLeader}
-                            disabled={!u.isLeader}
                             onChange={(e) => void saveTemporaryLeader(e.target.checked)}
                         />
-                        <span className={!u.isLeader ? 'text-zinc-500' : ''}>Temporary Leader</span>
+                        <span>Crew Leader</span>
                     </label>
 
                     <div
@@ -663,32 +879,126 @@ function ArmyDashboardClientInner({
          );
      }
 
-    /* ====== Ikony ====== */
-    const ICON: Record<Kind, React.ReactNode> = {
-        caps: <DeploymentUnitOutlined className="text-zinc-200" />,
-        parts: <AppstoreOutlined className="text-zinc-200" />,
-        exp: <StarOutlined className="text-zinc-200" />,
-        reach: 'REACH',
+    /* ====== Resource metadata ====== */
+    const RESOURCE_META: Record<Kind, { label: string; hint: string; icon: React.ReactNode; quick: number[] }> = {
+        caps: {
+            label: 'CAPS',
+            hint: 'Currency and barter budget.',
+            icon: <DeploymentUnitOutlined className="text-zinc-200" />,
+            quick: [-25, -10, 10, 25],
+        },
+        parts: {
+            label: 'PARTS',
+            hint: 'Crafting and upgrades.',
+            icon: <AppstoreOutlined className="text-zinc-200" />,
+            quick: [-10, -5, 5, 10],
+        },
+        scout: {
+            label: 'SCOUT',
+            hint: 'Scouting points and intel.',
+            icon: <SearchOutlined className="text-zinc-200" />,
+            quick: [-5, -1, 1, 5],
+        },
+        reach: {
+            label: 'REACH',
+            hint: 'Territory influence level.',
+            icon: 'REACH',
+            quick: [-5, -1, 1, 5],
+        },
+        exp: {
+            label: 'XP',
+            hint: 'Campaign experience.',
+            icon: <StarOutlined className="text-zinc-200" />,
+            quick: [-10, -5, 5, 10],
+        },
+        ploys: {
+            label: 'PLOYS',
+            hint: 'Available ploy tokens (max = army tier).',
+            icon: <ThunderboltOutlined className="text-zinc-200" />,
+            quick: [-1, 1],
+        },
     };
+    const STASH_RESOURCE_ORDER: CoreKind[] = ['caps', 'parts', 'scout', 'reach', 'exp'];
+    const EDIT_RESOURCE_ORDER: CoreKind[] = ['caps', 'parts', 'scout', 'reach', 'exp'];
 
-    /* ====== HOME TURF – stan i metody ====== */
-    type Facility = { id: string; name: string };
-    const [hazard, setHazard] = useState<string>('');
-    const [facilities, setFacilities] = useState<Facility[]>([]);
-    const [ftNew, setFtNew] = useState('');
+    const commonChems = useMemo(
+        () =>
+            [...chems]
+                .filter((c) => c.rarity === 'COMMON')
+                .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+        [chems],
+    );
+    const uncommonChems = useMemo(
+        () =>
+            [...chems]
+                .filter((c) => c.rarity === 'UNCOMMON')
+                .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+        [chems],
+    );
+    const chemSearch = chemQuery.trim().toLowerCase();
+    const visibleCommonChems = useMemo(
+        () =>
+            commonChems.filter((chem) => {
+                if (showOwnedChemsOnly && chem.quantity <= 0) return false;
+                if (!chemSearch) return true;
+                return (
+                    chem.name.toLowerCase().includes(chemSearch) ||
+                    chem.effect.toLowerCase().includes(chemSearch)
+                );
+            }),
+        [commonChems, showOwnedChemsOnly, chemSearch],
+    );
+    const visibleUncommonChems = useMemo(
+        () =>
+            uncommonChems.filter((chem) => {
+                if (showOwnedChemsOnly && chem.quantity <= 0) return false;
+                if (!chemSearch) return true;
+                return (
+                    chem.name.toLowerCase().includes(chemSearch) ||
+                    chem.effect.toLowerCase().includes(chemSearch)
+                );
+            }),
+        [uncommonChems, showOwnedChemsOnly, chemSearch],
+    );
+    const ploysMax = Math.max(0, Math.floor(tier));
+    const ploysChecked = Math.max(0, Math.min(ploysMax, totals.ploys ?? 0));
+
+    // Lazy load chems only when resources tab is opened.
+    useEffect(() => {
+        if (tab === 'EDIT' && editTab === 'CHEMS' && !chemsLoaded) void loadChems();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab, editTab, chemsLoaded]);
+
+    /* ====== HOME TURF - state and methods ====== */
+    const [hazardId, setHazardId] = useState<string | null>(null);
+    const [hazardLegacy, setHazardLegacy] = useState<string>('');
+    const [hazardsCatalog, setHazardsCatalog] = useState<UITurfDefinition[]>([]);
+    const [facilityCatalog, setFacilityCatalog] = useState<UITurfDefinition[]>([]);
+    const [selectedFacilityIds, setSelectedFacilityIds] = useState<string[]>([]);
+    const [legacyFacilities, setLegacyFacilities] = useState<UILegacyFacility[]>([]);
     const [savingHazard, setSavingHazard] = useState(false);
     const [loadingTurf, setLoadingTurf] = useState(false);
-    const [addingFac, setAddingFac] = useState(false);
-    const [deletingFacId, setDeletingFacId] = useState<string | null>(null);
+    const [updatingFacilityId, setUpdatingFacilityId] = useState<string | null>(null);
+    const [deletingLegacyFacilityId, setDeletingLegacyFacilityId] = useState<string | null>(null);
+    const [facilityPickerOpen, setFacilityPickerOpen] = useState(false);
+    const [facilitySearch, setFacilitySearch] = useState('');
+
+    function applyTurfData(data: HomeTurfResponse) {
+        setHazardId(data.hazardId ?? null);
+        setHazardLegacy(data.hazardLegacy ?? '');
+        setHazardsCatalog(data.hazards ?? []);
+        setFacilityCatalog(data.facilities ?? []);
+        setSelectedFacilityIds(data.selectedFacilityIds ?? []);
+        setLegacyFacilities(data.legacyFacilities ?? []);
+    }
 
     async function loadTurf() {
         setLoadingTurf(true);
         try {
             const res = await fetch(`/api/armies/${armyId}/home-turf`, { cache: 'no-store' });
             if (!res.ok) throw new Error();
-            const data = (await res.json()) as { hazard: string; facilities: Facility[] };
-            setHazard(data.hazard ?? '');
-            setFacilities(data.facilities ?? []);
+            const data = (await res.json()) as HomeTurfResponse;
+            applyTurfData(data);
         } catch {
             // noop
         } finally {
@@ -702,69 +1012,91 @@ function ArmyDashboardClientInner({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tab]);
 
-    async function saveHazard() {
+    async function saveHazard(nextHazardId: string | null) {
+        const prev = hazardId;
+        setHazardId(nextHazardId);
         setSavingHazard(true);
         try {
             const res = await fetch(`/api/armies/${armyId}/home-turf`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hazard }),
+                body: JSON.stringify({ hazardId: nextHazardId }),
             });
             if (!res.ok) {
                 const t = await res.text().catch(() => '');
                 throw new Error(t || 'fail');
             }
+            const data = (await res.json()) as HomeTurfResponse;
+            applyTurfData(data);
         } catch {
-            notifyApiError('Nie udało się zapisać hazardu');
+            setHazardId(prev);
+            notifyApiError('Failed to save hazard');
         } finally {
             setSavingHazard(false);
         }
     }
 
-    async function addFacility() {
-        const name = ftNew.trim();
-        if (!name) return;
-        setAddingFac(true);
+    async function toggleFacility(facilityId: string, selected: boolean) {
+        const prev = selectedFacilityIds;
+        setUpdatingFacilityId(facilityId);
+        setSelectedFacilityIds((arr) =>
+            selected ? Array.from(new Set([...arr, facilityId])) : arr.filter((id) => id !== facilityId),
+        );
         try {
             const res = await fetch(`/api/armies/${armyId}/home-turf/facilities`, {
-                method: 'POST',
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ facilityId, selected }),
             });
             if (!res.ok) throw new Error();
-            const created = (await res.json()) as Facility;
-            setFacilities((f) => [created, ...f]);
-            setFtNew('');
+            const data = (await res.json()) as { selectedFacilityIds?: string[] };
+            setSelectedFacilityIds(data.selectedFacilityIds ?? []);
         } catch {
-            notifyApiError('Nie udało się dodać facility');
+            setSelectedFacilityIds(prev);
+            notifyApiError('Failed to update facilities');
         } finally {
-            setAddingFac(false);
+            setUpdatingFacilityId(null);
         }
     }
 
-    async function deleteFacility(id: string) {
+    async function deleteLegacyFacility(id: string) {
         confirmAction({
-            title: 'Usunąć to facility?',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete this legacy facility?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
-                setDeletingFacId(id);
+                setDeletingLegacyFacilityId(id);
                 try {
                     const res = await fetch(`/api/armies/${armyId}/home-turf/facilities/${id}`, { method: 'DELETE' });
                     if (!res.ok) throw new Error();
-                    setFacilities((f) => f.filter((x) => x.id !== id));
+                    setLegacyFacilities((arr) => arr.filter((x) => x.id !== id));
                 } catch {
-                    notifyApiError('Nie udało się usunąć facility');
+                    notifyApiError('Failed to delete legacy facility');
                     throw new Error('delete failed');
                 } finally {
-                    setDeletingFacId(null);
+                    setDeletingLegacyFacilityId(null);
                 }
             },
         });
     }
 
-    /* ====== TASKS (Goals) – stan i metody ====== */
+    const selectedHazard = useMemo(
+        () => hazardsCatalog.find((h) => h.id === hazardId) ?? null,
+        [hazardId, hazardsCatalog],
+    );
+    const selectedFacilitySet = useMemo(() => new Set(selectedFacilityIds), [selectedFacilityIds]);
+    const selectedFacilities = useMemo(
+        () => facilityCatalog.filter((f) => selectedFacilitySet.has(f.id)),
+        [facilityCatalog, selectedFacilitySet],
+    );
+    const filteredFacilityCatalog = useMemo(() => {
+        const q = facilitySearch.trim().toLowerCase();
+        if (!q) return facilityCatalog;
+        return facilityCatalog.filter((f) => (f.name + ' ' + f.description).toLowerCase().includes(q));
+    }, [facilityCatalog, facilitySearch]);
+
+    /* ====== TASKS (Goals) - state and methods ====== */
     const [goalsSet, setGoalsSet] = useState<{ id: string; name: string } | null>(null);
     const [currentTier, setCurrentTier] = useState<number>(tier);
     const [goals, setGoals] = useState<Goal[]>([]);
@@ -789,10 +1121,10 @@ function ArmyDashboardClientInner({
 
     async function advanceTier() {
         confirmAction({
-            title: 'Zwiększyć tier armii?',
-            content: 'Wymaga ukończenia wszystkich zadań na aktualnym tierze.',
-            okText: 'Zwiększ tier',
-            cancelText: 'Anuluj',
+            title: 'Increase army tier?',
+            content: 'Requires completing all tasks at the current tier.',
+            okText: 'Increase tier',
+            cancelText: 'Cancel',
             onOk: async () => {
                 try {
                     const res = await fetch(`/api/armies/${armyId}/tier`, {
@@ -803,12 +1135,12 @@ function ArmyDashboardClientInner({
                     if (!res.ok) {
                         const json = (await res.json().catch(() => null)) as { error?: string } | null;
                         if (json?.error === 'TIER_NOT_COMPLETED') {
-                            notifyWarning('Nie możesz zwiększyć tieru: nie wszystkie zadania na tym tierze są ukończone.');
+                            notifyWarning('You cannot increase tier: not all tasks at this tier are completed.');
                         } else if (json?.error === 'NO_ACTIVE_SET') {
-                            notifyWarning('Nie możesz zwiększyć tieru: brak aktywnego zestawu zadań.');
+                            notifyWarning('You cannot increase tier: not all tasks at this tier are completed.');
                         } else {
                             const t = await res.text().catch(() => '');
-                            notifyApiError(t || 'Nie udało się zwiększyć tieru.');
+                            notifyApiError(t || 'Failed to increase tier.');
                         }
                         throw new Error('advance tier failed');
                     }
@@ -849,7 +1181,7 @@ function ArmyDashboardClientInner({
         } catch {
             // rollback
             setGoals((arr) => (g ? arr.map((x) => (x.id === goalId ? { ...x, ticks: g.ticks } : x)) : arr));
-            notifyApiError('Nie udało się zapisać postępu celu');
+            notifyApiError('Failed to save goal progress');
         } finally {
             setUpdatingGoalId(null);
         }
@@ -873,6 +1205,207 @@ function ArmyDashboardClientInner({
         setHideInactive(false);
     }
 
+    async function setPloys(next: number) {
+        const clamped = Math.max(0, Math.min(ploysMax, Math.floor(next)));
+        await setValue('ploys', clamped);
+    }
+
+    function PloysCheckboxCard() {
+        const saving = busy === 'ploys';
+        return (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="mb-2">
+                    <div>
+                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
+                            <span className="text-sm">{RESOURCE_META.ploys.icon}</span>
+                            <span>{RESOURCE_META.ploys.label}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Tier {tier}</div>
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    {Array.from({ length: ploysMax }, (_, i) => {
+                        const idx = i + 1;
+                        const checked = idx <= ploysChecked;
+                        return (
+                            <label key={idx} className="inline-flex items-center gap-1.5 text-xs text-zinc-300">
+                                <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    disabled={saving}
+                                    onChange={() => {
+                                        const next = checked && ploysChecked === idx ? idx - 1 : idx;
+                                        void setPloys(next);
+                                    }}
+                                    className="h-4 w-4 accent-emerald-500"
+                                    aria-label={`Set ploys to ${idx}`}
+                                />
+                                <span>#{idx}</span>
+                            </label>
+                        );
+                    })}
+                    {ploysMax === 0 ? <span className="text-xs text-zinc-500">No ploys at tier 0.</span> : null}
+                </div>
+            </div>
+        );
+    }
+
+    function ResourceValueCard({ kind }: { kind: Kind }) {
+        const meta = RESOURCE_META[kind];
+        const value = totals[kind];
+        const saving = busy === kind;
+
+        return (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
+                            <span className="text-sm">{meta.icon}</span>
+                            <span>{meta.label}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-500">{meta.hint}</div>
+                    </div>
+                    <div className="text-right">
+                        <div className="tabular-nums text-3xl font-semibold leading-none text-zinc-100">{value}</div>
+                        <div className={'mt-1 text-[10px] ' + (saving ? 'text-emerald-300' : 'text-zinc-500')}>
+                            {saving ? 'Saving...' : 'Synced'}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-[44px_1fr_44px] items-center gap-2">
+                    <button
+                        className="h-11 w-11 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        onClick={() => void setValue(kind, value - 1)}
+                        disabled={saving}
+                        aria-label={`Decrease ${meta.label}`}
+                    >
+                        -
+                    </button>
+                    <input
+                        inputMode="numeric"
+                        min={0}
+                        aria-label={`${meta.label} value`}
+                        value={value}
+                        onChange={(e) =>
+                            setTotals((t) => ({
+                                ...t,
+                                [kind]: Math.max(0, Math.floor(n(e.target.value, t[kind]))),
+                            }))
+                        }
+                        onBlur={(e) => void setValue(kind, n(e.target.value, value))}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void setValue(kind, n((e.currentTarget as HTMLInputElement).value, value));
+                            }
+                        }}
+                        className="h-11 min-w-0 vault-input px-3 text-center text-xl font-semibold tabular-nums"
+                    />
+                    <button
+                        className="h-11 w-11 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        onClick={() => void setValue(kind, value + 1)}
+                        disabled={saving}
+                        aria-label={`Increase ${meta.label}`}
+                    >
+                        +
+                    </button>
+                </div>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                    {meta.quick.map((d) => (
+                        <button
+                            key={`${kind}_${d}`}
+                            className="h-8 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
+                            onClick={() => void setValue(kind, Math.max(0, value + d))}
+                            disabled={saving}
+                        >
+                            {d > 0 ? `+${d}` : d}
+                        </button>
+                    ))}
+                    <button
+                        className="h-8 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
+                        onClick={() => void setValue(kind, 0)}
+                        disabled={saving || value === 0}
+                        title={`Reset ${meta.label}`}
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    function ChemCheckboxGroup({ title, items }: { title: string; items: UIChem[] }) {
+        const ownedCount = items.filter((chem) => chem.quantity > 0).length;
+        return (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                        {title}
+                    </div>
+                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
+                        Owned: {ownedCount}/{items.length}
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    {items.map((chem) => {
+                        const rowBusy = updatingChemId === chem.id;
+                        const qty = Math.max(0, Math.min(3, chem.quantity));
+                        const costLabel = chem.costCaps > 0 ? `${chem.costCaps} caps` : 'cost n/a';
+
+                        function onDoseClick(idx: number) {
+                            const checked = idx <= qty;
+                            const next = checked ? idx - 1 : idx;
+                            void setChemQuantity(chem.id, next);
+                        }
+
+                        return (
+                            <div
+                                key={chem.id}
+                                className={
+                                    'flex items-center gap-2 rounded-xl border p-2 transition-colors ' +
+                                    (qty > 0
+                                        ? 'border-emerald-500/50 bg-emerald-500/10'
+                                        : 'border-zinc-800 bg-zinc-900')
+                                }
+                            >
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <div className="font-medium text-zinc-100">{chem.name}</div>
+                                        {rowBusy ? <span className="text-[10px] text-emerald-300">Saving...</span> : null}
+                                    </div>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400">
+                                            {costLabel}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        {([1, 2, 3] as const).map((idx) => (
+                                            <label key={idx} className="inline-flex items-center gap-1 text-[11px] text-zinc-300">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={idx <= qty}
+                                                    disabled={rowBusy}
+                                                    onChange={() => onDoseClick(idx)}
+                                                    className="h-4 w-4 accent-emerald-500"
+                                                    aria-label={`Set ${chem.name} dose ${idx}`}
+                                                />
+                                                <span>{idx}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <StickyInfoTooltip title={chem.name} description={chem.effect} />
+                            </div>
+                        );
+                    })}
+                    {items.length === 0 ? <div className="text-xs text-zinc-500">No chems in this group.</div> : null}
+                </div>
+            </div>
+        );
+    }
+
     const hasActiveFilters = filter !== 'ALL' || hideInactive;
 
     useEffect(() => {
@@ -892,7 +1425,7 @@ function ArmyDashboardClientInner({
             {/* META */}
             <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
                 <div className="min-w-0 truncate">
-                    <span className="font-medium text-zinc-300">{armyName}</span> • {factionName} • Tier {tier}
+                    <span className="font-medium text-zinc-300">{armyName}</span> | {factionName} | Tier {tier}
                 </div>
                 <div className="shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px]">
                     Rating: <span className="font-semibold text-zinc-200">{rating}</span>
@@ -902,9 +1435,9 @@ function ArmyDashboardClientInner({
             {/* TABS */}
             <div className="mt-3 grid grid-cols-4 gap-2">
                 {([
-                    ['OVERVIEW', 'Przegląd'],
-                    ['EDIT', 'Edycja zasobów'],
-                    ['TASKS', 'Zadania'],
+                    ['OVERVIEW', 'Overview'],
+                    ['EDIT', 'Edit Resources'],
+                    ['TASKS', 'Tasks'],
                     ['TURF', 'Home Turf'],
                 ] as [TabKey, string][]).map(([k, label]) => (
                     <button
@@ -923,54 +1456,31 @@ function ArmyDashboardClientInner({
             {/* OVERVIEW */}
             {tab === 'OVERVIEW' && (
                 <>
-                    {/* Zasoby – jedna linia (read-only) */}
+                    {/* STASH tracker */}
                     <section className="mt-3 vault-panel p-3">
                         <div className="mb-2 flex items-center justify-between">
-                            <div className="text-sm font-medium">Zasoby</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-100">Stash</div>
                             <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                                Dodaj jednostkę
+                                Add unit
                             </button>
                         </div>
-                        <div className="flex items-center gap-2 overflow-x-auto">
-                            {(['caps', 'parts', 'exp', 'reach'] as Kind[]).map((k) => (
-                                <div key={k} className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" title={k.toUpperCase()}>
-                                    <span className="text-base">{ICON[k]}</span>
-                                    <span className="tabular-nums font-semibold">{totals[k]}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-
-                    <section className="mt-3 vault-panel p-3">
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="text-sm font-medium">Limity frakcji</div>
-                            <div className="text-[11px] text-zinc-400">Aktywny tier: T{tier}</div>
-                        </div>
-
-                        {factionLimits.length === 0 ? (
-                            <div className="text-sm text-zinc-500">Brak zdefiniowanych limitów dla tej frakcji.</div>
-                        ) : (
-                            <div className="grid gap-2">
-                                {factionLimits.map((l, idx) => {
-                                    const active = limitForTier(l, tier);
-                                    return (
-                                        <div key={`${l.tag}_${idx}`} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
-                                            <div className="text-sm font-medium leading-snug break-words">{l.tag}</div>
-                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T1: {l.tier1 ?? '-'}</span>
-                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T2: {l.tier2 ?? '-'}</span>
-                                                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-zinc-300">T3: {l.tier3 ?? '-'}</span>
-                                                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-200">
-                                                    Aktywny: {active ?? '-'}
-                                                </span>
-                                            </div>
+                        <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/70 p-2">
+                            <div className="grid grid-cols-5 gap-2">
+                                {STASH_RESOURCE_ORDER.map((k) => (
+                                    <div
+                                        key={k}
+                                        className="flex min-h-[74px] flex-col items-center justify-center rounded-lg border border-zinc-700/90 bg-zinc-100/5 px-1 text-center"
+                                        title={RESOURCE_META[k].label}
+                                    >
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                                            {RESOURCE_META[k].label}
                                         </div>
-                                    );
-                                })}
+                                        <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
+                                    </div>
+                                ))}
                             </div>
-                        )}
+                        </div>
                     </section>
-
                     {/* FILTER */}
                     <FilterBar
                         showTrigger={false}
@@ -993,20 +1503,20 @@ function ArmyDashboardClientInner({
                             </div>
                         }
                         activeChips={[
-                            ...(filter !== 'ALL' ? [{ key: 'role', label: `Rola: ${filter}`, onRemove: () => setFilter('ALL') }] : []),
+                            ...(filter !== 'ALL' ? [{ key: 'role', label: `Role: ${filter}`, onRemove: () => setFilter('ALL') }] : []),
                             ...(hideInactive ? [{ key: 'inactive', label: 'Ukryte nieaktywne', onRemove: () => setHideInactive(false) }] : []),
                         ] as ActiveFilterChip[]}
                         onClearAllAction={clearAllFilters}
                     />
 
-                    {/* JEDNOSTKI */}
+                    {/* UNITS */}
                     <section className="mt-4">
-                        <div className="text-sm font-medium">Jednostki</div>
+                        <div className="text-sm font-medium">Units</div>
                         <div className="mt-2 grid gap-2">
                             {filtered.map((u) => (
                                 <UnitRow key={u.id} u={u} armyId={armyId} deleting={deletingId === u.id} onDelete={() => void deleteUnit(u.id)} />
                             ))}
-                            {filtered.length === 0 && <div className="text-sm text-zinc-500">Brak jednostek dla filtra</div>}
+                            {filtered.length === 0 && <div className="text-sm text-zinc-500">No units for active filter</div>}
                         </div>
                     </section>
                 </>
@@ -1014,94 +1524,171 @@ function ArmyDashboardClientInner({
 
             {/* EDIT RESOURCES */}
             {tab === 'EDIT' && (
-                <section className="mt-3 vault-panel p-3">
-                    <div className="mb-2 text-sm font-medium">Edycja zasobów</div>
-
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                        {(['caps', 'parts', 'exp', 'reach'] as const).map((k) => (
-                            <div key={k} className="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
-                                <div className="flex items-center gap-2 text-[10px] uppercase text-zinc-400">
-                                    <span className="text-sm">{ICON[k]}</span>
-                                    <span>{k}</span>
-                                </div>
-                                <div className="mt-2 flex min-w-0 items-center gap-2">
-                                    <button
-                                        className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
-                                        onClick={() => void setValue(k, totals[k] - 1)}
-                                        disabled={busy === k}
-                                        aria-label="minus jeden"
-                                    >
-                                        −
-                                    </button>
-                                    <input
-                                        inputMode="numeric"
-                                        value={totals[k]}
-                                        onChange={(e) => setTotals((t) => ({ ...t, [k]: Math.max(0, Math.floor(n(e.target.value, t[k]))) }))}
-                                        onBlur={(e) => void setValue(k, n(e.target.value, totals[k]))}
-                                        className="h-10 min-w-0 flex-1 vault-input px-3 text-center text-lg"
-                                    />
-                                    <button
-                                        className="h-10 w-12 shrink-0 rounded-xl border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95"
-                                        onClick={() => void setValue(k, totals[k] + 1)}
-                                        disabled={busy === k}
-                                        aria-label="plus jeden"
-                                    >
-                                        +
-                                    </button>
-                                </div>
-
-                                <div className="mt-2 grid grid-cols-4 gap-1">
-                                    {[-10, -5, +5, +10].map((d) => (
-                                        <button
-                                            key={d}
-                                            className="h-9 rounded-lg border border-zinc-700 bg-zinc-900 text-xs active:scale-95 disabled:opacity-50"
-                                            onClick={() => void setValue(k, Math.max(0, totals[k] + d))}
-                                            disabled={busy === k}
-                                        >
-                                            {d > 0 ? `+${d}` : d}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
+                <section className="mt-3 space-y-3">
+                    <div className="vault-panel p-2">
+                        <div className="grid grid-cols-2 gap-2">
+                            {([
+                                ['VALUES', 'Resources'],
+                                ['CHEMS', 'Chems & Ploys'],
+                            ] as [EditTabKey, string][]).map(([k, label]) => (
+                                <button
+                                    key={k}
+                                    onClick={() => setEditTab(k)}
+                                    className={
+                                        'h-10 rounded-xl border text-xs font-medium ' +
+                                        (editTab === k
+                                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
+                                            : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                    }
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
+
+                    {editTab === 'VALUES' && (
+                        <div className="vault-panel p-3">
+                            <div className="mb-2">
+                                <div className="text-sm font-medium">Resource values</div>
+                                <div className="text-[11px] text-zinc-500">Adjust numeric values. Type a number and press Enter to save quickly.</div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {EDIT_RESOURCE_ORDER.map((k) => (
+                                    <ResourceValueCard key={k} kind={k} />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {editTab === 'CHEMS' && (
+                        <div className="vault-panel p-3">
+                            <div className="mb-2 flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                        <MedicineBoxOutlined className="text-zinc-200" />
+                                        <span>Chem and ploy tracking</span>
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500">Manage chems and ploys.</div>
+                                </div>
+                                <button
+                                    onClick={() => void loadChems(true)}
+                                    className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
+                                    disabled={loadingChems}
+                                >
+                                    {loadingChems ? 'Refreshing...' : 'Refresh'}
+                                </button>
+                            </div>
+
+                            <div className="mb-3">
+                                <PloysCheckboxCard />
+                            </div>
+
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <input
+                                    value={chemQuery}
+                                    onChange={(e) => setChemQuery(e.target.value)}
+                                    placeholder="Search chems..."
+                                    className="h-9 min-w-[11rem] flex-1 vault-input px-3 text-sm"
+                                />
+                                <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={showOwnedChemsOnly}
+                                        onChange={(e) => setShowOwnedChemsOnly(e.target.checked)}
+                                    />
+                                    Owned only
+                                </label>
+                            </div>
+
+                            {loadingChems && chems.length === 0 ? <div className="text-xs text-zinc-400">Loading chem list...</div> : null}
+
+                            {!loadingChems && visibleCommonChems.length === 0 && visibleUncommonChems.length === 0 ? (
+                                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                                    No chems match active filters.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                    <ChemCheckboxGroup title="Common chems" items={visibleCommonChems} />
+                                    <ChemCheckboxGroup title="Uncommon (rare) chems" items={visibleUncommonChems} />
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </section>
             )}
 
-            {/* TASKS – trackowanie postępu celów */}
+            {/* TASKS - goal progress tracking */}
             {tab === 'TASKS' && (
                 <section className="mt-3 vault-panel p-3">
                     <div className="mb-1 flex items-center justify-between">
-                        <div className="text-sm font-medium">Zadania</div>
+                        <div className="text-sm font-medium">Tasks</div>
                         <button
                             onClick={() => void loadGoals()}
                             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
-                            aria-label="Odśwież cele"
-                            title="Odśwież"
+                            aria-label="Refresh goals"
+                            title="Refresh"
                         >
-                            Odśwież
+                            Refresh
                         </button>
                     </div>
 
                     <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="text-xs text-zinc-400">
-                            Aktualny tier: <span className="font-semibold text-zinc-200">T{currentTier}</span>
+                            Current tier: <span className="font-semibold text-zinc-200">T{currentTier}</span>
                         </div>
                         <button
                             onClick={() => void advanceTier()}
                             className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950 active:scale-95"
-                            aria-label="Zwiększ tier"
-                            title="Zwiększ tier"
+                            aria-label="Increase tier"
+                            title="Increase tier"
                         >
-                            Zwiększ tier
+                            Increase tier
                         </button>
                     </div>
 
-                    {loadingGoals && <div className="text-xs text-zinc-400">Ładowanie…</div>}
+                    <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                        <div className="text-sm font-medium">Faction limits (active tier: T{tier})</div>
+
+                        {activeFactionLimits.length === 0 ? (
+                            <div className="mt-2 text-xs text-zinc-500">No active limits for this tier.</div>
+                        ) : (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                {activeFactionLimits.map((l, idx) => (
+                                    <span
+                                        key={`${l.tag}_${idx}`}
+                                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200"
+                                    >
+                                        <span className="max-w-[14rem] truncate font-medium" title={l.tag}>
+                                            {l.tag}
+                                        </span>
+                                        <span className="shrink-0">: {l.active}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+                            <summary className="cursor-pointer text-xs text-zinc-300">Show all available limits ({factionLimits.length})</summary>
+                            <div className="mt-2 grid gap-1.5">
+                                {factionLimits.map((l, idx) => (
+                                    <div key={`${l.tag}_all_${idx}`} className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <span className="max-w-[15rem] break-words font-medium text-zinc-200">{l.tag}</span>
+                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T1: {l.tier1 ?? '-'}</span>
+                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T2: {l.tier2 ?? '-'}</span>
+                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T3: {l.tier3 ?? '-'}</span>
+                                    </div>
+                                ))}
+                                {factionLimits.length === 0 ? <div className="text-xs text-zinc-500">No limits.</div> : null}
+                            </div>
+                        </details>
+                    </div>
+
+                    {loadingGoals && <div className="text-xs text-zinc-400">Loading...</div>}
 
                     {!loadingGoals && !goalsSet && (
                         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-                            Brak aktywnego zestawu zadań dla tej armii.
+                            No active goal set for this army.
                         </div>
                     )}
 
@@ -1109,15 +1696,15 @@ function ArmyDashboardClientInner({
                         <>
                             <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
                                 <div>
-                                    Zestaw: <span className="font-semibold text-zinc-200">{goalsSet.name}</span>
+                                    Set: <span className="font-semibold text-zinc-200">{goalsSet.name}</span>
                                 </div>
                                 <div className="mt-1">
-                                    Aktualny tier armii: <span className="font-semibold text-zinc-200">T{currentTier}</span>
+                                    Current army tier: <span className="font-semibold text-zinc-200">T{currentTier}</span>
                                 </div>
                                 <div className="mt-2 flex gap-2 text-[11px] text-zinc-400">
                                     {[1, 2, 3].map((t) => (
                                         <span key={t} className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5">
-                      T{t}: {doneInTier(t as 1 | 2 | 3)}/{goalsByTier[t as 1 | 2 | 3].length} ukończonych
+                      T{t}: {doneInTier(t as 1 | 2 | 3)}/{goalsByTier[t as 1 | 2 | 3].length} completed
                     </span>
                                     ))}
                                 </div>
@@ -1151,8 +1738,8 @@ function ArmyDashboardClientInner({
                                                                                     'h-6 w-6 rounded-full border text-xs tabular-nums ' +
                                                                                     (active ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200' : 'border-zinc-700 bg-zinc-900 text-zinc-400')
                                                                                 }
-                                                                                title={active ? `Cofnij do ${val - 1}` : `Ustaw na ${val}`}
-                                                                                aria-label={active ? `Cofnij do ${val - 1}` : `Ustaw na ${val}`}
+                                                                                title={active ? `Revert to ${val - 1}` : `Set to ${val}`}
+                                                                                aria-label={active ? `Revert to ${val - 1}` : `Set to ${val}`}
                                                                             >
                                                                                 {val}
                                                                             </button>
@@ -1181,67 +1768,203 @@ function ArmyDashboardClientInner({
                 <section className="mt-3 vault-panel p-3">
                     <div className="text-sm font-medium">Home Turf</div>
 
-                    {/* Hazard */}
                     <div className="mt-3">
                         <label className="text-xs text-zinc-400">Hazard</label>
-                        <textarea
-                            value={hazard}
-                            onChange={(e) => setHazard(e.target.value)}
-                            rows={3}
+                        <select
+                            value={hazardId ?? ''}
+                            onChange={(e) => void saveHazard(e.target.value || null)}
                             className="mt-1 w-full vault-input px-3 py-2 text-sm"
-                            placeholder="Opis zagrożeń terenu…"
-                        />
+                            disabled={savingHazard || loadingTurf}
+                        >
+                            <option value="">No hazard selected</option>
+                            {hazardsCatalog.map((h) => (
+                                <option key={h.id} value={h.id}>
+                                    {h.name}
+                                </option>
+                            ))}
+                        </select>
                         <div className="mt-2 flex items-center gap-2">
-                            <button
-                                onClick={() => void saveHazard()}
-                                disabled={savingHazard}
-                                className="rounded-xl bg-emerald-500 px-3 py-1 text-sm font-semibold text-emerald-950 disabled:opacity-50"
-                            >
-                                {savingHazard ? 'Zapisywanie…' : 'Zapisz hazard'}
-                            </button>
-                            {loadingTurf && <span className="text-xs text-zinc-500">Ładowanie…</span>}
+                            {savingHazard ? <span className="text-xs text-emerald-300">Saving hazard...</span> : null}
+                            {loadingTurf && <span className="text-xs text-zinc-500">Loading...</span>}
                         </div>
                     </div>
 
-                    {/* Facilities */}
-                    <div className="mt-5">
-                        <div className="text-sm font-medium">Facilities</div>
+                    {selectedHazard ? (
+                        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                            <div className="mb-2 text-sm font-medium text-zinc-100">{selectedHazard.name}</div>
+                            <RuleDescription text={selectedHazard.description} />
+                        </div>
+                    ) : null}
 
-                        <div className="mt-2 flex gap-2">
-                            <input
-                                value={ftNew}
-                                onChange={(e) => setFtNew(e.target.value)}
-                                className="flex-1 vault-input px-3 py-2 text-sm"
-                                placeholder="np. Warsztat, Farma, Pancerna Brama…"
-                            />
+                    {!selectedHazard && hazardLegacy.trim() ? (
+                        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                            <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200">
+                                Legacy hazard text
+                            </div>
+                            <RuleDescription text={hazardLegacy} />
+                        </div>
+                    ) : null}
+
+                    <div className="mt-5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium">Facilities</div>
                             <button
-                                onClick={() => void addFacility()}
-                                disabled={addingFac}
-                                className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 disabled:opacity-50"
+                                type="button"
+                                onClick={() => setFacilityPickerOpen(true)}
+                                className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950"
                             >
-                                {addingFac ? 'Dodawanie…' : 'Dodaj'}
+                                Add facility
                             </button>
                         </div>
 
-                        <div className="mt-2 grid gap-2">
-                            {facilities.map((f) => (
-                                <div key={f.id} className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2">
-                                    <div className="text-sm">{f.name}</div>
-                                    <button
-                                        onClick={() => void deleteFacility(f.id)}
-                                        disabled={deletingFacId === f.id}
-                                        className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
-                                        aria-label="Usuń facility"
-                                        title="Usuń facility"
+                        <div className="grid gap-2">
+                            {selectedFacilities.map((f) => {
+                                const rowBusy = updatingFacilityId === f.id;
+                                return (
+                                    <div
+                                        key={f.id}
+                                        className="rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-3 transition-colors"
                                     >
-                                        {deletingFacId === f.id ? 'Usuwanie…' : 'Usuń'}
-                                    </button>
-                                </div>
-                            ))}
-                            {facilities.length === 0 && <div className="text-sm text-zinc-500">Brak facilities — dodaj pierwsze powyżej.</div>}
+                                        <div className="mb-2 flex items-start justify-between gap-2">
+                                            <div className="text-sm font-medium text-zinc-100">{f.name}</div>
+                                            {rowBusy ? <span className="text-xs text-emerald-300">Saving...</span> : null}
+                                            <button
+                                                type="button"
+                                                onClick={() => void toggleFacility(f.id, false)}
+                                                disabled={rowBusy}
+                                                className="shrink-0 rounded-lg border border-red-700/70 bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30 disabled:opacity-50"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <RuleDescription text={f.description} />
+                                    </div>
+                                );
+                            })}
+                            {selectedFacilities.length === 0 ? (
+                                <div className="text-sm text-zinc-500">No facilities selected.</div>
+                            ) : null}
                         </div>
+
+                        {legacyFacilities.length > 0 ? (
+                            <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                                <div className="text-xs font-semibold uppercase tracking-[0.08em] text-amber-200">
+                                    Legacy facilities
+                                </div>
+                                <div className="mt-2 grid gap-2">
+                                    {legacyFacilities.map((f) => (
+                                        <div
+                                            key={f.id}
+                                            className="flex items-center justify-between rounded-lg border border-amber-400/40 bg-zinc-950/50 px-3 py-2"
+                                        >
+                                            <div className="text-sm text-zinc-200">{f.name}</div>
+                                            <button
+                                                onClick={() => void deleteLegacyFacility(f.id)}
+                                                disabled={deletingLegacyFacilityId === f.id}
+                                                className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
+                                            >
+                                                {deletingLegacyFacilityId === f.id ? 'Deleting...' : 'Delete'}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                 </section>
+            )}
+
+            {facilityPickerOpen && (
+                <div className="fixed inset-0 z-30 overflow-x-hidden">
+                    <button
+                        aria-label="Close"
+                        onClick={() => setFacilityPickerOpen(false)}
+                        className="absolute inset-0 bg-black/60"
+                    />
+
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+                        <div className="p-4 pb-3">
+                            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="text-sm font-semibold">Add facility</div>
+                                    <div className="mt-0.5 text-[11px] text-zinc-400">Search and add Home Turf facilities.</div>
+                                </div>
+                                <button
+                                    onClick={() => setFacilityPickerOpen(false)}
+                                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            <div className="mt-3">
+                                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                                    <SearchOutlined className="text-zinc-400" />
+                                    <input
+                                        value={facilitySearch}
+                                        onChange={(e) => setFacilitySearch(e.target.value)}
+                                        className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                        placeholder="Search facility..."
+                                    />
+                                    {facilitySearch && (
+                                        <button
+                                            onClick={() => setFacilitySearch('')}
+                                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
+                                            aria-label="Clear"
+                                        >
+                                            <CloseOutlined />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="mt-3 text-[11px] text-zinc-500">
+                                Results: <span className="font-semibold text-zinc-300">{filteredFacilityCatalog.length}</span>
+                            </div>
+                        </div>
+
+                        <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                            <div className="grid gap-2">
+                                {filteredFacilityCatalog.map((f) => {
+                                    const selected = selectedFacilitySet.has(f.id);
+                                    const rowBusy = updatingFacilityId === f.id;
+                                    const canAdd = !selected && !rowBusy;
+                                    return (
+                                        <div key={f.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium">{f.name}</div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canAdd}
+                                                    onClick={() => void toggleFacility(f.id, true)}
+                                                    className={
+                                                        'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
+                                                        (canAdd
+                                                            ? 'bg-emerald-500 text-emerald-950'
+                                                            : 'border border-zinc-700 bg-zinc-900 text-zinc-500')
+                                                    }
+                                                >
+                                                    {selected ? 'Added' : rowBusy ? 'Adding...' : 'Add'}
+                                                </button>
+                                            </div>
+                                            <div className="mt-2">
+                                                <RuleDescription text={f.description} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {filteredFacilityCatalog.length === 0 ? (
+                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
+                                        No facilities for current search.
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {adding && (
@@ -1428,7 +2151,7 @@ function AddUnitSheet({
             });
             if (!res.ok) {
                 const txt = await res.text().catch(() => '');
-                notifyApiError(txt, 'Nie udało się dodać jednostki');
+                notifyApiError(txt, 'Failed to add unit');
                 return;
             }
             onClose();
@@ -1463,7 +2186,7 @@ function AddUnitSheet({
     }
 
     function WeaponDetails({ w }: { w: UIWeaponTemplate | null }) {
-        if (!w) return <div className="text-[11px] text-zinc-500">Brak danych broni</div>;
+        if (!w) return <div className="text-[11px] text-zinc-500">No weapon data</div>;
 
         function EffectSpan({ e, prefix = '', className = '' }: { e: UIWeaponTemplateEffect; prefix?: string; className?: string }) {
             const label = `${prefix}${formatEffectName(e.effect.name, e.valueInt, e.valueText)}`;
@@ -1483,8 +2206,8 @@ function AddUnitSheet({
             {
                 kind: 'BASE' as const,
                 key: 'BASE',
-                type: w.baseType || '—',
-                test: w.baseTest || '—',
+                type: w.baseType || '-',
+                test: w.baseTest || '-',
                 parts: w.baseParts,
                 rating: w.baseRating,
                 traits: baseTraits,
@@ -1510,12 +2233,12 @@ function AddUnitSheet({
                 }),
         ];
 
-        function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
+        function splitTypeAndRange(raw: string | null | undefined): { type: string; woundsge: string } {
             const text = (raw ?? '').trim();
-            if (!text) return { type: '-', range: '-' };
+            if (!text) return { type: '-', woundsge: '-' };
 
-            const rangeMatch = text.match(/\(([^)]*)\)/);
-            const range = rangeMatch?.[1]?.trim() ?? '-';
+            const woundsgeMatch = text.match(/\(([^)]*)\)/);
+            const woundsge = woundsgeMatch?.[1]?.trim() ?? '-';
 
             const type = text
                 .replace(/\([^)]*\)/g, '')
@@ -1523,7 +2246,7 @@ function AddUnitSheet({
                 .replace(/\s{2,}/g, ' ')
                 .trim();
 
-            return { type: type || '-', range };
+            return { type: type || '-', woundsge };
         }
 
         const typeLabels = rows.map((r) => splitTypeAndRange(r.type).type).filter((t) => t !== '-');
@@ -1554,7 +2277,7 @@ function AddUnitSheet({
                     <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
                     <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-                <div className="max-w-full overflow-x-auto">
+                <div className="vault-scrollbar max-w-full overflow-x-auto">
                     <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                         <thead>
                             <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
@@ -1571,10 +2294,10 @@ function AddUnitSheet({
                         </thead>
                         <tbody>
                             {rows.map((r) => {
-                                const { range } = splitTypeAndRange(r.type);
+                                const { woundsge } = splitTypeAndRange(r.type);
                                 return (
                                     <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
-                                        {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range || '-'}</td> : null}
+                                        {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{woundsge || '-'}</td> : null}
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test || '-'}</td>
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
@@ -1614,18 +2337,18 @@ function AddUnitSheet({
 
     return (
         <div className="fixed inset-0 z-20 overflow-x-hidden">
-            <button aria-label="Zamknij" onClick={onClose} className="absolute inset-0 bg-black/60" />
+            <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
 
             <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
                 <div className="p-4 pb-3">
                     <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                     <div className="flex items-start justify-between gap-2">
                         <div>
-                            <div className="text-sm font-semibold">Dodaj jednostkę</div>
-                            <div className="mt-0.5 text-[11px] text-zinc-400">Wybierz jednostkę i pakiet uzbrojenia.</div>
+                            <div className="text-sm font-semibold">Add unit</div>
+                            <div className="mt-0.5 text-[11px] text-zinc-400">Select a unit and loadout package.</div>
                         </div>
                         <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
-                            Zamknij
+                            Close
                         </button>
                     </div>
 
@@ -1636,10 +2359,10 @@ function AddUnitSheet({
                                 value={q}
                                 onChange={(e) => setQ(e.target.value)}
                                 className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                                placeholder="Szukaj jednostki…"
+                                placeholder="Search units..."
                             />
                             {q && (
-                                <button onClick={() => setQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95" aria-label="Wyczyść">
+                                <button onClick={() => setQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95" aria-label="Clear">
                                     <CloseOutlined />
                                 </button>
                             )}
@@ -1647,7 +2370,7 @@ function AddUnitSheet({
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-2">
-                        <RoleChip k="ALL" label="Wszystkie" />
+                        <RoleChip k="ALL" label="All" />
                         <RoleChip k="CHAMPION" label="Champion" />
                         <RoleChip k="GRUNT" label="Grunt" />
                         <RoleChip k="COMPANION" label="Companion" />
@@ -1655,7 +2378,7 @@ function AddUnitSheet({
                      </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3">
+                <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3">
                     <div className="grid gap-2">
                         {list.map((t) => {
                             const isSel = t.id === selT;
@@ -1682,13 +2405,13 @@ function AddUnitSheet({
                                             <div className="truncate font-medium">{t.name}</div>
                                             <div className="mt-0.5 text-[11px] text-zinc-400">
                                                 <span className="inline-flex flex-wrap items-center gap-1.5">
-                                                    <span>{t.roleTag ? t.roleTag : '—'}</span>
+                                                    <span>{t.roleTag ? t.roleTag : '-'}</span>
                                                     {t.isLeader ? (
                                                         <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
                                                             LEADER
                                                         </span>
                                                     ) : null}
-                                                    <span>• {t.options.length} opcji</span>
+                                                    <span>| {t.options.length} options</span>
                                                 </span>
                                              </div>
                                              {isSel && <SpecialRow t={t} />}
@@ -1723,17 +2446,17 @@ function AddUnitSheet({
                                                                 </div>
                                                                 <div className="mt-0.5 text-[11px] text-zinc-400">
                                                                     Cost {o.costCaps}
-                                                                    {o.rating != null ? ` • Rating ${o.rating}` : ''}
+                                                                    {o.rating != null ? ` | Rating ${o.rating}` : ''}
                                                                 </div>
 
                                                                 <div className="mt-2 grid gap-2">
                                                                     <div>
-                                                                        <div className="text-[11px] font-semibold text-zinc-300">Broń 1</div>
+                                                                        <div className="text-[11px] font-semibold text-zinc-300">Weapon 1</div>
                                                                         <WeaponDetails w={o.weapon1} />
                                                                     </div>
                                                                     {o.weapon2Name && (
                                                                         <div>
-                                                                            <div className="text-[11px] font-semibold text-zinc-300">Broń 2</div>
+                                                                            <div className="text-[11px] font-semibold text-zinc-300">Weapon 2</div>
                                                                             <WeaponDetails w={o.weapon2} />
                                                                         </div>
                                                                     )}
@@ -1744,19 +2467,19 @@ function AddUnitSheet({
                                                 );
                                             })}
 
-                                            {t.options.length === 0 && <div className="text-sm text-zinc-500">Brak opcji uzbrojenia.</div>}
+                                            {t.options.length === 0 && <div className="text-sm text-zinc-500">No loadout options.</div>}
                                         </div>
                                     )}
                                 </div>
                             );
                         })}
 
-                        {list.length === 0 && !loading && <div className="text-sm text-zinc-500">Brak wyników.</div>}
+                        {list.length === 0 && !loading && <div className="text-sm text-zinc-500">No results.</div>}
                     </div>
 
                     <div ref={sentinelRef} className="h-12" />
 
-                    {loading && <div className="py-3 text-center text-xs text-zinc-400">Ładowanie…</div>}
+                    {loading && <div className="py-3 text-center text-xs text-zinc-400">Loading...</div>}
                     {!hasMore && list.length > 0 && <div className="py-3 text-center text-xs text-zinc-500">To wszystko.</div>}
                 </div>
 
@@ -1766,14 +2489,14 @@ function AddUnitSheet({
                             onClick={onClose}
                             className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300"
                         >
-                            Anuluj
+                            Cancel
                         </button>
                         <button
                             onClick={() => void add()}
                             disabled={!can || busy}
                             className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                            {busy ? 'Dodawanie…' : 'Dodaj'}
+                            {busy ? 'Adding...' : 'Add'}
                         </button>
                     </div>
                 </div>

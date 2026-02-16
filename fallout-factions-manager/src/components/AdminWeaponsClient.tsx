@@ -7,7 +7,7 @@ import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
-/* ===== Typy słownika efektów ===== */
+/* ===== Effect dictionary types ===== */
 export type EffectKind = 'WEAPON' | 'CRITICAL';
 export type ProfileEffectMode = 'ADD' | 'REMOVE';
 
@@ -19,7 +19,7 @@ export interface DictEffect {
     requiresValue: boolean;
 }
 
-/* ===== Typy formularza (wejście/wyjście API admina) ===== */
+/* ===== Form types (admin API input/output) ===== */
 type EffectRef = { effectId: string; valueInt?: number | null; valueText?: string | null; effectMode?: ProfileEffectMode };
 
 type ProfileForm = {
@@ -44,7 +44,7 @@ type WeaponForm = {
     profiles: ProfileForm[];
 };
 
-/* ===== Typ odpowiedzi GET /api/admin/weapons (lista) ===== */
+/* ===== GET /api/admin/weapons response type (list) ===== */
 type WeaponListItem = {
     id: string;
     name: string;
@@ -100,8 +100,8 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     await reload();
                 }
             } catch (error: unknown) {
-                setListError('Nie udało się pobrać danych broni. Odśwież widok i spróbuj ponownie.');
-                notifyApiError(error, 'Nie udało się pobrać danych broni.');
+                setListError('Failed to fetch weapon data. Refresh the view and try again.');
+                notifyApiError(error, 'Failed to fetch weapon data.');
                 setLoading(false);
             }
         })();
@@ -119,7 +119,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         setListError(null);
         const res = await fetch('/api/admin/weapons', { cache: 'no-store' });
         if (!res.ok) {
-            const msg = 'Nie udało się pobrać listy broni. Sprawdź połączenie i spróbuj ponownie.';
+            const msg = 'Failed to fetch weapon list. Check your connection and try again.';
             setListError(msg);
             setLoading(false);
             return;
@@ -129,7 +129,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         setLoading(false);
     }
 
-    /* ----- Bazowe efekty (formularz) ----- */
+    /* ----- Base effects (form) ----- */
     function addBaseEffect(): void {
         setForm((f) => ({ ...f, baseEffects: [...f.baseEffects, { effectId: '' }] }));
     }
@@ -144,7 +144,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         setForm((f) => ({ ...f, baseEffects: f.baseEffects.filter((_, idx) => idx !== i) }));
     }
 
-    /* ----- Profile (formularz) ----- */
+    /* ----- Profiles (form) ----- */
     function addProfile(): void {
         setForm((f) => ({
             ...f,
@@ -190,7 +190,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     /* ----- CRUD ----- */
     async function save(): Promise<void> {
-        if (!form.name.trim()) { notifyWarning('Podaj nazwę'); return; }
+        if (!form.name.trim()) { notifyWarning('Enter name'); return; }
 
         setSaving(true);
         try {
@@ -203,7 +203,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             });
             if (!res.ok) {
                 const txt = await res.text();
-                notifyApiError(txt || 'Błąd zapisu broni');
+                notifyApiError(txt || 'Error saving weapon');
                 return;
             }
             await reload();
@@ -225,14 +225,14 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     async function del(id: string): Promise<void> {
         confirmAction({
-            title: 'Usunąć?',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 const r = await fetch(`/api/admin/weapons/${id}`, { method: 'DELETE' });
                 if (!r.ok) {
-                    notifyApiError('Nie udało się usunąć broni');
+                    notifyApiError('Failed to delete weapon');
                     throw new Error('delete failed');
                 }
                 await reload();
@@ -249,32 +249,32 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
             const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
             if (!res.ok) {
                 const txt = await res.text().catch(() => '');
-                notifyApiError(txt || 'Upload nieudany: błąd serwera');
+                notifyApiError(txt || 'Upload failed: server error');
                 return;
             }
             const json = (await res.json().catch(() => null)) as { path?: string } | null;
             if (!json?.path) {
-                notifyApiError('Upload nieudany: brak ścieżki pliku w odpowiedzi');
+                notifyApiError('Upload failed: missing file path in response');
                 return;
             }
             setForm((f) => ({ ...f, imagePath: json.path }));
         } catch (e: unknown) {
-            notifyApiError(e instanceof Error ? e.message : String(e), 'Nie udało się wgrać obrazka');
+            notifyApiError(e instanceof Error ? e.message : String(e), 'Failed to upload image');
         } finally {
             setUploadingImg(false);
             setImgPick(null);
         }
     }
 
-    // zmieniamy: uploadWeaponImage(file) -> tylko waliduje i otwiera cropper
+    // uploadWeaponImage(file): validate only and open cropper
     async function uploadWeaponImage(file: File): Promise<void> {
         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
         if (!allowed.includes(file.type)) {
-            notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
+            notifyWarning('Supported formats: JPG/PNG/WebP');
             return;
         }
         if (file.size > 10 * 1024 * 1024) {
-            notifyWarning('Plik za duży. Wybierz obraz do 10MB.');
+            notifyWarning('File too large. Select an image up to 10MB.');
             return;
         }
         setImgPick(file);
@@ -289,11 +289,11 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
         let arr = list;
         if (query) arr = arr.filter((w) => w.name.toLowerCase().includes(query));
         const dir = sort.endsWith(':ASC') ? 1 : -1;
-        return [...arr].sort((a, b) => a.name.localeCompare(b.name, 'pl') * dir);
+        return [...arr].sort((a, b) => a.name.localeCompare(b.name, 'en') * dir);
     }, [list, q, sort]);
 
     const chips: ActiveFilterChip[] = [
-        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(q ? [{ key: 'q', label: `Search: ${q}`, onRemove: () => setQ('') }] : []),
         ...(sort !== 'NAME:ASC' ? [{ key: 'sort', label: `Sort: ${sort}`, onRemove: () => setSort('NAME:ASC') }] : []),
     ];
 
@@ -305,16 +305,16 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
     return (
         <div className="space-y-4">
             <div className="vault-panel p-3">
-                <p className="ff-panel-headline">Admin / Uzbrojenie</p>
+                <p className="ff-panel-headline">Admin / Weapons</p>
                 <p className="text-sm vault-muted">
-                    Zarzadzaj bazowymi statystykami broni, profilami i zestawami efektow.
+                    Manage base weapon stats, profiles and effect sets.
                 </p>
             </div>
 
-            {/* Formularz */}
+            {/* Form */}
             <div className="vault-panel p-3">
                 <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">{form.id ? 'Edytuj' : 'Nowa broń'}</div>
+                    <div className="text-sm font-medium">{form.id ? 'Edit' : 'New weapon'}</div>
                     {form.id && (
                         <button
                             onClick={() =>
@@ -332,22 +332,22 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                             }
                             className="text-xs text-zinc-300"
                         >
-                            Nowa
+                            New
                         </button>
                     )}
                 </div>
 
-                <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
+                <label className="block mt-2 text-xs text-zinc-400">Name</label>
                 <input
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     className="w-full vault-input px-3 py-2 text-sm"
                 />
 
-                <label className="block mt-3 text-xs text-zinc-400">Obrazek (opcjonalnie)</label>
+                <label className="block mt-3 text-xs text-zinc-400">Image (optional)</label>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                     <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
-                        {uploadingImg ? 'Wysyłanie…' : (form.imagePath ? 'Zmień obrazek' : 'Dodaj obrazek')}
+                        {uploadingImg ? 'Uploading...' : (form.imagePath ? 'Change image' : 'Add image')}
                         <input
                             type="file"
                             accept="image/*"
@@ -371,14 +371,14 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                 className="text-xs text-emerald-300 underline"
                                 title={form.imagePath}
                             >
-                                Podgląd
+                                Preview
                             </a>
                             <button
                                 type="button"
                                 onClick={clearWeaponImage}
                                 className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200"
                             >
-                                Usuń
+                                Delete
                             </button>
                         </>
                     )}
@@ -391,7 +391,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     </div>
                 )}
 
-                {/* Baza */}
+                {/* Base */}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                     <input
                         placeholder="Base Type"
@@ -421,9 +421,9 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     />
                 </div>
 
-                {/* Bazowe efekty */}
+                {/* Base effects */}
                 <div className="mt-3">
-                    <div className="mb-1 text-xs text-zinc-400">Bazowe efekty</div>
+                    <div className="mb-1 text-xs text-zinc-400">Base effects</div>
                     {form.baseEffects.map((be, i) => {
                         const ef = effects.find((e) => e.id === be.effectId);
                         return (
@@ -433,7 +433,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                     value={be.effectId}
                                     onChange={(e) => patchBaseEffect(i, { effectId: e.target.value })}
                                 >
-                                    <option value="">— wybierz —</option>
+                                    <option value="">- select -</option>
                                     {effects.map((e) => (
                                         <option key={e.id} value={e.id}>
                                             {e.name} {e.kind === 'CRITICAL' ? '(crit)' : ''}
@@ -449,28 +449,28 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                         onChange={(e) => patchBaseEffect(i, { valueInt: numOrNull(e.target.value) })}
                                     />
                                 ) : (
-                                    <div className="col-span-2 text-xs text-zinc-500">—</div>
+                                    <div className="col-span-2 text-xs text-zinc-500">-</div>
                                 )}
                                 <input
-                                    placeholder='Detale (np. Area (1"), Storm (3"))'
+                                    placeholder='Details (e.g. Area (1"), Storm (3"))'
                                     className="col-span-4 vault-input px-2 py-1 text-sm"
                                     value={be.valueText ?? ''}
                                     onChange={(e) => patchBaseEffect(i, { valueText: e.target.value.trim() || null })}
                                 />
                                 <button className="col-span-1 text-xs text-red-300" onClick={() => removeBaseEffect(i)}>
-                                    Usuń
+                                    Delete
                                 </button>
                             </div>
                         );
                     })}
                     <button className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm" onClick={addBaseEffect}>
-                        Dodaj efekt
+                        Add effect
                     </button>
                 </div>
 
-                {/* Profile */}
+                {/* Profiles */}
                 <div className="mt-4">
-                    <div className="mb-1 text-xs text-zinc-400">Profile (upgrade’y)</div>
+                    <div className="mb-1 text-xs text-zinc-400">Profiles (upgrades)</div>
                     {form.profiles.map((p, i) => (
                         <div key={i} className="mb-3 rounded-xl border border-zinc-800 p-2">
                             <div className="grid grid-cols-5 gap-2">
@@ -503,7 +503,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-2">
                                 <input
-                                    placeholder="Rating Δ (delta)"
+                                    placeholder="Rating delta"
                                     inputMode="numeric"
                                     className="vault-input px-2 py-1 text-sm"
                                     value={p.ratingDelta ?? ''}
@@ -512,7 +512,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                             </div>
 
                             <div className="mt-2">
-                                <div className="mb-1 text-xs text-zinc-400">Efekty profilu</div>
+                                <div className="mb-1 text-xs text-zinc-400">Profile effects</div>
                                 {p.effects.map((ef, j) => {
                                     const def = effects.find((e) => e.id === ef.effectId);
                                     return (
@@ -522,7 +522,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                 value={ef.effectId}
                                                 onChange={(e) => patchProfileEffect(i, j, { effectId: e.target.value })}
                                             >
-                                                <option value="">— wybierz —</option>
+                                                <option value="">- select -</option>
                                                 {effects.map((e) => (
                                                     <option key={e.id} value={e.id}>
                                                         {e.name} {e.kind === 'CRITICAL' ? '(crit)' : ''}
@@ -533,10 +533,10 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                 className="col-span-2 vault-input px-2 py-1 text-sm"
                                                 value={ef.effectMode ?? 'ADD'}
                                                 onChange={(e) => patchProfileEffect(i, j, { effectMode: e.target.value as ProfileEffectMode })}
-                                                title="Tryb efektu"
+                                                title="Effect mode"
                                             >
-                                                <option value="ADD">+ Dodaj</option>
-                                                <option value="REMOVE">- Usuń</option>
+                                                <option value="ADD">+ Add</option>
+                                                <option value="REMOVE">- Remove</option>
                                             </select>
                                             {def?.requiresValue ? (
                                                 <input
@@ -547,34 +547,34 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                                     onChange={(e) => patchProfileEffect(i, j, { valueInt: numOrNull(e.target.value) })}
                                                 />
                                             ) : (
-                                                <div className="col-span-2 text-xs text-zinc-500">—</div>
+                                                <div className="col-span-2 text-xs text-zinc-500">-</div>
                                             )}
                                             <input
-                                                placeholder='Detale (np. Area (1"), Storm (3"))'
+                                                placeholder='Details (e.g. Area (1"), Storm (3"))'
                                                 className="col-span-3 vault-input px-2 py-1 text-sm"
                                                 value={ef.valueText ?? ''}
                                                 onChange={(e) => patchProfileEffect(i, j, { valueText: e.target.value.trim() || null })}
                                             />
                                             <button className="col-span-1 text-xs text-red-300" onClick={() => removeProfileEffect(i, j)}>
-                                                Usuń
+                                                Delete
                                             </button>
                                         </div>
                                     );
                                 })}
                                 <button className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm" onClick={() => addProfileEffect(i)}>
-                                    Dodaj efekt
+                                    Add effect
                                 </button>
                             </div>
 
                             <div className="mt-2">
                                 <button className="text-xs text-red-300" onClick={() => removeProfile(i)}>
-                                    Usuń profil
+                                    Delete profile
                                 </button>
                             </div>
                         </div>
                     ))}
                     <button className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" onClick={addProfile}>
-                        Dodaj profil
+                        Add profile
                     </button>
                 </div>
 
@@ -584,18 +584,18 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                         disabled={saving}
                         className="h-10 flex-1 rounded-xl bg-emerald-500 font-semibold text-emerald-950 disabled:opacity-50"
                     >
-                        {saving ? 'Zapisywanie…' : 'Zapisz'}
+                        {saving ? 'Saving...' : 'Save'}
                     </button>
                 </div>
             </div>
 
-            {/* Lista */}
+            {/* List */}
             <div className="grid gap-2">
                 <div className="flex items-start justify-between gap-2 rounded-xl border border-zinc-800 p-3">
                     <div>
-                        <div className="text-sm font-medium">Lista broni</div>
+                        <div className="text-sm font-medium">Weapon list</div>
                         <div className="mt-0.5 text-[11px] text-zinc-400">
-                            Wyniki: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
+                            Results: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -608,8 +608,8 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                     ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
                                     : 'border-zinc-700 bg-zinc-900 text-zinc-200')
                             }
-                            aria-label="Filtry"
-                            title="Filtry"
+                            aria-label="Filters"
+                            title="Filters"
                         >
                             <FilterOutlined />
                         </button>
@@ -618,7 +618,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                             onClick={() => void reload()}
                             className="h-9 vault-input px-3 text-xs text-zinc-300"
                         >
-                            Odśwież
+                            Refresh
                         </button>
                     </div>
                 </div>
@@ -629,14 +629,14 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     onOpenChangeAction={setFiltersOpen}
                     search={q}
                     onSearchAction={setQ}
-                    searchPlaceholder="Szukaj broni…"
+                    searchPlaceholder="Search weapons..."
                     controls={
                         <SortSelect
                             value={sort}
                             onChange={(v) => setSort(v as typeof sort)}
                             options={[
-                                { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
-                                { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
+                                { value: 'NAME:ASC', label: 'Sort: name A-Z' },
+                                { value: 'NAME:DESC', label: 'Sort: name Z-A' },
                             ]}
                         />
                     }
@@ -644,9 +644,9 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                     onClearAllAction={clearAll}
                 />
 
-                {loading ? <LoadingState title="Ładowanie listy broni" /> : null}
+                {loading ? <LoadingState title="Loading weapon list" /> : null}
                 {!loading && listError ? <ErrorState description={listError} onRetry={() => void reload()} /> : null}
-                {!loading && !listError && filteredSorted.length === 0 ? <EmptyState title="Brak broni" description="Dodaj pierwszy szablon broni albo wyczyść filtry." /> : null}
+                {!loading && !listError && filteredSorted.length === 0 ? <EmptyState title="No weapons" description="Add your first weapon template or clear filters." /> : null}
                 {!loading && !listError && filteredSorted.map((w) => (
                     <div key={w.id} className="vault-panel p-3">
                         <div className="flex items-start justify-between">
@@ -689,7 +689,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                                 {w.name}
                             </button>
                             <button onClick={() => void del(w.id)} className="text-xs text-red-300">
-                                Usuń
+                                Delete
                             </button>
                         </div>
                     </div>

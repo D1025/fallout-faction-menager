@@ -1,10 +1,10 @@
-import { prisma } from '@/server/prisma';
+﻿import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { FactionUpsertSchema } from '@/lib/validation/faction';
 
 export const runtime = 'nodejs';
 
-// W tej instalacji Next.js kontekst ma params jako Promise:
+// In this Next.js setup, route context params are Promise-based.
 type AsyncCtx = { params: Promise<{ id: string }> };
 type UnitTemplateFactionDelegate = {
     count(args: { where: { factionId: string } }): Promise<number>;
@@ -30,7 +30,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     const updated = await prisma.$transaction(async (tx) => {
         await tx.faction.update({ where: { id }, data: { name } });
 
-        // podmień limity 1:1
+        // Replace limits 1:1.
         await tx.factionLimit.deleteMany({ where: { factionId: id } });
         if (limits.length) {
             await tx.factionLimit.createMany({
@@ -61,7 +61,7 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
         return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
     }
 
-    // Bezpiecznik: jeśli frakcja w użyciu, zwróć 409
+    // Safety check: if the faction is in use, return 409.
     const [armies, templates] = await Promise.all([
         prisma.army.count({ where: { factionId: id } }),
         p.unitTemplateFaction.count({ where: { factionId: id } }),
@@ -73,7 +73,7 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
         );
     }
 
-    // Usuń powiązane encje (limits, goal sets/goals, upgrade rules), potem frakcję
+    // Delete related entities (limits, goal sets/goals, upgrade rules), then the faction.
     await prisma.$transaction(async (tx) => {
         await tx.factionLimit.deleteMany({ where: { factionId: id } });
 

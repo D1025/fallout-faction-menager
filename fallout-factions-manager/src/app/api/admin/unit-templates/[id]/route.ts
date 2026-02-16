@@ -1,4 +1,4 @@
-// app/api/admin/unit-templates/[id]/route.ts
+﻿// app/api/admin/unit-templates/[id]/route.ts
 import { prisma } from "@/server/prisma";
 import { auth } from "@/lib/authServer";
 import { z } from "zod";
@@ -78,7 +78,7 @@ const UnitTemplateInput = z.object({
     startPerks: z.array(StartPerkSchema).optional().default([]),
 }).superRefine((v, ctx) => {
     if (!v.isGlobal && v.factionIds.length === 0) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['factionIds'], message: 'Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['factionIds'], message: 'Select at least one faction or set GLOBAL.' });
     }
 });
 
@@ -117,7 +117,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
             },
         });
 
-        // frakcje (M:N)
+        // Factions (M:N)
         await tx.unitTemplateFaction.deleteMany({ where: { unitId: id } });
         if (!v.isGlobal && v.factionIds.length) {
             await tx.unitTemplateFaction.createMany({
@@ -126,7 +126,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
             });
         }
 
-        // opcje broni
+        // Weapon options
         await tx.unitWeaponOption.deleteMany({ where: { unitId: id } });
         await tx.unitWeaponOption.createMany({
             data: v.options.map((opt) => ({
@@ -138,7 +138,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
             })),
         });
 
-        // startowe perki
+        // Starting perks
         await tx.unitStartPerk.deleteMany({ where: { unitId: id } });
         if (v.startPerks.length > 0) {
             await tx.unitStartPerk.createMany({
@@ -174,3 +174,4 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
 
     return new Response(null, { status: 204 });
 }
+

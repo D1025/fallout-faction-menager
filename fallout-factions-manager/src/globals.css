@@ -1,4 +1,4 @@
-/* helpers: brak pasków przewijania – działa mobil/desktop */
+/* Helpers: hide scrollbars - works on mobile/desktop */
 .no-scrollbar {
     -ms-overflow-style: none; /* IE/Edge */
     scrollbar-width: none;    /* Firefox */

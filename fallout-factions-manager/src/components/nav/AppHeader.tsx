@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { Flex, Layout, Typography } from 'antd';
+import { Layout, Typography } from 'antd';
 import { BackButton } from '@/components/nav/BackButton';
 
 export function AppHeader({
@@ -17,8 +17,8 @@ export function AppHeader({
 }) {
     return (
         <Layout.Header className="ff-app-header">
-            <Flex className="ff-app-header__inner" align="center" justify="space-between" style={{ maxWidth }}>
-                <div style={{ flex: '0 0 auto' }}>{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
+            <div className="ff-app-header__inner" style={{ maxWidth }}>
+                <div className="ff-app-header__left">{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
 
                 <Typography.Text
                     strong
@@ -32,7 +32,7 @@ export function AppHeader({
                 <div className="ff-app-header__right">
                     {right}
                 </div>
-            </Flex>
+            </div>
         </Layout.Header>
     );
 }

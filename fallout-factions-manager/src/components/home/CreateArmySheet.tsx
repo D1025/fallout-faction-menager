@@ -29,11 +29,11 @@ export default function CreateArmySheetDefault({ factions }: { factions: Faction
             <button
                 onClick={() => setOpen(true)}
                 className="ff-btn ff-btn-primary ff-btn-icon-mobile"
-                title="Dodaj armie"
-                aria-label="Dodaj armie"
+                title="Add army"
+                aria-label="Add army"
             >
                 <PlusOutlined className="ff-btn-icon" />
-                <span className="ff-btn-label">Dodaj armie</span>
+                <span className="ff-btn-label">Add army</span>
             </button>
             {open && <Sheet factions={factions} onClose={() => setOpen(false)} />}
         </>
@@ -86,7 +86,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                 const rows = (await res.json()) as SubfactionDTO[];
                 if (!cancelled) {
                     setSubfactions(rows);
-                    // domyślnie: brak subfrakcji (czysta frakcja)
+                    // default: no subfaction (pure faction)
                     setSelectedSubfactionId(null);
                 }
             } catch {
@@ -104,7 +104,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
         };
     }, [selectedFactionId]);
 
-    // teraz wymagamy nazwy + frakcji + goal setu; subfrakcja jest opcjonalna
+    // requires name + faction + goal set; subfaction is optional
     const can = name.trim().length >= 3 && !!selectedFaction && !!selectedGoalSetId;
 
     async function createArmy() {
@@ -116,12 +116,12 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                 factionId: selectedFaction!.id,
                 tier,
                 goalSetId: selectedGoalSetId,
-                subfactionId: selectedSubfactionId, // <<<<<< NOWE
+                subfactionId: selectedSubfactionId,
             }),
         });
         if (!res.ok) {
             const txt = await res.text().catch(() => '');
-            notifyApiError(txt, 'Nie udało się utworzyć armii');
+            notifyApiError(txt, 'Failed to create army');
             return;
         }
         const { id } = (await res.json()) as { id: string };
@@ -131,24 +131,24 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
 
     return (
         <div className="fixed inset-0 z-20">
-            <button aria-label="Zamknij" onClick={onClose} className="absolute inset-0 bg-black/60" />
+            <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
             <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl h-[90dvh] flex flex-col">
                 <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-zinc-700" />
 
                 {/* header */}
                 <header className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 px-4 pt-2 pb-2">
                     <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold">Nowa drużyna</div>
+                        <div className="text-sm font-semibold">New crew</div>
                         <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
-                            Zamknij
+                            Close
                         </button>
                     </div>
 
                     {/* stepper */}
                     <div className="mt-2 grid grid-cols-2 gap-2">
                         {([
-                            ['INFO', 'Dane'] as const,
-                            ['FACTION', 'Frakcja'] as const,
+                            ['INFO', 'Info'] as const,
+                            ['FACTION', 'Faction'] as const,
                         ]).map(([k, label]) => (
                             <button
                                 key={k}
@@ -168,25 +168,25 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                     {/* summary row */}
                     <div className="mt-2 flex items-center gap-2 overflow-x-auto text-xs text-zinc-400 no-scrollbar">
             <span>
-              Nazwa: <span className="text-zinc-200 font-medium">{name.trim() || '—'}</span>
+              Name: <span className="text-zinc-200 font-medium">{name.trim() || '-'}</span>
             </span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>
               Tier: <span className="text-zinc-200 font-medium">T{tier}</span>
             </span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>
-              Frakcja: <span className="text-zinc-200 font-medium">{selectedFaction?.name ?? '—'}</span>
+              Faction: <span className="text-zinc-200 font-medium">{selectedFaction?.name ?? '-'}</span>
             </span>
-                        <span>•</span>
+                        <span>|</span>
                         <span>
-              Subfrakcja: <span className="text-zinc-200 font-medium">{subfactions.find(s => s.id === selectedSubfactionId)?.name ?? 'brak'}</span>
+              Subfaction: <span className="text-zinc-200 font-medium">{subfactions.find(s => s.id === selectedSubfactionId)?.name ?? 'none'}</span>
             </span>
                     </div>
                 </header>
 
                 {/* content */}
-                <div className="flex-1 overflow-y-auto px-4 pb-24 pt-3">
+                <div className="vault-scrollbar flex-1 overflow-y-auto px-4 pb-24 pt-3">
                     {step === 'INFO' && (
                         <InfoStep name={name} tier={tier} onName={setName} onTier={(t) => setTier(t)} />
                     )}
@@ -210,12 +210,12 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                 setExpandedGoalSetId={setExpandedGoalSetId}
                             />
 
-                            {/* Subfrakcja (opcjonalnie) */}
+                            {/* Subfaction (optional) */}
                             {selectedFaction && (
                                 <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                                    <div className="text-xs font-semibold text-zinc-200">Subfrakcja (opcjonalnie)</div>
+                                    <div className="text-xs font-semibold text-zinc-200">Subfaction (optional)</div>
                                     <div className="mt-1 text-[11px] text-zinc-400">
-                                        Brak wyboru = czysta frakcja. Subfrakcje mogą dodawać lub blokować dostęp do jednostek i uzbrojenia.
+                                        No selection = pure faction. Subfactions can allow or block access to units and loadouts.
                                     </div>
 
                                     <div className="mt-2 flex flex-wrap gap-2">
@@ -228,7 +228,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                                     : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                                             }
                                         >
-                                            Brak subfrakcji
+                                            No subfaction
                                         </button>
                                         {subfactions.map((s) => (
                                             <button
@@ -247,10 +247,10 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                     </div>
 
                                     {subBusy && (
-                                        <div className="mt-2 text-[11px] text-zinc-500">Wczytuję listę subfrakcji…</div>
+                                        <div className="mt-2 text-[11px] text-zinc-500">Loading subfaction list...</div>
                                     )}
                                     {!subBusy && subfactions.length === 0 && (
-                                        <div className="mt-2 text-[11px] text-zinc-500">Dla tej frakcji nie zdefiniowano subfrakcji.</div>
+                                        <div className="mt-2 text-[11px] text-zinc-500">No subfactions defined for this faction.</div>
                                     )}
                                 </div>
                             )}
@@ -265,19 +265,19 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                             onClick={onClose}
                             className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 active:scale-[0.99]"
                         >
-                            Anuluj
+                            Cancel
                         </button>
                         <button
                             disabled={!can}
                             onClick={() => void createArmy()}
                             className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.99]"
                         >
-                            Utwórz
+                            Create
                         </button>
                     </div>
                     {!selectedGoalSetId && (
                         <div className="mt-2 text-center text-[11px] text-amber-300">
-                            Wybierz zestaw zadań dla wybranej frakcji.
+                            Select a goal set for the selected faction.
                         </div>
                     )}
                 </footer>
@@ -301,12 +301,12 @@ function InfoStep({
     return (
         <div className="grid gap-3">
             <label className="grid gap-1">
-                <span className="text-xs text-zinc-400">Nazwa</span>
+                <span className="text-xs text-zinc-400">Name</span>
                 <input
                     autoFocus
                     value={name}
                     onChange={(e) => onName(e.target.value)}
-                    placeholder="np. Oddział Alfa"
+                    placeholder="e.g. Alpha Squad"
                     className="vault-input px-3 py-2 text-sm outline-none focus:border-zinc-500"
                 />
             </label>
@@ -332,7 +332,7 @@ function InfoStep({
             </div>
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
-                W kolejnym kroku wybierz frakcję i zestaw zadań.
+                In the next step, choose a faction and a goal set.
             </div>
         </div>
     );
@@ -363,11 +363,11 @@ function FactionStep({
     return (
         <div className="grid gap-3">
             <label className="grid gap-1">
-                <span className="text-xs text-zinc-400">Frakcja</span>
+                <span className="text-xs text-zinc-400">Faction</span>
                 <input
                     value={q}
                     onChange={(e) => onSearch(e.target.value)}
-                    placeholder="Szukaj frakcji"
+                    placeholder="Search faction"
                     className="vault-input px-3 py-2 text-sm outline-none"
                 />
             </label>
@@ -400,29 +400,29 @@ function FactionStep({
                                     <div className="font-medium">{f.name}</div>
                                 </div>
                                 <div className="text-[10px] text-zinc-400">
-                                    {f.limits.length} limit(ów) • {f.goalSets.length} zest.(y)
+                                    {f.limits.length} limit(s) | {f.goalSets.length} set(s)
                                 </div>
                             </button>
 
                             <div className="border-t border-zinc-800 bg-zinc-900 p-2">
-                                {/* limity – kompaktowe “chipsy” */}
+                                {/* limits - compact chips */}
                                 <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
                                     {f.limits.map((l) => (
                                         <span
                                             key={l.tag}
                                             className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px]"
-                                            title={`${l.tag} ${[l.tier1, l.tier2, l.tier3].map((v) => v ?? '–').join('/')}`}
+                                            title={`${l.tag} ${[l.tier1, l.tier2, l.tier3].map((v) => v ?? '-').join('/')}`}
                                         >
                       <span className="font-medium">{l.tag}</span>
                       <span className="text-zinc-500">
-                        {[l.tier1, l.tier2, l.tier3].map((v) => v ?? '–').join('/')}
+                        {[l.tier1, l.tier2, l.tier3].map((v) => v ?? '-').join('/')}
                       </span>
                     </span>
                                     ))}
-                                    {f.limits.length === 0 && <span className="text-[11px] text-zinc-500">brak limitów</span>}
+                                    {f.limits.length === 0 && <span className="text-[11px] text-zinc-500">no limits</span>}
                                 </div>
 
-                                {/* zestawy zadań – tylko gdy frakcja wybrana */}
+                                {/* task sets - only for selected faction */}
                                 {isSelected && (
                                     <div className="mt-2 grid gap-2">
                                         {f.goalSets.map((gs) => {
@@ -455,7 +455,7 @@ function FactionStep({
                                                                 onClick={() => setExpandedGoalSetId(expanded ? null : gs.id)}
                                                                 className="rounded-md border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-200"
                                                             >
-                                                                {expanded ? 'Ukryj cele' : 'Pokaż cele'}
+                                                                {expanded ? 'Hide goals' : 'Show goals'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -486,14 +486,14 @@ function FactionStep({
                                                 </div>
                                             );
                                         })}
-                                        {f.goalSets.length === 0 && <div className="text-sm text-zinc-500 px-2 pb-2">brak zestawów</div>}
+                                        {f.goalSets.length === 0 && <div className="text-sm text-zinc-500 px-2 pb-2">no sets</div>}
                                     </div>
                                 )}
                             </div>
                         </div>
                     );
                 })}
-                {factions.length === 0 && <div className="text-sm text-zinc-500">Brak wyników</div>}
+                {factions.length === 0 && <div className="text-sm text-zinc-500">No results</div>}
             </div>
         </div>
     );

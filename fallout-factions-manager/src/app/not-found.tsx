@@ -6,19 +6,19 @@ import { SectionCard } from '@/components/ui/antd/SectionCard';
 
 export default function NotFoundPage() {
     return (
-        <MobilePageShell title="Nie znaleziono strony">
+        <MobilePageShell title="Page not found">
             <SectionCard>
                 <div className="text-center">
                     <div className="text-3xl text-amber-300">
                         <WarningOutlined />
                     </div>
-                    <div className="mt-2 text-lg font-semibold">Ta strona nie istnieje</div>
+                    <div className="mt-2 text-lg font-semibold">This page does not exist</div>
                     <p className="mt-2 text-sm vault-muted">
-                        Sprawdz adres URL albo wroc do strony glownej aplikacji.
+                        Check the URL or return to the app home page.
                     </p>
                     <Link href="/">
                         <Button type="primary" className="mt-4" icon={<HomeOutlined />}>
-                            Przejdz do strony glownej
+                            Go to home page
                         </Button>
                     </Link>
                 </div>
@@ -26,4 +26,3 @@ export default function NotFoundPage() {
         </MobilePageShell>
     );
 }
-

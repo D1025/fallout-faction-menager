@@ -57,7 +57,7 @@ export function FilterBar({
                         value={search}
                         onChange={(e) => onSearchAction(e.target.value)}
                         className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                        placeholder={searchPlaceholder ?? 'Szukaj'}
+                        placeholder={searchPlaceholder ?? 'Search'}
                     />
                 </div>
             ) : null}
@@ -75,7 +75,7 @@ export function FilterBar({
                     disabled={!hasActive}
                     onClick={onClearAllAction}
                 >
-                    Wyczysc filtry
+                    Clear filters
                 </Button>
             ) : null}
         </div>
@@ -89,20 +89,20 @@ export function FilterBar({
         <>
             {showTrigger ? (
                 <div className="flex items-center justify-end gap-2">
-                    <Tooltip title={hasActive ? 'Filtry (aktywne)' : 'Filtry'}>
+                    <Tooltip title={hasActive ? 'Filters (active)' : 'Filters'}>
                         <Button
                             type={hasActive ? 'primary' : 'default'}
                             size="middle"
                             icon={<FilterOutlined />}
                             onClick={() => setOpen(true)}
-                            aria-label="Filtry"
+                            aria-label="Filters"
                         />
                     </Tooltip>
                 </div>
             ) : null}
 
             <Drawer
-                title="Filtry"
+                title="Filters"
                 open={drawerOpen}
                 onClose={() => setOpen(false)}
                 placement={isDesktop ? 'right' : 'bottom'}

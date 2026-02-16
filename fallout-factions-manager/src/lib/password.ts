@@ -25,13 +25,13 @@ export const PASSWORD_MAX_LENGTH = 128;
 
 export function getPasswordValidationError(password: string): string | null {
     if (password.length < PASSWORD_MIN_LENGTH) {
-        return `Haslo musi miec co najmniej ${PASSWORD_MIN_LENGTH} znakow.`;
+        return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
     }
     if (password.length > PASSWORD_MAX_LENGTH) {
-        return `Haslo moze miec maksymalnie ${PASSWORD_MAX_LENGTH} znakow.`;
+        return `Password can be at most ${PASSWORD_MAX_LENGTH} characters.`;
     }
     if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-        return 'Haslo musi zawierac litere i cyfre.';
+        return 'Password must contain at least one letter and one digit.';
     }
     return null;
 }

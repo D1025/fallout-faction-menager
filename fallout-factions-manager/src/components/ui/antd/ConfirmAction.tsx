@@ -25,10 +25,10 @@ export function ConfirmAction({
       size="small"
       onClick={() =>
         confirmAction({
-          title: typeof title === 'string' ? title : 'Potwierdź akcję',
+          title: typeof title === 'string' ? title : 'Confirm action',
           content: typeof description === 'string' ? description : undefined,
-          okText: okText ?? 'Tak, wykonaj',
-          cancelText: 'Anuluj',
+          okText: okText ?? 'Yes, proceed',
+          cancelText: 'Cancel',
           danger,
           onOk: async () => {
             await onConfirm();

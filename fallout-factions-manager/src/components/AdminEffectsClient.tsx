@@ -16,7 +16,7 @@ export interface Effect {
     requiresValue: boolean;
 }
 
-// Oddzielamy identyfikator edytowanego efektu od samych pól formularza
+// Keep edited effect id separate from form fields.
 interface EffectForm {
     name: string;
     kind: EffectKind;
@@ -51,15 +51,15 @@ export function AdminEffectsClient() {
         const [k, d] = sort.split(':') as ['NAME' | 'KIND', 'ASC' | 'DESC'];
         const dir = d === 'ASC' ? 1 : -1;
         const cmp = (a: Effect, b: Effect) => {
-            if (k === 'KIND') return a.kind.localeCompare(b.kind) * dir || a.name.localeCompare(b.name, 'pl');
-            return a.name.localeCompare(b.name, 'pl') * dir;
+            if (k === 'KIND') return a.kind.localeCompare(b.kind, 'en') * dir || a.name.localeCompare(b.name, 'en');
+            return a.name.localeCompare(b.name, 'en') * dir;
         };
         return [...arr].sort(cmp);
     }, [list, q, kindFilter, sort]);
 
     const chips: ActiveFilterChip[] = [
-        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
-        ...(kindFilter !== 'ALL' ? [{ key: 'kind', label: `Rodzaj: ${kindFilter}`, onRemove: () => setKindFilter('ALL') }] : []),
+        ...(q ? [{ key: 'q', label: `Search: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(kindFilter !== 'ALL' ? [{ key: 'kind', label: `Type: ${kindFilter}`, onRemove: () => setKindFilter('ALL') }] : []),
         ...(sort !== 'NAME:ASC' ? [{ key: 'sort', label: `Sort: ${sort}`, onRemove: () => setSort('NAME:ASC') }] : []),
     ];
 
@@ -74,7 +74,7 @@ export function AdminEffectsClient() {
         setListError(null);
         const res = await fetch('/api/admin/effects', { cache: 'no-store' });
         if (!res.ok) {
-            const msg = 'Nie udało się pobrać efektów. Odśwież widok i spróbuj ponownie.';
+            const msg = 'Failed to fetch effects. Refresh the view and try again.';
             setListError(msg);
             notifyApiError(msg);
             setLoading(false);
@@ -106,11 +106,11 @@ export function AdminEffectsClient() {
 
     async function save(): Promise<void> {
         if (!form.name.trim()) {
-            notifyWarning('Podaj nazwę efektu');
+            notifyWarning('Enter effect name');
             return;
         }
         if (!form.description.trim()) {
-            notifyWarning('Podaj opis efektu');
+            notifyWarning('Enter effect description');
             return;
         }
 
@@ -127,7 +127,7 @@ export function AdminEffectsClient() {
             const payload = await res
                 .json()
                 .catch(async () => ({ status: res.status, text: await res.text() }));
-            notifyApiError(JSON.stringify(payload), 'Błąd zapisu efektu');
+            notifyApiError(JSON.stringify(payload), 'Error saving effect');
             return;
         }
 
@@ -137,9 +137,9 @@ export function AdminEffectsClient() {
 
     async function del(id: string): Promise<void> {
         confirmAction({
-            title: 'Usunąć efekt?',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete effect?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 const res = await fetch(`/api/admin/effects/${id}`, { method: 'DELETE' });
@@ -147,7 +147,7 @@ export function AdminEffectsClient() {
                     const payload = await res
                         .json()
                         .catch(async () => ({ status: res.status, text: await res.text() }));
-                    notifyApiError(JSON.stringify(payload), 'Błąd usuwania efektu');
+                    notifyApiError(JSON.stringify(payload), 'Error deleting effect');
                     throw new Error('delete failed');
                 }
                 if (editingId === id) resetForm();
@@ -159,37 +159,37 @@ export function AdminEffectsClient() {
     return (
         <div className="grid gap-3">
             <div className="vault-panel p-3">
-                <p className="ff-panel-headline">Admin / Efekty</p>
+                <p className="ff-panel-headline">Admin / Effects</p>
                 <p className="text-sm vault-muted">
-                    Definiuj efekty broni i krytyki, ktore beda przypinane do profili uzbrojenia.
+                    Define weapon and critical effects that can be attached to loadout profiles.
                 </p>
             </div>
 
-            {/* Formularz */}
+            {/* Form */}
             <div className="vault-panel p-3">
                 <div className="text-sm font-medium">
-                    {editingId ? 'Edytuj efekt' : 'Nowy efekt'}
+                    {editingId ? 'Edit effect' : 'New effect'}
                 </div>
 
-                <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
+                <label className="block mt-2 text-xs text-zinc-400">Name</label>
                 <input
                     className="w-full vault-input px-3 py-2 text-sm"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
 
-                <label className="block mt-2 text-xs text-zinc-400">Rodzaj</label>
+                <label className="block mt-2 text-xs text-zinc-400">Type</label>
                 <select
                     className="w-full vault-input px-3 py-2 text-sm"
                     value={form.kind}
                     onChange={(e) => setForm({ ...form, kind: e.target.value as EffectKind })}
                 >
-                    <option value="WEAPON">Efekt broni</option>
-                    <option value="CRITICAL">Efekt krytyczny</option>
+                    <option value="WEAPON">Weapon effect</option>
+                    <option value="CRITICAL">Critical effect</option>
                 </select>
 
                 <label className="block mt-2 text-xs text-zinc-400">
-                    Opis (użyj X jako zmiennej)
+                    Description (use X as variable)
                 </label>
                 <textarea
                     rows={3}
@@ -204,7 +204,7 @@ export function AdminEffectsClient() {
                         checked={form.requiresValue}
                         onChange={(e) => setForm({ ...form, requiresValue: e.target.checked })}
                     />
-                    Wymaga wartości (X)
+                    Requires value (X)
                 </label>
 
                 <div className="mt-3 flex gap-2">
@@ -212,24 +212,23 @@ export function AdminEffectsClient() {
                         className="flex-1 h-10 rounded-xl border border-zinc-700"
                         onClick={resetForm}
                     >
-                        Wyczyść
-                    </button>
+                        Clear</button>
                     <button
                         className="flex-1 h-10 rounded-xl bg-emerald-500 text-emerald-950 font-semibold"
                         onClick={() => void save()}
                     >
-                        Zapisz
+                        Save
                     </button>
                 </div>
             </div>
 
-            {/* Lista */}
+            {/* List */}
             <div className="grid gap-2">
                 <div className="vault-panel p-3">
                     <div>
-                        <div className="text-sm font-medium">Lista efektów</div>
+                        <div className="text-sm font-medium">Effects list</div>
                         <div className="mt-0.5 text-[11px] text-zinc-400">
-                            Wyniki: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
+                            Results: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -242,8 +241,8 @@ export function AdminEffectsClient() {
                                     ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
                                     : 'border-zinc-700 bg-zinc-900 text-zinc-200')
                             }
-                            aria-label="Filtry"
-                            title="Filtry"
+                            aria-label="Filters"
+                            title="Filters"
                         >
                             <FilterOutlined />
                         </button>
@@ -252,7 +251,7 @@ export function AdminEffectsClient() {
                             onClick={() => void reload()}
                             className="h-9 vault-input px-3 text-xs text-zinc-300"
                         >
-                            Odśwież
+                            Refresh
                         </button>
                     </div>
                 </div>
@@ -263,7 +262,7 @@ export function AdminEffectsClient() {
                     onOpenChangeAction={setFiltersOpen}
                     search={q}
                     onSearchAction={setQ}
-                    searchPlaceholder="Szukaj efektu…"
+                    searchPlaceholder="Search effect..."
                     controls={
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             <select
@@ -271,18 +270,18 @@ export function AdminEffectsClient() {
                                 onChange={(e) => setKindFilter(e.target.value as 'ALL' | EffectKind)}
                                 className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                             >
-                                <option value="ALL">Rodzaj: wszystkie</option>
-                                <option value="WEAPON">Rodzaj: WEAPON</option>
-                                <option value="CRITICAL">Rodzaj: CRITICAL</option>
+                                <option value="ALL">Type: all</option>
+                                <option value="WEAPON">Type: WEAPON</option>
+                                <option value="CRITICAL">Type: CRITICAL</option>
                             </select>
                             <SortSelect
                                 value={sort}
                                 onChange={(v) => setSort(v as typeof sort)}
                                 options={[
-                                    { value: 'NAME:ASC', label: 'Sort: nazwa A→Z' },
-                                    { value: 'NAME:DESC', label: 'Sort: nazwa Z→A' },
-                                    { value: 'KIND:ASC', label: 'Sort: rodzaj A→Z' },
-                                    { value: 'KIND:DESC', label: 'Sort: rodzaj Z→A' },
+                                    { value: 'NAME:ASC', label: 'Sort: name A-Z' },
+                                    { value: 'NAME:DESC', label: 'Sort: name Z-A' },
+                                    { value: 'KIND:ASC', label: 'Sort: type A-Z' },
+                                    { value: 'KIND:DESC', label: 'Sort: type Z-A' },
                                 ]}
                             />
                         </div>
@@ -294,7 +293,7 @@ export function AdminEffectsClient() {
                 {loading ? <LoadingState /> : null}
                 {!loading && listError ? <ErrorState description={listError} onRetry={() => void reload()} /> : null}
                 {!loading && !listError && filteredSorted.length === 0 ? (
-                    <EmptyState title="Brak efektów" description="Dodaj pierwszy efekt albo wyczyść filtry." />
+                    <EmptyState title="No effects" description="Add your first effect or clear filters." />
                 ) : null}
                 {!loading && !listError && filteredSorted.map((e) => (
                     <div key={e.id} className="rounded-xl border border-zinc-800 p-3">
@@ -310,10 +309,10 @@ export function AdminEffectsClient() {
                         <div className="text-xs text-zinc-400 mt-1">{e.description}</div>
                         <div className="mt-2 flex gap-3">
                             <button className="text-xs" onClick={() => startEdit(e)}>
-                                Edytuj
+                                Edit
                             </button>
                             <button className="text-xs text-red-300" onClick={() => void del(e.id)}>
-                                Usuń
+                                Delete
                             </button>
                         </div>
                     </div>

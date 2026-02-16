@@ -24,11 +24,11 @@ export default async function ProfilePage() {
     if (!user) redirect('/login?next=/profile');
 
     return (
-        <MobilePageShell title="Profil" backHref="/">
+        <MobilePageShell title="Profile" backHref="/">
             <SectionCard>
                 <div className="mb-3">
                     <p className="ff-panel-headline">Commander Profile</p>
-                    <h2 className="ff-panel-title">Twoje konto</h2>
+                    <h2 className="ff-panel-title">Your account</h2>
                 </div>
                 <ProfileEditor initialName={user.name} role={user.role} initialPhotoEtag={user.photoEtag} />
             </SectionCard>

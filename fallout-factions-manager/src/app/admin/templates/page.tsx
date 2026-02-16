@@ -126,7 +126,7 @@ export default async function TemplatesAdminPage() {
         .sort((a, b) => (a.isGlobal === b.isGlobal ? a.name.localeCompare(b.name) : a.isGlobal ? -1 : 1));
 
     return (
-        <MobilePageShell title="Szablony jednostek (admin)" backHref="/admin">
+        <MobilePageShell title="Unit templates (admin)" backHref="/admin">
             <AdminUnitTemplatesClient
                 initial={templates}
                 factions={factions.map(f => ({ id: f.id, name: f.name ?? "" }))}

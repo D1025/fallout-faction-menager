@@ -19,9 +19,9 @@ export function EntityListItem({
   meta?: ReactNode;
   actions?: ReactNode;
   href?: string;
-  /** Preferowana nazwa w komponentach klienckich (Next TS71007). */
+  /** Preferred prop name in client components (Next TS71007). */
   onClickAction?: () => void;
-  /** Back-compat dla starszych wywo�a�: <EntityListItem onClick={...} /> */
+  /** Backward compatibility: <EntityListItem onClick={...} /> */
   onClick?: () => void;
 }) {
   const body = (

@@ -5,7 +5,15 @@ import { Avatar, Button, Input } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
+import { hashPasswordForTransport } from '@/lib/auth/passwordTransportClient';
 import { confirmAction, notifyApiError, notifyError, notifySuccess, notifyWarning } from '@/lib/ui/notify';
+
+function isPasswordPolicyValid(password: string): boolean {
+    if (password.length < 8 || password.length > 128) return false;
+    if (!/[A-Za-z]/.test(password)) return false;
+    if (!/[0-9]/.test(password)) return false;
+    return true;
+}
 
 function readApiError(text: string, fallback: string): string {
     try {
@@ -51,28 +59,32 @@ export function ProfileEditor({
         if (credentialsLocked) return;
         const trimmedName = name.trim();
         if (!trimmedName) {
-            notifyWarning('Nazwa uzytkownika nie moze byc pusta.');
+            notifyWarning('Username cannot be empty.');
             return;
         }
 
-        const payload: { name?: string; currentPassword?: string; newPassword?: string } = {};
+        const payload: { name?: string; currentPasswordHash?: string; newPasswordHash?: string } = {};
         if (trimmedName !== initialName) payload.name = trimmedName;
 
         if (newPassword || newPasswordRepeat || currentPassword) {
             if (!currentPassword) {
-                notifyWarning('Podaj aktualne haslo.');
+                notifyWarning('Enter your current password.');
                 return;
             }
             if (newPassword !== newPasswordRepeat) {
-                notifyWarning('Nowe hasla nie sa takie same.');
+                notifyWarning('New passwords do not match.');
                 return;
             }
-            payload.currentPassword = currentPassword;
-            payload.newPassword = newPassword;
+            if (!isPasswordPolicyValid(newPassword)) {
+                notifyWarning('Password must be 8-128 chars and include at least one letter and one digit.');
+                return;
+            }
+            payload.currentPasswordHash = await hashPasswordForTransport(currentPassword);
+            payload.newPasswordHash = await hashPasswordForTransport(newPassword);
         }
 
         if (!Object.keys(payload).length) {
-            notifyWarning('Brak zmian do zapisania.');
+            notifyWarning('No changes to save.');
             return;
         }
 
@@ -86,15 +98,17 @@ export function ProfileEditor({
 
             if (!res.ok) {
                 const text = await res.text().catch(() => '');
-                notifyError(readApiError(text, 'Nie udalo sie zapisac profilu.'));
+                notifyError(readApiError(text, 'Failed to save profile.'));
                 return;
             }
 
-            notifySuccess('Profil zostal zapisany.');
+            notifySuccess('Profile saved.');
             setCurrentPassword('');
             setNewPassword('');
             setNewPasswordRepeat('');
             router.refresh();
+        } catch {
+            notifyError('Secure password hashing failed. Try again.');
         } finally {
             setSaving(false);
         }
@@ -110,17 +124,17 @@ export function ProfileEditor({
             const res = await fetch('/api/profile/photo', { method: 'POST', body: form });
             if (!res.ok) {
                 const text = await res.text().catch(() => '');
-                throw new Error(readApiError(text, 'Nie udalo sie przeslac zdjecia.'));
+                throw new Error(readApiError(text, 'Failed to upload photo.'));
             }
 
             const payload = (await res.json().catch(() => null)) as { etag?: string } | null;
             const nextBuster = payload?.etag ?? String(Date.now());
             setPhotoBuster(nextBuster);
             setPhotoMissing(false);
-            notifySuccess('Zdjecie profilu zapisane.');
+            notifySuccess('Profile photo saved.');
             router.refresh();
         } catch (error) {
-            notifyApiError(error, 'Nie udalo sie przeslac zdjecia profilu.');
+            notifyApiError(error, 'Failed to upload profile photo.');
         } finally {
             setUploadingPhoto(false);
             setPick(null);
@@ -129,16 +143,16 @@ export function ProfileEditor({
 
     function deletePhoto() {
         confirmAction({
-            title: 'Usunac zdjecie profilu?',
-            okText: 'Usun',
-            cancelText: 'Anuluj',
+            title: 'Delete profile photo?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 const res = await fetch('/api/profile/photo', { method: 'DELETE' });
                 if (!res.ok) throw new Error('delete photo failed');
                 setPhotoMissing(true);
                 setPhotoBuster(String(Date.now()));
-                notifySuccess('Zdjecie profilu usuniete.');
+                notifySuccess('Profile photo deleted.');
                 router.refresh();
             },
         });
@@ -166,13 +180,13 @@ export function ProfileEditor({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                        <div className="text-base font-semibold">Konto: {initialName}</div>
+                        <div className="text-base font-semibold">Account: {initialName}</div>
                         <div className="mt-1 text-xs vault-muted">
-                            Rola: {role === 'ADMIN' ? 'Administrator' : 'Uzytkownik'}
+                            Role: {role === 'ADMIN' ? 'Administrator' : 'User'}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
-                                {uploadingPhoto ? 'Wysylanie...' : photoMissing ? 'Dodaj zdjecie' : 'Zmien zdjecie'}
+                                {uploadingPhoto ? 'Uploading...' : photoMissing ? 'Add photo' : 'Change photo'}
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -186,11 +200,11 @@ export function ProfileEditor({
 
                                         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
                                         if (!allowed.includes(file.type)) {
-                                            notifyWarning('Obslugiwane formaty: JPG/PNG/WebP.');
+                                            notifyWarning('Supported formats: JPG/PNG/WebP.');
                                             return;
                                         }
                                         if (file.size > 10 * 1024 * 1024) {
-                                            notifyWarning('Plik jest za duzy. Wybierz zdjecie do 10MB.');
+                                            notifyWarning('File is too large. Choose an image up to 10MB.');
                                             return;
                                         }
                                         setPick(file);
@@ -205,7 +219,7 @@ export function ProfileEditor({
                                     disabled={uploadingPhoto}
                                     className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
                                 >
-                                    Usun
+                                    Delete
                                 </button>
                             ) : null}
                         </div>
@@ -214,13 +228,13 @@ export function ProfileEditor({
             </section>
 
             <section className="vault-panel p-3">
-                <div className="text-sm font-semibold">Edycja profilu</div>
+                <div className="text-sm font-semibold">Edit profile</div>
                 <div className="mt-2 grid gap-2">
                     <Input
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         disabled={credentialsLocked}
-                        placeholder="Nazwa uzytkownika"
+                        placeholder="Username"
                         prefix={<UserOutlined className="text-zinc-400" />}
                         autoComplete="username"
                     />
@@ -228,7 +242,7 @@ export function ProfileEditor({
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         disabled={credentialsLocked}
-                        placeholder="Aktualne haslo"
+                        placeholder="Current password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="current-password"
                     />
@@ -236,7 +250,7 @@ export function ProfileEditor({
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         disabled={credentialsLocked}
-                        placeholder="Nowe haslo"
+                        placeholder="New password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="new-password"
                     />
@@ -244,17 +258,17 @@ export function ProfileEditor({
                         value={newPasswordRepeat}
                         onChange={(e) => setNewPasswordRepeat(e.target.value)}
                         disabled={credentialsLocked}
-                        placeholder="Powtorz nowe haslo"
+                        placeholder="Repeat new password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="new-password"
                     />
 
                     {credentialsLocked ? (
                         <p className="text-xs vault-muted">
-                            Dane administratora sa odgornie ustalone i nie moga byc zmieniane z poziomu profilu.
+                            Administrator credentials are fixed and cannot be changed from the profile screen.
                         </p>
                     ) : (
-                        <p className="text-xs vault-muted">Zmiana hasla wymaga podania aktualnego hasla.</p>
+                        <p className="text-xs vault-muted">Changing password requires your current password.</p>
                     )}
 
                     <Button
@@ -263,7 +277,7 @@ export function ProfileEditor({
                         disabled={credentialsLocked || saving || !hasCredentialsChanges}
                         loading={saving}
                     >
-                        Zapisz zmiany
+                        Save changes
                     </Button>
                 </div>
             </section>

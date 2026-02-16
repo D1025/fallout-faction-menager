@@ -6,6 +6,7 @@ import Content from 'antd/es/layout/layout';
 import { AppHeader } from '@/components/nav/AppHeader';
 
 const SAFE_AREA_VAR = '--safe-area-inset-bottom';
+const SAFE_AREA_TOP_VAR = '--safe-area-inset-top';
 
 export function MobilePageShell({
   title,
@@ -32,6 +33,8 @@ export function MobilePageShell({
       style={{
         [SAFE_AREA_VAR]: 'env(safe-area-inset-bottom, 0px)',
         ['--safe-area-inset-bottom-legacy']: 'constant(safe-area-inset-bottom, 0px)',
+        [SAFE_AREA_TOP_VAR]: 'env(safe-area-inset-top, 0px)',
+        ['--safe-area-inset-top-legacy']: 'constant(safe-area-inset-top, 0px)',
       } as React.CSSProperties}
     >
       <AppHeader title={title} backHref={backHref} right={headerRight} maxWidth={contentMaxWidth} />

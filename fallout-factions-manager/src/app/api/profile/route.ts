@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { auth } from '@/lib/authServer';
-import { getPasswordValidationError, hashPassword, verifyPassword } from '@/lib/password';
+import { hashPassword, verifyPassword } from '@/lib/password';
+import { normalizePasswordTransportHash, PASSWORD_TRANSPORT_HEX_LENGTH } from '@/lib/auth/passwordTransport';
 import { prisma } from '@/server/prisma';
 
 export const runtime = 'nodejs';
@@ -10,12 +11,12 @@ const ProfilePatchSchema = z.object({
     name: z
         .string()
         .trim()
-        .min(3, 'Nazwa uzytkownika musi miec co najmniej 3 znaki.')
-        .max(32, 'Nazwa uzytkownika moze miec maksymalnie 32 znaki.')
-        .regex(/^[A-Za-z0-9._ -]+$/, 'Dozwolone znaki: litery, cyfry, spacja, kropka, podkreslenie, myslnik.')
+        .min(3, 'Username must be at least 3 characters.')
+        .max(32, 'Username can be at most 32 characters.')
+        .regex(/^[A-Za-z0-9._ -]+$/, 'Allowed characters: letters, digits, space, dot, underscore, hyphen.')
         .optional(),
-    currentPassword: z.string().optional(),
-    newPassword: z.string().optional(),
+    currentPasswordHash: z.string().length(PASSWORD_TRANSPORT_HEX_LENGTH, 'Invalid current password hash.').optional(),
+    newPasswordHash: z.string().length(PASSWORD_TRANSPORT_HEX_LENGTH, 'Invalid new password hash.').optional(),
 });
 
 export async function GET() {
@@ -54,7 +55,7 @@ export async function PATCH(req: Request) {
     const parsed = ProfilePatchSchema.safeParse(body);
     if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        return new Response(JSON.stringify({ error: issue?.message ?? 'Niepoprawne dane.' }), { status: 400 });
+        return new Response(JSON.stringify({ error: issue?.message ?? 'Invalid data.' }), { status: 400 });
     }
 
     const updates: { name?: string; passwordHash?: string } = {};
@@ -62,11 +63,11 @@ export async function PATCH(req: Request) {
     const nextName = parsed.data.name?.replace(/\s+/g, ' ');
     if (nextName) {
         if (role === 'ADMIN') {
-            return new Response(JSON.stringify({ error: 'Dane administratora sa odgornie ustalone.' }), { status: 403 });
+            return new Response(JSON.stringify({ error: 'Administrator profile data is fixed.' }), { status: 403 });
         }
         const adminName = (process.env.ADMIN_USERNAME ?? 'admin').trim();
         if (nextName.toLowerCase() === adminName.toLowerCase()) {
-            return new Response(JSON.stringify({ error: 'Ta nazwa uzytkownika jest zarezerwowana.' }), { status: 400 });
+            return new Response(JSON.stringify({ error: 'This username is reserved.' }), { status: 400 });
         }
 
         const duplicate = await prisma.user.findFirst({
@@ -77,19 +78,23 @@ export async function PATCH(req: Request) {
             select: { id: true },
         });
         if (duplicate) {
-            return new Response(JSON.stringify({ error: 'Uzytkownik o takiej nazwie juz istnieje.' }), { status: 409 });
+            return new Response(JSON.stringify({ error: 'A user with this username already exists.' }), { status: 409 });
         }
         updates.name = nextName;
     }
 
-    if (parsed.data.newPassword) {
+    if (parsed.data.newPasswordHash) {
         if (role === 'ADMIN') {
-            return new Response(JSON.stringify({ error: 'Dane administratora sa odgornie ustalone.' }), { status: 403 });
+            return new Response(JSON.stringify({ error: 'Administrator profile data is fixed.' }), { status: 403 });
         }
 
-        const currentPassword = parsed.data.currentPassword ?? '';
-        if (!currentPassword) {
-            return new Response(JSON.stringify({ error: 'Podaj aktualne haslo.' }), { status: 400 });
+        const currentPasswordHash = normalizePasswordTransportHash(parsed.data.currentPasswordHash ?? '');
+        const newPasswordHash = normalizePasswordTransportHash(parsed.data.newPasswordHash);
+        if (!currentPasswordHash) {
+            return new Response(JSON.stringify({ error: 'Provide current password.' }), { status: 400 });
+        }
+        if (!newPasswordHash) {
+            return new Response(JSON.stringify({ error: 'Provide new password.' }), { status: 400 });
         }
 
         const currentUser = await prisma.user.findUnique({
@@ -97,23 +102,19 @@ export async function PATCH(req: Request) {
             select: { passwordHash: true },
         });
         if (!currentUser?.passwordHash) {
-            return new Response(JSON.stringify({ error: 'Nie mozna zmienic hasla dla tego konta.' }), { status: 409 });
+            return new Response(JSON.stringify({ error: 'Cannot change password for this account.' }), { status: 409 });
         }
 
-        const validCurrent = await verifyPassword(currentPassword, currentUser.passwordHash).catch(() => false);
+        const validCurrent = await verifyPassword(currentPasswordHash, currentUser.passwordHash).catch(() => false);
         if (!validCurrent) {
-            return new Response(JSON.stringify({ error: 'Aktualne haslo jest niepoprawne.' }), { status: 400 });
+            return new Response(JSON.stringify({ error: 'Current password is incorrect.' }), { status: 400 });
         }
 
-        const passwordValidation = getPasswordValidationError(parsed.data.newPassword);
-        if (passwordValidation) {
-            return new Response(JSON.stringify({ error: passwordValidation }), { status: 400 });
-        }
-        updates.passwordHash = await hashPassword(parsed.data.newPassword);
+        updates.passwordHash = await hashPassword(newPasswordHash);
     }
 
     if (!Object.keys(updates).length) {
-        return new Response(JSON.stringify({ error: 'Brak zmian do zapisania.' }), { status: 400 });
+        return new Response(JSON.stringify({ error: 'No changes to save.' }), { status: 400 });
     }
 
     const updated = await prisma.user.update({
@@ -136,4 +137,3 @@ export async function PATCH(req: Request) {
         { status: 200 },
     );
 }
-

@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
@@ -36,8 +36,8 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     const ok = await canWriteByUnitId(id, userId);
     if (!ok) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
-    // Uwaga: ustawiamy jednego Temporary Leader na armię.
-    // Jeśli ustawiamy true, to zerujemy flagę na pozostałych jednostkach w tej armii.
+    // We keep exactly one Crew Leader per army.
+    // When setting true, clear the flag on all other units in the same army first.
     if (parsed.data.temporaryLeader) {
         const unit = await prisma.unitInstance.findUnique({ where: { id }, select: { armyId: true } });
         if (!unit) return new Response('NOT_FOUND', { status: 404 });

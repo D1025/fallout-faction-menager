@@ -1,11 +1,11 @@
-import { prisma } from '@/server/prisma';
+﻿import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { FactionUpsertSchema } from '@/lib/validation/faction';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
-    // Zostawiamy jak było: frakcje + limity (UI admin pobiera goals/upgrades bezpośrednio z serwera)
+    // Keep current behavior: factions with limits (admin UI loads goals/upgrades from dedicated endpoints).
     const list = await prisma.faction.findMany({
         include: { limits: true },
         orderBy: { name: 'asc' },

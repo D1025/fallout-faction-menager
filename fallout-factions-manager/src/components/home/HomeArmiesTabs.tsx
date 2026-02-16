@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
+import { confirmAction, notifyApiError, notifySuccess, notifyWarning } from '@/lib/ui/notify';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { DeleteOutlined, EllipsisOutlined, ShareAltOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, EllipsisOutlined, LinkOutlined, QrcodeOutlined, ReloadOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { EmptyState } from '@/components/ui/antd/ScreenStates';
+import { Portal } from '@/components/ui/Portal';
 
 type ArmyMeta = {
     id: string;
@@ -35,6 +36,12 @@ type UiState = {
 };
 
 const LS_KEY = 'homeArmiesTabs:v1';
+
+type PublicSharePayload = {
+    enabled: boolean;
+    token: string | null;
+    path: string | null;
+};
 
 function norm(s: string): string {
     return s.trim().toLowerCase();
@@ -67,23 +74,287 @@ function sortArmies(arr: ArmyMeta[], key: SortKey): ArmyMeta[] {
             return copy.sort((a, b) => a.rating - b.rating);
         case 'RATING_DESC':
             return copy.sort((a, b) => b.rating - a.rating);
-        // UPDATED: kolejność taka jak przyszła z serwera (już orderBy updatedAt)
+        // UPDATED: preserve order returned by server (already sorted by updatedAt)
         case 'UPDATED':
         default:
             return copy;
     }
 }
 
+function normalizeSharePayload(raw: unknown): PublicSharePayload {
+    if (!raw || typeof raw !== 'object') {
+        return { enabled: false, token: null, path: null };
+    }
+    const data = raw as Record<string, unknown>;
+    return {
+        enabled: Boolean(data.enabled),
+        token: typeof data.token === 'string' ? data.token : null,
+        path: typeof data.path === 'string' ? data.path : null,
+    };
+}
+
+function ShareArmyModal({
+    armyId,
+    open,
+    onClose,
+}: {
+    armyId: string;
+    open: boolean;
+    onClose: () => void;
+}) {
+    const [origin, setOrigin] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [errorText, setErrorText] = useState<string | null>(null);
+    const [share, setShare] = useState<PublicSharePayload>({ enabled: false, token: null, path: null });
+
+    useEffect(() => {
+        if (!open) return;
+        setOrigin(window.location.origin);
+    }, [open]);
+
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [open, onClose]);
+
+    useEffect(() => {
+        if (!open) return;
+        setErrorText(null);
+        const run = async () => {
+            setLoading(true);
+            try {
+                const res = await fetch(`/api/armies/${armyId}/public-share`, { cache: 'no-store' });
+                if (!res.ok) {
+                    const text = await res.text().catch(() => '');
+                    throw new Error(text || 'Failed to load share settings.');
+                }
+                const data = normalizeSharePayload(await res.json().catch(() => null));
+                setShare(data);
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to load share settings.';
+                setErrorText(message);
+            } finally {
+                setLoading(false);
+            }
+        };
+        void run();
+    }, [armyId, open]);
+
+    async function enableOrRegenerate(action: 'ENABLE' | 'REGENERATE') {
+        setBusy(true);
+        setErrorText(null);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/public-share`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ action }),
+            });
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                throw new Error(text || 'Failed to update share settings.');
+            }
+            const data = normalizeSharePayload(await res.json().catch(() => null));
+            setShare(data);
+            notifySuccess(action === 'ENABLE' ? 'Public link enabled.' : 'Public link regenerated.');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to update share settings.';
+            setErrorText(message);
+            notifyApiError(message, 'Failed to update share settings.');
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function disableSharing() {
+        setBusy(true);
+        setErrorText(null);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/public-share`, { method: 'DELETE' });
+            if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                throw new Error(text || 'Failed to disable share link.');
+            }
+            const data = normalizeSharePayload(await res.json().catch(() => null));
+            setShare(data);
+            notifySuccess('Public link disabled.');
+        } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to disable share link.';
+            setErrorText(message);
+            notifyApiError(message, 'Failed to disable share link.');
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    const shareUrl = share.enabled && share.path && origin ? `${origin}${share.path}` : '';
+    const qrUrl = shareUrl
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(shareUrl)}`
+        : '';
+
+    async function copyLink() {
+        if (!shareUrl) return;
+        try {
+            await navigator.clipboard.writeText(shareUrl);
+            notifySuccess('Link copied.');
+        } catch {
+            notifyWarning('Could not copy automatically. Copy the link manually.');
+        }
+    }
+
+    if (!open) return null;
+
+    return (
+        <Portal>
+            <div
+                className="fixed inset-0 z-[1000] overflow-x-hidden"
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }}
+            >
+                <button
+                    aria-label="Close"
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClose();
+                    }}
+                    className="absolute inset-0 bg-black/70"
+                />
+                <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-[560px] rounded-t-3xl border border-zinc-800 bg-zinc-950 shadow-[0_-10px_40px_rgba(0,0,0,.55)]">
+                    <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                        <div>
+                            <div className="text-sm font-semibold text-zinc-100">Share Army</div>
+                            <div className="text-[11px] text-zinc-500">Public read-only link</div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onClose();
+                            }}
+                            className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                        >
+                            Close
+                        </button>
+                    </div>
+
+                    <div className="vault-scrollbar max-h-[76vh] overflow-y-auto px-4 py-3">
+                        {loading ? (
+                            <div className="text-sm text-zinc-400">Loading share settings...</div>
+                        ) : (
+                            <>
+                                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 text-xs text-zinc-300">
+                                    Anyone with this link can view the army in read-only mode without logging in.
+                                </div>
+
+                                {errorText ? (
+                                    <div className="mt-2 rounded-xl border border-red-900/80 bg-red-950/30 p-2 text-xs text-red-200">
+                                        {errorText}
+                                    </div>
+                                ) : null}
+
+                                {!share.enabled && (
+                                    <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                        <div className="text-xs text-zinc-400">Sharing is currently disabled.</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => void enableOrRegenerate('ENABLE')}
+                                            disabled={busy}
+                                            className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-500/70 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-200 disabled:opacity-50"
+                                        >
+                                            <LinkOutlined /> Enable public link
+                                        </button>
+                                    </div>
+                                )}
+
+                                {share.enabled && (
+                                    <div className="mt-3 space-y-3">
+                                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                            <label className="mb-1 block text-[11px] uppercase tracking-wide text-zinc-500">
+                                                Share Link
+                                            </label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    readOnly
+                                                    value={shareUrl || share.path || ''}
+                                                    className="vault-input h-10 flex-1 px-3 text-xs"
+                                                    aria-label="Share link"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void copyLink()}
+                                                    disabled={busy || !shareUrl}
+                                                    className="inline-flex h-10 items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 disabled:opacity-50"
+                                                >
+                                                    <CopyOutlined /> Copy
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                            <div className="mb-2 inline-flex items-center gap-2 text-xs text-zinc-300">
+                                                <QrcodeOutlined className="text-zinc-200" />
+                                                QR Code
+                                            </div>
+                                            {qrUrl ? (
+                                                <div className="flex justify-center rounded-xl border border-zinc-800 bg-white p-2">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img src={qrUrl} alt="QR code for shared army link" className="h-56 w-56" />
+                                                </div>
+                                            ) : (
+                                                <div className="text-xs text-zinc-500">Preparing QR code...</div>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => void enableOrRegenerate('REGENERATE')}
+                                                disabled={busy}
+                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-50"
+                                            >
+                                                <ReloadOutlined /> Regenerate link
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void disableSharing()}
+                                                disabled={busy}
+                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-700/70 bg-red-950/30 px-3 text-xs text-red-200 disabled:opacity-50"
+                                            >
+                                                <StopOutlined /> Disable sharing
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </Portal>
+    );
+}
+
 function DotsMenu({
     kind,
     armyId,
+    shareId,
     onDeleted,
 }: {
     kind: 'MINE' | 'SHARED';
     armyId: string;
+    shareId?: string;
     onDeleted?: () => void;
 }) {
     const [open, setOpen] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
     const btnRef = useRef<HTMLButtonElement | null>(null);
     const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -109,21 +380,46 @@ function DotsMenu({
     async function del() {
         setOpen(false);
         if (kind !== 'MINE') {
-            notifyWarning('Na razie można usuwać tylko własne armie.');
+            notifyWarning('For now, you can only delete your own armies.');
             return;
         }
         confirmAction({
-            title: 'Na pewno usunąć tę armię? Tej operacji nie da się cofnąć.',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete this army? This action cannot be undone.',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 const res = await fetch(`/api/armies/${armyId}`, { method: 'DELETE' });
                 if (!res.ok) {
                     const t = await res.text().catch(() => '');
-                    notifyApiError(t || 'Nie udało się usunąć armii');
+                    notifyApiError(t || 'Failed to delete army');
                     throw new Error('delete failed');
                 }
+                onDeleted?.();
+            },
+        });
+    }
+
+    async function forget() {
+        setOpen(false);
+        if (kind !== 'SHARED' || !shareId) {
+            notifyWarning('No shared link found to forget.');
+            return;
+        }
+        confirmAction({
+            title: 'Forget this shared army?',
+            content: 'This removes the army from your shared list only.',
+            okText: 'Forget',
+            cancelText: 'Cancel',
+            danger: true,
+            onOk: async () => {
+                const res = await fetch(`/api/army-shares/${shareId}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const t = await res.text().catch(() => '');
+                    notifyApiError(t || 'Failed to forget shared army.');
+                    throw new Error('forget failed');
+                }
+                notifySuccess('Shared army removed from your list.');
                 onDeleted?.();
             },
         });
@@ -140,8 +436,8 @@ function DotsMenu({
                     setOpen((v) => !v);
                 }}
                 className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-200 active:scale-95"
-                aria-label="Opcje"
-                title="Opcje"
+                aria-label="Options"
+                title="Options"
             >
                 <EllipsisOutlined className="text-zinc-200" />
             </button>
@@ -155,24 +451,45 @@ function DotsMenu({
                         e.stopPropagation();
                     }}
                 >
-                    <button
-                        type="button"
-                        disabled
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-500 disabled:opacity-60"
-                        title="Wkrótce"
-                    >
-                        <ShareAltOutlined className="text-zinc-300" /> Udostępnij (wkrótce)
-                    </button>
-                    <div className="h-px bg-zinc-800" />
-                    <button
-                        type="button"
-                        onClick={() => void del()}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-200 hover:bg-red-950/40"
-                    >
-                        <DeleteOutlined className="text-red-300" /> Usuń
-                    </button>
+                    {kind === 'MINE' ? (
+                        <>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setOpen(false);
+                                    setShareOpen(true);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+                            >
+                                <ShareAltOutlined className="text-zinc-300" /> Share read-only
+                            </button>
+                            <div className="h-px bg-zinc-800" />
+                            <button
+                                type="button"
+                                onClick={() => void del()}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-200 hover:bg-red-950/40"
+                            >
+                                <DeleteOutlined className="text-red-300" /> Delete
+                            </button>
+                        </>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => void forget()}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-200 hover:bg-red-950/40"
+                        >
+                            <DeleteOutlined className="text-red-300" /> Forget
+                        </button>
+                    )}
                 </div>
             )}
+            <ShareArmyModal
+                armyId={armyId}
+                open={shareOpen}
+                onClose={() => setShareOpen(false)}
+            />
         </div>
     );
 }
@@ -181,11 +498,13 @@ function ArmyCard({
     a,
     right,
     kind,
+    shareId,
     onDeleted,
 }: {
     a: ArmyMeta;
     right?: React.ReactNode;
     kind: 'MINE' | 'SHARED';
+    shareId?: string;
     onDeleted?: () => void;
 }) {
     return (
@@ -195,7 +514,7 @@ function ArmyCard({
                     <div className="truncate font-medium">{a.name}</div>
                     <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-zinc-400">
                         <span className="truncate">{a.factionName}</span>
-                        {a.subfactionName && <span className="truncate">• {a.subfactionName}</span>}
+                        {a.subfactionName && <span className="truncate">| {a.subfactionName}</span>}
 
                         <span className="mx-0.5 h-3 w-px bg-zinc-700" aria-hidden="true" />
 
@@ -210,7 +529,7 @@ function ArmyCard({
 
                 <div className="flex shrink-0 items-start gap-2">
                     {right}
-                    <DotsMenu kind={kind} armyId={a.id} onDeleted={onDeleted} />
+                    <DotsMenu kind={kind} armyId={a.id} shareId={shareId} onDeleted={onDeleted} />
                 </div>
             </div>
         </div>
@@ -340,8 +659,8 @@ export function HomeArmiesTabs({
 
     const initialFromUrl = useMemo(() => readInitialState(new URLSearchParams(sp.toString())), [sp]);
 
-    // IMPORTANT: initial state musi być deterministyczny dla SSR + first client render.
-    // Nie czytamy localStorage w initializerze, bo to powoduje hydration mismatch.
+    // IMPORTANT: initial state must be deterministic for SSR + first client render.
+    // Do not read localStorage in the initializer to avoid hydration mismatch.
     const [state, setState] = useState<UiState>(() => {
         const hasAnyQuery = sp.toString().length > 0;
         return hasAnyQuery ? initialFromUrl : initialFromUrl;
@@ -349,7 +668,7 @@ export function HomeArmiesTabs({
 
     const [hydrated, setHydrated] = useState(false);
 
-    // Po mount: jeśli URL jest pusty, możemy wczytać preferencje z localStorage.
+    // After mount: if URL query is empty, we can load preferences from localStorage.
     useEffect(() => {
         setHydrated(true);
         const hasAnyQuery = sp.toString().length > 0;
@@ -359,7 +678,7 @@ export function HomeArmiesTabs({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // sync: jeśli user wklei link z query — przejmujemy
+    // Sync: if user opens a URL with query params, that state becomes source of truth.
     useEffect(() => {
         const hasAnyQuery = sp.toString().length > 0;
         if (!hasAnyQuery) return;
@@ -369,7 +688,7 @@ export function HomeArmiesTabs({
 
     // persist -> URL + LS (debounce minimalny)
     useEffect(() => {
-        // przed hydracją nie zapisujemy nic (żeby nie nadpisać LS). SSR też tu nie wejdzie.
+        // Before hydration, do not persist anything (to avoid overwriting localStorage). SSR will not enter here.
         if (!hydrated) return;
         saveToLocalStorage(state);
         const next = writeStateToParams(state);
@@ -426,18 +745,18 @@ export function HomeArmiesTabs({
     };
 
     const chips: ActiveFilterChip[] = [
-        ...(state.q ? [{ key: 'q', label: `Szukaj: ${state.q}`, onRemove: () => setState((s) => ({ ...s, q: '' })) }] : []),
+        ...(state.q ? [{ key: 'q', label: `Search: ${state.q}`, onRemove: () => setState((s) => ({ ...s, q: '' })) }] : []),
         ...(state.tierFilter !== 'ALL'
             ? [{ key: 'tier', label: `Tier ${state.tierFilter}`, onRemove: () => setState((s) => ({ ...s, tierFilter: 'ALL' })) }]
             : []),
         ...(state.factionFilter !== 'ALL'
-            ? [{ key: 'faction', label: `Frakcja: ${state.factionFilter}`, onRemove: () => setState((s) => ({ ...s, factionFilter: 'ALL' })) }]
+            ? [{ key: 'faction', label: `Faction: ${state.factionFilter}`, onRemove: () => setState((s) => ({ ...s, factionFilter: 'ALL' })) }]
             : []),
         ...(state.subfactionMode !== 'ANY'
-            ? [{ key: 'submode', label: `Subfrakcja: ${state.subfactionMode === 'ONLY_WITH' ? 'tylko z' : 'tylko bez'}`, onRemove: () => setState((s) => ({ ...s, subfactionMode: 'ANY' })) }]
+            ? [{ key: 'submode', label: `Subfaction: ${state.subfactionMode === 'ONLY_WITH' ? 'only with' : 'only without'}`, onRemove: () => setState((s) => ({ ...s, subfactionMode: 'ANY' })) }]
             : []),
         ...(state.subfactionFilter !== 'ALL'
-            ? [{ key: 'subfaction', label: `Subfrakcja: ${state.subfactionFilter}`, onRemove: () => setState((s) => ({ ...s, subfactionFilter: 'ALL' })) }]
+            ? [{ key: 'subfaction', label: `Subfaction: ${state.subfactionFilter}`, onRemove: () => setState((s) => ({ ...s, subfactionFilter: 'ALL' })) }]
             : []),
         ...(state.permFilter !== 'ALL'
             ? [{ key: 'perm', label: `Perm: ${state.permFilter}`, onRemove: () => setState((s) => ({ ...s, permFilter: 'ALL' })) }]
@@ -450,7 +769,7 @@ export function HomeArmiesTabs({
         onFiltersActiveChangeAction?.(hasActive);
     }, [hasActive, onFiltersActiveChangeAction]);
 
-    // Lokalne sterowanie drawerem (fallback), jeśli nie jest kontrolowane z zewnątrz.
+    // Local drawer state fallback when it is not controlled from outside.
     const [internalFiltersOpen, setInternalFiltersOpen] = useState(false);
     const isControlled = filtersOpen != null;
     const drawerOpen = isControlled ? Boolean(filtersOpen) : internalFiltersOpen;
@@ -461,7 +780,7 @@ export function HomeArmiesTabs({
 
     useEffect(() => {
         if (clearFromHeaderTick == null) return;
-        // przy pierwszym renderze nie czyścimy automatycznie
+        // Do not auto-clear on first render.
         if (clearFromHeaderTick === 0) return;
         resetFilters();
         onClearFromHeaderAction?.();
@@ -472,7 +791,7 @@ export function HomeArmiesTabs({
         <div className="pt-3">
             {/* Header row */}
             <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Armie</div>
+                <div className="text-sm font-medium">Armies</div>
                 <div>{children}</div>
             </div>
 
@@ -488,7 +807,7 @@ export function HomeArmiesTabs({
                             : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                     }
                 >
-                    Moje armie ({myArmies.length})
+                    My armies ({myArmies.length})
                 </button>
                 <button
                     type="button"
@@ -500,25 +819,25 @@ export function HomeArmiesTabs({
                             : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                     }
                 >
-                    Udostępnione ({shared.length})
+                    Shared ({shared.length})
                 </button>
             </div>
 
             <div className="mt-3">
                 <div className="mb-2 text-[11px] text-zinc-400">
-                    Wyniki: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
-                    {hasActive ? ' • aktywne filtry' : ' • brak filtrów'}
+                    Results: <span className="font-semibold text-zinc-100">{currentCount}</span>/{currentTotal}
+                    {hasActive ? ' | active filters' : ' | no filters'}
                 </div>
             </div>
 
-            {/* Drawer filtrów renderujemy poza layoutem, żeby nie zostawiać pustych kontenerów */}
+            {/* Render filter drawer outside layout to avoid leaving empty containers. */}
             <FilterBar
                 showTrigger={false}
                 open={drawerOpen}
                 onOpenChangeAction={setDrawerOpen}
                 search={state.q}
                 onSearchAction={(q) => setState((s) => ({ ...s, q }))}
-                searchPlaceholder="Szukaj (nazwa, frakcja, subfrakcja, tier, rating)…"
+                searchPlaceholder="Search (name, faction, subfaction, tier, rating)..."
                 moreFilters={
                     <>
                         <div className="grid grid-cols-2 gap-2">
@@ -531,9 +850,9 @@ export function HomeArmiesTabs({
                                         setState((s) => ({ ...s, tierFilter: v === 'ALL' ? 'ALL' : (Number(v) as 1 | 2 | 3) }));
                                     }}
                                     className="h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                                    aria-label="Filtr tier"
+                                    aria-label="Tier filter"
                                 >
-                                    <option value="ALL">Wszystkie tiery</option>
+                                    <option value="ALL">All tiers</option>
                                     <option value="1">Tier 1</option>
                                     <option value="2">Tier 2</option>
                                     <option value="3">Tier 3</option>
@@ -542,15 +861,15 @@ export function HomeArmiesTabs({
                             <SortSelect
                                 value={state.sort}
                                 onChange={(sort) => setState((s) => ({ ...s, sort: sort as SortKey }))}
-                                label="Sortowanie"
+                                label="Sort"
                                 options={[
-                                    { value: 'UPDATED', label: 'Sort: ostatnio używane' },
-                                    { value: 'NAME_ASC', label: 'Sort: nazwa A→Z' },
-                                    { value: 'NAME_DESC', label: 'Sort: nazwa Z→A' },
-                                    { value: 'TIER_ASC', label: 'Sort: tier rosnąco' },
-                                    { value: 'TIER_DESC', label: 'Sort: tier malejąco' },
-                                    { value: 'RATING_ASC', label: 'Sort: rating rosnąco' },
-                                    { value: 'RATING_DESC', label: 'Sort: rating malejąco' },
+                                    { value: 'UPDATED', label: 'Sort: recently used' },
+                                    { value: 'NAME_ASC', label: 'Sort: name A-Z' },
+                                    { value: 'NAME_DESC', label: 'Sort: name Z-A' },
+                                    { value: 'TIER_ASC', label: 'Sort: tier ascending' },
+                                    { value: 'TIER_DESC', label: 'Sort: tier descending' },
+                                    { value: 'RATING_ASC', label: 'Sort: rating ascending' },
+                                    { value: 'RATING_DESC', label: 'Sort: rating descending' },
                                 ]}
                             />
                         </div>
@@ -559,9 +878,9 @@ export function HomeArmiesTabs({
                             value={state.factionFilter}
                             onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
                             className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
-                            aria-label="Filtr frakcja"
+                            aria-label="Faction filter"
                         >
-                            <option value="ALL">Wszystkie frakcje</option>
+                            <option value="ALL">All factions</option>
                             {factions.map((f) => (
                                 <option key={f} value={f}>{f}</option>
                             ))}
@@ -572,9 +891,9 @@ export function HomeArmiesTabs({
                             onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
                             className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
                         >
-                            <option value="ANY">Subfrakcja: dowolnie</option>
-                            <option value="ONLY_WITH">Tylko z subfrakcją</option>
-                            <option value="ONLY_NONE">Tylko bez subfrakcji</option>
+                            <option value="ANY">Subfaction: any</option>
+                            <option value="ONLY_WITH">Only with subfaction</option>
+                            <option value="ONLY_NONE">Only without subfaction</option>
                         </select>
 
                         <select
@@ -583,7 +902,7 @@ export function HomeArmiesTabs({
                             disabled={state.subfactionMode === 'ONLY_NONE'}
                             className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                         >
-                            <option value="ALL">Wszystkie subfrakcje</option>
+                            <option value="ALL">All subfactions</option>
                             {subfactions.map((sf) => (
                                 <option key={sf} value={sf}>{sf}</option>
                             ))}
@@ -595,9 +914,9 @@ export function HomeArmiesTabs({
                             disabled={state.tab !== 'SHARED'}
                             className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                         >
-                            <option value="ALL">Perm: wszystkie</option>
-                            <option value="READ">Perm: tylko odczyt</option>
-                            <option value="WRITE">Perm: współpraca</option>
+                            <option value="ALL">Perm: all</option>
+                            <option value="READ">Perm: read-only</option>
+                            <option value="WRITE">Perm: collaboration</option>
                         </select>
                     </>
                 }
@@ -619,7 +938,7 @@ export function HomeArmiesTabs({
                             </Link>
                         ))}
                         {mineFiltered.length === 0 && (
-                            <EmptyState title="Brak armii" description="Nie ma armii spełniających wybrane filtry." />
+                            <EmptyState title="No armies" description="No armies match selected filters." />
                         )}
                     </div>
                 </section>
@@ -633,16 +952,18 @@ export function HomeArmiesTabs({
                                 <ArmyCard
                                     a={s.army}
                                     kind="SHARED"
+                                    shareId={s.id}
+                                    onDeleted={() => router.refresh()}
                                     right={
                                         <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px]">
-                                            {s.perm === 'READ' ? 'tylko odczyt' : 'współpraca'}
+                                            {s.perm === 'READ' ? 'read-only' : 'collaboration'}
                                         </span>
                                     }
                                 />
                             </Link>
                         ))}
                         {sharedFiltered.length === 0 && (
-                            <EmptyState title="Brak udostępnionych armii" description="Zmień filtry lub poproś o dostęp do armii." />
+                            <EmptyState title="No shared armies" description="Change filters or request access to an army." />
                         )}
                     </div>
                 </section>

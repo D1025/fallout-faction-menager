@@ -6,7 +6,7 @@ import {
     StatKeySpecial,
     UserRole,
 } from '@prisma/client';
-import { randomBytes, scryptSync } from 'crypto';
+import { createHash, randomBytes, scryptSync } from 'crypto';
 
 const prisma = new PrismaClient();
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME ?? 'admin').trim();
@@ -23,6 +23,10 @@ function hashPassword(password: string): string {
     return ['scrypt', '16384', '8', '1', salt.toString('base64'), hash.toString('base64')].join('$');
 }
 
+function hashPasswordForTransport(password: string): string {
+    return createHash('sha256').update(password, 'utf8').digest('hex');
+}
+
 /* ========================== GUARD: seed tylko na pustej bazie ========================== */
 async function isDatabaseEmpty(): Promise<boolean> {
     const [effects, weapons, factions, units] = await Promise.all([
@@ -34,10 +38,10 @@ async function isDatabaseEmpty(): Promise<boolean> {
     return effects === 0 && weapons === 0 && factions === 0 && units === 0;
 }
 
-/* ========================== HELPERY OGĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă˘â‚¬ĹźLNE ========================== */
+/* ========================== GENERAL HELPERS ========================== */
 
 async function ensureAdminUser(name: string = ADMIN_USERNAME, password: string = ADMIN_PASSWORD) {
-    const passwordHash = hashPassword(password);
+    const passwordHash = hashPassword(hashPasswordForTransport(password));
     return prisma.user.upsert({
         where: { name },
         update: { role: UserRole.ADMIN, passwordHash },
@@ -74,7 +78,7 @@ async function ensureEffect(spec: EffectSpec) {
 
 const effectKey = (name: string, kind: EffectKind): string => `${name}:${kind}`;
 
-/* ========================== BRONIE Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă˘â‚¬Ĺź BUNDLE ========================== */
+/* ========================== WEAPONS BUNDLE ========================== */
 
 export type WeaponProfileInput = {
     order?: number;
@@ -84,8 +88,8 @@ export type WeaponProfileInput = {
     ratingDelta?: number | null;
     rating?: number | null;
     // effectMode:
-    // - 'ADD' (default): dodaje efekt do profilu
-    // - 'REMOVE': usuwa efekt bazowy o tym samym effectId (name+kind)
+    // - 'ADD' (default): adds an effect to the profile
+    // - 'REMOVE': removes the matching base effect by effectId (name+kind)
     effects?: Array<{ name: string; kind: EffectKind; valueInt?: number | null; valueText?: string | null; effectMode?: 'ADD' | 'REMOVE' }>;
 };
 type ProfileEffectSeed = NonNullable<WeaponProfileInput['effects']>[number];
@@ -127,15 +131,14 @@ async function upsertWeaponBundle(
             : await tx.weaponTemplate.create({
                 data: { name, imagePath: imagePath ?? null, notes: notes ?? null, ...base },
             });
-
-        // idempotentny reset zaleĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ˘â‚¬ĹľÄ‚â€ąÄąÄ„noĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…ÄąĹźci dla danego template
+        // Idempotent reset of dependencies for this template
         await tx.weaponProfileEffect.deleteMany({ where: { profile: { weaponId: template.id } } });
         await tx.weaponProfile.deleteMany({ where: { weaponId: template.id } });
         await tx.weaponBaseEffect.deleteMany({ where: { weaponId: template.id } });
 
         for (const be of baseEffects) {
             const id = effectIds.get(effectKey(be.name, be.kind));
-            if (!id) throw new Error(`Brak efektu: ${be.name} (${be.kind}) Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž zasiej efekty wczeĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…ÄąĹźniej`);
+            if (!id) throw new Error(`Missing effect: ${be.name} (${be.kind}) - seed effects first`);
             const baseEffectData: Prisma.WeaponBaseEffectUncheckedCreateInput & { valueText?: string | null } = {
                 weaponId: template.id,
                 effectId: id,
@@ -168,7 +171,7 @@ async function upsertWeaponBundle(
 
             for (const pe of p.effects ?? []) {
                 const id = effectIds.get(effectKey(pe.name, pe.kind));
-                if (!id) throw new Error(`Brak efektu dla profilu: ${pe.name} (${pe.kind})`);
+                if (!id) throw new Error(`Missing profile effect: ${pe.name} (${pe.kind})`);
                 const profileEffectData: Prisma.WeaponProfileEffectUncheckedCreateInput & {
                     valueText?: string | null;
                     effectMode: 'ADD' | 'REMOVE';
@@ -189,7 +192,7 @@ async function upsertWeaponBundle(
     });
 }
 
-/* ========================== FRAKCJE Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă˘â‚¬Ĺź peĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇny zestaw ========================== */
+/* ========================== FACTIONS - full set ========================== */
 
 export type Tier = 1 | 2 | 3;
 
@@ -206,12 +209,12 @@ export type FactionInput = {
 function assertThreePerTier(goals: Array<{ tier: Tier }>): void {
     const counts: Record<Tier, number> = { 1: 0, 2: 0, 3: 0 };
     for (const g of goals) {
-        if (![1, 2, 3].includes(g.tier)) throw new Error(`Goal z niedozwolonym tierem: ${g.tier as number}`);
+        if (![1, 2, 3].includes(g.tier)) throw new Error(`Goal with invalid tier: ${g.tier as number}`);
         counts[g.tier as Tier]++;
     }
     ([1, 2, 3] as const).forEach((t) => {
-        if (counts[t] !== 3) {
-            throw new Error(`Zestaw goal'i musi mieÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€ąĂ˘â‚¬Ë‡ **dokĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇadnie 3** zadania dla tier=${t} (jest ${counts[t]}).`);
+        if (counts[t] < 3) {
+            throw new Error(`Goal set must contain at least 3 tasks for tier=${t} (got ${counts[t]}).`);
         }
     });
 }
@@ -222,8 +225,7 @@ async function upsertFactionFull(input: FactionInput) {
         update: {},
         create: { name: input.name },
     });
-
-    // UWAGA: te czyszczenia sÄ… bezpieczne tylko na zupeĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇnie pustej bazie.
+    // NOTE: this cleanup is safe only on an effectively empty database.
     await prisma.factionGoal.deleteMany({ where: { set: { factionId: faction.id } } });
     await prisma.factionGoalSet.deleteMany({ where: { factionId: faction.id } });
     await prisma.factionUpgradeRule.deleteMany({ where: { factionId: faction.id } });
@@ -510,7 +512,6 @@ function applySpecialRequirements(perks: PerkSpec[]): PerkSpec[] {
         ['TRIGONOMETRY', 6],
         ['CORONER', 6],
         ['DEVIOUS', 5],
-        ['PREVIOUS', 5],
         ['GUN NUT', 7],
     ]);
     assign('A', [
@@ -549,6 +550,120 @@ function applySpecialRequirements(perks: PerkSpec[]): PerkSpec[] {
     });
 }
 
+type ChemSeed = {
+    name: string;
+    rarity: 'COMMON' | 'UNCOMMON';
+    costCaps: number;
+    effect: string;
+    sortOrder: number;
+};
+
+async function upsertChems(chems: ChemSeed[]) {
+    for (const chem of chems) {
+        await prisma.chem.upsert({
+            where: { name: chem.name },
+            update: {
+                rarity: chem.rarity,
+                costCaps: chem.costCaps,
+                effect: chem.effect,
+                sortOrder: chem.sortOrder,
+            },
+            create: {
+                name: chem.name,
+                rarity: chem.rarity,
+                costCaps: chem.costCaps,
+                effect: chem.effect,
+                sortOrder: chem.sortOrder,
+            },
+        });
+    }
+}
+
+type HomeTurfRuleSeed = {
+    name: string;
+    description: string;
+    sortOrder: number;
+};
+
+function normalizeRuleName(name: string): string {
+    return name.trim().toUpperCase();
+}
+
+async function upsertHomeTurfDefinitions(input: {
+    facilities: HomeTurfRuleSeed[];
+    hazards: HomeTurfRuleSeed[];
+}) {
+    for (const f of input.facilities) {
+        await prisma.homeFacilityDefinition.upsert({
+            where: { name: f.name },
+            update: {
+                description: f.description,
+                sortOrder: f.sortOrder,
+            },
+            create: {
+                name: f.name,
+                description: f.description,
+                sortOrder: f.sortOrder,
+            },
+        });
+    }
+
+    for (const h of input.hazards) {
+        await prisma.homeHazardDefinition.upsert({
+            where: { name: h.name },
+            update: {
+                description: h.description,
+                sortOrder: h.sortOrder,
+            },
+            create: {
+                name: h.name,
+                description: h.description,
+                sortOrder: h.sortOrder,
+            },
+        });
+    }
+
+    const facilityDefs = await prisma.homeFacilityDefinition.findMany({
+        select: { id: true, name: true },
+    });
+    const facilityIdByName = new Map(
+        facilityDefs.map((x) => [normalizeRuleName(x.name), x.id]),
+    );
+
+    const legacyFacilities = await prisma.homeFacility.findMany({
+        where: { facilityDefId: null },
+        select: { id: true, name: true },
+    });
+    for (const row of legacyFacilities) {
+        const mappedId = facilityIdByName.get(normalizeRuleName(row.name));
+        if (!mappedId) continue;
+        await prisma.homeFacility.update({
+            where: { id: row.id },
+            data: { facilityDefId: mappedId },
+        });
+    }
+
+    const hazardDefs = await prisma.homeHazardDefinition.findMany({
+        select: { id: true, name: true },
+    });
+    const hazardIdByName = new Map(
+        hazardDefs.map((x) => [normalizeRuleName(x.name), x.id]),
+    );
+
+    const legacyTurfs = await prisma.homeTurf.findMany({
+        where: { hazardDefId: null, NOT: { hazard: '' } },
+        select: { id: true, hazard: true },
+    });
+    for (const turf of legacyTurfs) {
+        const mappedId = hazardIdByName.get(normalizeRuleName(turf.hazard));
+        if (!mappedId) continue;
+        await prisma.homeTurf.update({
+            where: { id: turf.id },
+            data: { hazardDefId: mappedId },
+        });
+    }
+}
+
 /* ========================== MAIN ========================== */
 
 async function main(): Promise<void> {
@@ -561,44 +676,289 @@ async function main(): Promise<void> {
         console.warn('WARNING: ADMIN_PASSWORD env is not set. Default admin password is active.');
     }
 
+    const CHEMS: ChemSeed[] = [
+        // Common chems
+        {
+            name: 'Rad-X',
+            rarity: 'COMMON',
+            costCaps: 5,
+            sortOrder: 10,
+            effect: 'Spend when one of your models ends its Turn within 3" of a Radiation Token. Until end of Round, that model ignores Endurance penalty from Radiation Tokens.',
+        },
+        {
+            name: 'Psycho',
+            rarity: 'COMMON',
+            costCaps: 6,
+            sortOrder: 20,
+            effect: 'When creating a Dice Pool for an Attack, spend to add 2 Bonus Dice.',
+        },
+        {
+            name: 'Nuka-Cola',
+            rarity: 'COMMON',
+            costCaps: 8,
+            sortOrder: 30,
+            effect: 'When selecting the Active Model, spend to increase that model Control Area by 3" until end of Turn.',
+        },
+        {
+            name: 'Stimpak',
+            rarity: 'COMMON',
+            costCaps: 9,
+            sortOrder: 40,
+            effect: 'When selecting the Active Model, spend to recover up to 2 Harm from that model.',
+        },
+        {
+            name: 'Steady',
+            rarity: 'COMMON',
+            costCaps: 10,
+            sortOrder: 50,
+            effect: 'When creating a Dice Pool for a Ranged Attack, spend to increase Active model Perception by 1 until Attack resolves.',
+        },
+        {
+            name: 'Jet',
+            rarity: 'COMMON',
+            costCaps: 15,
+            sortOrder: 60,
+            effect: 'Before choosing an Active Model, spend to recover 1 Fatigue from any model in your crew.',
+        },
+        // Rare/Uncommon chems (costs are display-only and unknown in source table, kept as 0)
+        {
+            name: 'Psycho Jet',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 110,
+            effect: 'When creating a Dice Pool for an Attack, spend to add 2 Bonus Dice. After the Attack resolves, Active model recovers 1 Fatigue.',
+        },
+        {
+            name: 'Whiskey',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 120,
+            effect: 'When creating a Strength or Endurance test pool, spend to increase either Active model Strength or Endurance by 2 until test resolves.',
+        },
+        {
+            name: 'Med-X',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 130,
+            effect: 'At any point during your Turn, spend to increase Active model Health by 1 until end of game.',
+        },
+        {
+            name: 'Nuka-Cola Dark',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 140,
+            effect: 'When selecting the Active Model, spend to increase that model Control Area by 3" and Luck by 1 until end of Turn.',
+        },
+        {
+            name: 'Day Tripper',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 150,
+            effect: 'When creating a Dice Pool for a S.P.E.C.I.A.L. test, spend to increase the model Luck by 2 until the test resolves.',
+        },
+        {
+            name: 'Buffout',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 160,
+            effect: 'When one of your models is Targeted by an Attack Action (before Dice Pool is created), spend to increase targeted model Endurance by 2 until Attack resolves.',
+        },
+        {
+            name: 'Mentats',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 170,
+            effect: 'When one of your models fails a Confusion Test, spend to have that model pass instead.',
+        },
+        {
+            name: 'Hydra',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 180,
+            effect: 'During Story Phase, when rolling on the Serious Injury Table, spend to reroll one result. For each dose spent, reroll up to three times, but cannot use rerolled dice.',
+        },
+        {
+            name: 'Calmex',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 190,
+            effect: 'Before making a Rummage Action, spend to set one die to any number instead of rolling it.',
+        },
+        {
+            name: 'Daddy-O',
+            rarity: 'UNCOMMON',
+            costCaps: 0,
+            sortOrder: 200,
+            effect: 'When selecting the Active Model, spend to double the size of that model Control Area until end of game.',
+        },
+    ];
 
-    /* 1b) PERKI (wbudowane, INNATE) */
+    const FACILITY_DEFINITIONS: HomeTurfRuleSeed[] = [
+        {
+            name: 'Unopened Vault',
+            sortOrder: 10,
+            description:
+                'The area contains a pre-war Vault, a useful cache... if you can work out how to open it.\n\nA crew with an Unopened Vault Facility may take the Open Vault Story Action (pg. 59).',
+        },
+        {
+            name: 'Factory',
+            sortOrder: 20,
+            description:
+                'Tools and materials are needed for the fine work of upgrading their weapons.\n\nA crew with a Factory Facility improves their Modify Weapons Story Actions (pg. 59).',
+        },
+        {
+            name: 'Trader Outpost',
+            sortOrder: 30,
+            description:
+                'A peaceful settlement trades with nearby settlers, but also acts as a target for Raiders.\n\nA crew with a Trader Outpost Facility improves their Barter Story Actions (pg. 57).',
+        },
+        {
+            name: 'Chem Lab',
+            sortOrder: 40,
+            description:
+                'A pre-war pharmacy or a modern clinic, this location has access to rare distilling methods.\n\nA crew with a Chem Lab Facility may take the Craft Chems Story Action (pg. 57).',
+        },
+        {
+            name: 'Infirmary',
+            sortOrder: 50,
+            description:
+                'Many medical techniques were lost to the bombs, but necessity is the mother of invention.\n\nA crew with an Infirmary Facility improves their Recuperate Story Actions (pg. 60).',
+        },
+        {
+            name: 'Food Store',
+            sortOrder: 60,
+            description:
+                'Pre-packaged food is high in additives, and low in rads!\n\nA crew with a Food Store Facility improves their Recruit Story Actions (pg. 60).',
+        },
+        {
+            name: 'Lookout',
+            sortOrder: 70,
+            description:
+                'Watchtowers or natural vistas give a unique vantage point over nearby regions.\n\nA crew with a Lookout Facility improves their Scout Story Actions (pg. 60).',
+        },
+        {
+            name: 'Comfortable Quarters',
+            sortOrder: 80,
+            description:
+                'Pre-war hotels provide a level of comfort as rare as any tech.\n\nA crew with a Comfortable Quarters Facility improves their Crew Training Story Actions (pg. 58).',
+        },
+        {
+            name: 'Tunnels',
+            sortOrder: 90,
+            description:
+                'This region has plenty of underground areas, allowing for covert travel.\n\nA crew with the Tunnels Facility can avoid becoming Nomadic. If this crew would become Nomadic for any reason, they may instead move Underground, preventing them from becoming Nomads. While Underground, if subjected to another effect that would cause this crew to become Nomads, they cannot resist the effect. This crew may use the Surface Story Action (pg. 60) to move out of the Tunnels.\n\nIf a crew with Tunnels is attacked as an Assault (pg. 46), the attacking crew cannot make this location their Home Turf.',
+        },
+        {
+            name: 'Monument',
+            sortOrder: 100,
+            description:
+                'Be it discarded obelisks of the old world or symbols of post-war progress, this area fills the people living here with pride.\n\nA crew with a Monument Facility gains 1 Reach at the end of each Story Phase.',
+        },
+    ];
+
+    const HAZARD_DEFINITIONS: HomeTurfRuleSeed[] = [
+        {
+            name: '1: IRRADIATED',
+            sortOrder: 10,
+            description:
+                'It used to make the world hum with power. Now it just makes monsters of men.\n\nDEPLOYMENT POOL\nAdd two Radiation Tokens to the Deployment Pool.\n\nSPECIAL RULES\nIn this game, Radiation Tokens affect all models within 5", rather than 3".\n\nHome Turf Ploy: Flareup\nYou may enact this Ploy at the start of any Round. Until the end of the Round, increase the affecting range of all Radiation Tokens by 2".',
+        },
+        {
+            name: '2: MINEFIELD',
+            sortOrder: 20,
+            description:
+                'An errant step is not an entirely uncommon cause of death in the Wasteland.\n\nSPECIAL RULES\nAfter resolving a Get Moving Action, roll a die for each model that moved more than 6". On the roll of a 1, that model has Stepped on a Mine. That model, and all other models within 3" Suffer 1 Injury.\n\nHome Turf Ploy: Defuse\nYou may enact this Ploy when one of your models has Stepped on a Mine. Before resolving the Injury, make a Defuse Test (4I) with the affected model. If Passed, the mine does not explode and no models Suffer an Injury. If Failed, your crew gains 1 XP.',
+        },
+        {
+            name: '3: BOG',
+            sortOrder: 30,
+            description:
+                'The wet earth clutches at boot and corpse, dragging both beneath the mud.\n\nSPECIAL RULES\nAny area of the Battlefield not containing Major or Minor Terrain is part of the Bog.\n\nWhenever a model makes a Get Moving Action, or is given a Movement Order, it cannot move further than 4" if any part of its move would pass through the Bog.\n\nHome Turf Ploy: Easy Target\nYou may enact this Ploy at the start of any Round. Until the end of the Round, when a model makes an Attack Test against a model in the Bog it adds a Bonus Die to its Dice Pool.',
+        },
+        {
+            name: '4: SECURITY TURRETS',
+            sortOrder: 40,
+            description:
+                '*Beep* is a terrifying sound to hear if you are not entirely sure where it came from.\n\nDEPLOYMENT POOL\nPlace two Security Turrets to the Deployment Pool. Security Turrets can either be represented by official turret terrain or by a 25mm base.\n\nSPECIAL RULES\nSecurity Turrets are Enemy models to both crews and can be attacked by models from either side. No player is treated as being in control of a Security Turret, and any Tests it makes are resolved by the player with the Initiative Token.\n\nWhen either player Passes, each Security Turret makes an Open Fire Action against the nearest Visible model (rolling off ties), using the Security Turret Weapon. Otherwise, a Security Turret never takes Actions.\n\nS.P.E.C.I.A.L. / HP\n1 4 4 1 1 1 0 / 1\n\n| WEAPON | TYPE | TEST | TRAITS | CRITICAL EFFECT |\n| --- | --- | --- | --- | --- |\n| Security Turret | Rifle (16\") | 6P | - | Suppress (3) |\n\nTreat the Security Turret as having Perception 4. A Security Turret can be Targeted by Ranged or Melee Attacks, has Endurance 4, and cannot suffer Harm. It is Incapacitated if it suffers an Injury.\n\nHome Turf Ploy: Verification\nYou may enact this Ploy at the start of any Round. Choose a model. That model is not Visible to Security Turrets for the rest of the game.',
+        },
+        {
+            name: '5: LOW VISIBILITY',
+            sortOrder: 50,
+            description:
+                "Fog and darkness make spotting the enemy impossible until they're right on top of you.\n\nSPECIAL RULES\nDuring this game, each model has a Visibility Range (X\"). For each model, X is equal to twice their Perception statistic. Models cannot Target other models with any Action or Effect if the target is outside of the Active model's Visibility Range.\n\nHome Turf Ploy: Floodlights\nYou may enact this Ploy at the start of any Round. Until the end of this Round, your models may target models outside of their Visibility Range.",
+        },
+        {
+            name: '6: BARREN',
+            sortOrder: 60,
+            description:
+                "On a good day you can see the devastation for miles around. It's a hell of a view.\n\nSET UP THE BATTLEFIELD\nWhen placing Major Terrain Features, no piece of Major Terrain can be placed within 12\" of another.\n\nSPECIAL RULES\nDuring this game, when making a Ranged Attack Action against Wide Open targets, add 2 Bonus Dice to the Dice Pool, rather than 1.\n\nHome Turf Ploy: Still and Clear\nYou may enact this Ploy at the start of any Round. Until the end of this Round, all Ranged Weapons (for both Friendly and Enemy models) without the CQB Trait increase their Range by 6\".",
+        },
+        {
+            name: '7: CITY RUINS',
+            sortOrder: 70,
+            description:
+                "Thousands used to live here, surrounded by plenty. Now you're fighting over their scraps.\n\nSET UP THE BATTLEFIELD\nWhen placing Terrain, place a minimum of 6 pieces of Major Terrain and 8 pieces of Minor Terrain. If the Battlefield is not large enough, place as much as you can.\n\nSPECIAL RULES\nWhen creating a Dice Pool for a Ranged Attack, models gain an additional Bonus Die to their Pool if they are 2\" or higher than their Target.\n\nHome Turf Ploy: Dead Drop\nYou may enact this Ploy at the start of any Round. Place two Search Tokens onto the Battlefield at least 6\" away from any model or other Search Token. Afterwards, your Opponent may place one Search Token in the same manner.",
+        },
+        {
+            name: '8: UNSTABLE FUEL',
+            sortOrder: 80,
+            description:
+                "There's a certain beauty to the white flash and mushroom cloud. Best viewed from afar, though.\n\nDEPLOYMENT POOL\nAdd two Search Tokens into the Deployment Pool, for a total of four.\n\nSPECIAL RULES\nDuring this game, Search Tokens and Radiation Tokens can become the Targets of Attack Actions, and are treated as Enemy models by Weapon Traits. If a token suffers at least one Hit in an Attack, it Explodes. When it Explodes, all models within 1\" Suffer an Injury, and all models within 3\" Suffer 1 Fatigue; then remove the Token from the Battlefield.\n\nPloy: Remote Explosives\nYou may enact this Ploy at the start of your Turn. Choose one Search or Radiation Token on the Battlefield. That Token Explodes.",
+        },
+        {
+            name: '9: HARROWED',
+            sortOrder: 90,
+            description:
+                "This place feels... wrong. The air is dead and creeps through even the thickest clothing.\n\nSPECIAL RULES\nAll models without the Natural Leader Perk reduce their Control Area by half (rounding down).\n\nHome Turf Ploy: Theatrics\nYou may enact this Ploy after any model fails a Confusion Test. Instead, that model Passes the test and must make an Attack Action with an equipped Weapon against the closest Visible model. This Attack may Target Friendly models.",
+        },
+    ];
+
+    await upsertChems(CHEMS);
+    console.log(`Chems seeded: ${CHEMS.length}`);
+    await upsertHomeTurfDefinitions({
+        facilities: FACILITY_DEFINITIONS,
+        hazards: HAZARD_DEFINITIONS,
+    });
+    console.log(`Home Turf facilities seeded: ${FACILITY_DEFINITIONS.length}`);
+    console.log(`Home Turf hazards seeded: ${HAZARD_DEFINITIONS.length}`);
+
+    /* 1b) PERKS (built-in, INNATE) */
     const PERKS: PerkSpec[] = applySpecialRequirements(uniqByName([
         { name: 'EYE CATCHING', description: 'This model always counts as being Wide Open.' },
         { name: 'FLIGHT', description: 'This model is unaffected by the Proximity of Enemy models and can take the Get Moving Action while Engaged. This model does not count vertical movement towards its total allowed when climbing, and is always considered to have an Agility greater than the elevation difference when dropping from a Terrain Feature.', category: 'AUTOMATRON' },
         { name: 'HARDY', description: 'This model cannot Suffer Fatigue. It can still Take Fatigue by performing Actions or other effects.' },
-        { name: 'KABOOM!', description: 'This model gains the following Uranium Fever Action. Action: Uranium Fever (Unengaged/Engaged): All models (Friendly and Enemy) within 3â€ť Suffer sufficient Harm to reach their Harm Limit. This model is Incapacitated. This model does not roll on the Aftermath Table; it just rolls on the Serious Injury Table.' },
+        { name: 'KABOOM!', description: 'This model gains the following Uranium Fever Action. Action: Uranium Fever (Unengaged/Engaged): All models (Friendly and Enemy) within 3" Suffer sufficient Harm to reach their Harm Limit. This model is Incapacitated. This model does not roll on the Aftermath Table; it just rolls on the Serious Injury Table.' },
         { name: 'KEEP UP!', description: 'After a Friendly Champion model in Base contact completes a Back Off or Get Moving Action, this model may move into Base contact with that Friendly Champion model.' },
         { name: 'MACHINE', description: 'This model always Passes any Confusion Test it is required to make. When this model is Incapacitated, it does not trigger Confusion Tests for other models. In addition, Chems cannot be used on this model, and it is unaffected by the Poison (X) and Tranquilize (X) Critical Effects. This model is unaffected by Radiation Tokens.' },
-        { name: 'MAKING A WITHDRAWAL', description: 'When this model would cause an Enemy model to Suffer an Injury or Harm, the opposing player may reduce their Stash by 5 Caps per Injury and Harm. For every 5 Caps removed, this modelâ€™s crew gains 5 Caps and the Enemy model Suffers one less Injury or Harm, as appropriate.' },
+        { name: 'MAKING A WITHDRAWAL', description: "When this model would cause an Enemy model to Suffer an Injury or Harm, the opposing player may reduce their Stash by 5 Caps per Injury and Harm. For every 5 Caps removed, this model's crew gains 5 Caps and the Enemy model Suffers one less Injury or Harm, as appropriate." },
         { name: 'MIND CONTROL', description: 'This model can make an Open Fire Actions using weapons carried by an Enemy model within its Control Area. Visibility is checked from the Enemy model with the weapon being used by the model with the Mind Control Perk. During this Open Fire Action, this model uses its own Luck statistic and the appropriate Test statistic value from the Enemy model. Weapons with the One & Done Trait cannot be used via this Perk.' },
 
         { name: 'ALL THE TOYS', description: 'When taking the Crew Training Story Action with this model, spend Parts rather than XP to purchase Upgrades. This model gains Automatron Perks rather than regular Perks. When this model gains a second, fourth, sixth, or eighth Upgrade, it also gains an Automatron Perk.', category: 'REGULAR' },
 
-        { name: "ATOM'S GLOW", description: 'When this model makes an attack against an Enemy model, and either this model or the Target are within 3â€ť of a Radiation Token, treat this modelâ€™s Luck as being 1 higher.' },
+        { name: "ATOM'S GLOW", description: "When this model makes an attack against an Enemy model, and either this model or the Target are within 3\" of a Radiation Token, treat this model's Luck as being 1 higher." },
         { name: 'BEAST', description: "This model can't become a crew's Leader, nor gain new Perks." },
-        { name: 'BURLY', description: 'This modelâ€™s Harm Limit is 4 instead of 3.' },
+        { name: 'BURLY', description: "This model's Harm Limit is 4 instead of 3." },
         { name: 'BURROWING', description: 'This model is unaffected by the proximity of Enemy models and also can move through all Terrain features as long as they do not Climb at any point during that movement.' },
         { name: 'DISPOSABLE', description: 'This model does not caudsse Confusion Tests when removed from the Battlefield.' },
         { name: 'MYTHICAL', description: 'At the start of each Round, this model Takes 2 Fatigue. When this model becomes Confused as a result of Failing a Confusion Test, its controller does not have to choose between Flee or Take Fatigue. Instead it must Take Fatigue if it is able to do so. If it is unable to Take Fatigue, no additional effects happen.' },
-        { name: 'NATURAL LEADER', description: 'This model automatically Passes Confusion Tests. When making an Intelligence Test for a Friendly model within this modelâ€™s Control Area, you can choose to use this modelâ€™s Intelligence value instead of the modelâ€™s own value. When choosing a Leader at the start of a game, this model must be chosen if possible. If there is more than one model with this Perk in the crew, the player must choose one of them.' },
+        { name: 'NATURAL LEADER', description: "This model automatically Passes Confusion Tests. When making an Intelligence Test for a Friendly model within this model's Control Area, you can choose to use this model's Intelligence value instead of the model's own value. When choosing a Leader at the start of a game, this model must be chosen if possible. If there is more than one model with this Perk in the crew, the player must choose one of them." },
         { name: 'OFFERINGS', description: 'This model gains the following additional option when taking the Rummage Action: Find Offerings: Recover Fatigue from a Friendly Holy Mothman model. Discard the results of the two dice used.' },
-        { name: 'OMENS', description: 'Enemy models within this modelâ€™s Control Area treat all tests as Unlucky.' },
-        { name: 'OUTSIDER', description: 'This modelâ€™s weapons cannot be modified using the Modify Weapons Story Action or Upgraded using the Crew Training Story Action. This model does not count toward or affect any Crew Limits. If this model is a Champion, it does not allow a crew to take 5 more Grunts. In addition, the model does not count as a Friendly model for the purposes of Confusion Tests.' },
+        { name: 'OMENS', description: "Enemy models within this model's Control Area treat all tests as Unlucky." },
+        { name: 'OUTSIDER', description: "This model's weapons cannot be modified using the Modify Weapons Story Action or Upgraded using the Crew Training Story Action. This model does not count toward or affect any Crew Limits. If this model is a Champion, it does not allow a crew to take 5 more Grunts. In addition, the model does not count as a Friendly model for the purposes of Confusion Tests." },
         { name: 'POINT BLANK', description: 'This model can take the Open Fire Action while Engaged.' },
-        { name: 'POWER ARMOR', description: 'This model gains the following benefits: This model cannot Suffer Fatigue (can still Take Fatigue). This modelâ€™s Harm Limit is 4 instead of 3. This model is unaffected by Radiation Tokens.' },
-        { name: 'POWER OF PRAYER', description: 'If a Friendly model is within this modelâ€™s Control Area, treat it as having the Rad Resistant Perk.' },
-        { name: 'PRAISE BE!', description: 'While this model is on the Battlefield, the Mythical Innate Perk makes models Take 1 Fatigue rather than Take 2 Fatigue. If a Friendly model chooses Find Offerings as part of a Rummage Action while within this modelâ€™s Control Area, do not remove the Search Token.' },
+        { name: 'POWER ARMOR', description: "This model gains the following benefits: This model cannot Suffer Fatigue (can still Take Fatigue). This model's Harm Limit is 4 instead of 3. This model is unaffected by Radiation Tokens." },
+        { name: 'POWER OF PRAYER', description: "If a Friendly model is within this model's Control Area, treat it as having the Rad Resistant Perk." },
+        { name: 'PRAISE BE!', description: "While this model is on the Battlefield, the Mythical Innate Perk makes models Take 1 Fatigue rather than Take 2 Fatigue. If a Friendly model chooses Find Offerings as part of a Rummage Action while within this model's Control Area, do not remove the Search Token." },
         { name: 'PROGRAMMED', description: 'This model cannot be a crew Leader, nor take the Crew Training Story Action. It also cannot gain Perks or Experience.' },
-        { name: 'PROVE YOUR WORTH', description: 'Friendly Grunt models within this modelâ€™s Control Area gain the Bullet Magnet Perk. If a model has the Unassuming Perk, it cannot gain the Bullet Magnet Perk.' },
-        { name: 'SELF-DESTRUCT', description: 'When this model is Incapacitated, each other model within 3â€ť of it Suffers 1 Harm.' },
-        { name: "SIC 'EM", description: 'When a Friendly model makes a Get Moving Action, this model can be given Movement Orders even if it is not within the Active modelâ€™s Control Area. All other restrictions still apply.' },
+        { name: 'PROVE YOUR WORTH', description: "Friendly Grunt models within this model's Control Area gain the Bullet Magnet Perk. If a model has the Unassuming Perk, it cannot gain the Bullet Magnet Perk." },
+        { name: 'SELF-DESTRUCT', description: 'When this model is Incapacitated, each other model within 3" of it Suffers 1 Harm.' },
+        { name: "SIC 'EM", description: "When a Friendly model makes a Get Moving Action, this model can be given Movement Orders even if it is not within the Active model's Control Area. All other restrictions still apply." },
         { name: 'STEALTH BOY', description: 'This model may not be Targeted by Ranged Attacks unless it is within Perception range of the Attacking model.' },
         { name: 'STICKY FINGERS', description: 'When this model makes the Rummage Action to Find a Chem, after adding a Chem to the Crew Roster, they may add a second Chem with a Cap cost no greater than the total result of the two rolled dice.' },
-        { name: 'SURVIVALIST', description: 'Whenever this model would Suffer Harm from an attack, and there is another Friendly model within 3â€ť that has no Harm, the Friendly model may Suffer that Harm instead.' },
-        { name: 'SWARM', description: 'When this model is taken as a Companion, you may add up to three models to your crew, instead of one, adding the Rating of each individual Companion to your Championâ€™s Rating.' },
+        { name: 'SURVIVALIST', description: 'Whenever this model would Suffer Harm from an attack, and there is another Friendly model within 3" that has no Harm, the Friendly model may Suffer that Harm instead.' },
+        { name: 'SWARM', description: "When this model is taken as a Companion, you may add up to three models to your crew, instead of one, adding the Rating of each individual Companion to your Champion's Rating." },
         { name: 'TRY OUTS', description: 'When this model makes an Attack Action, increase its Strength and Agility statistics by 2 if this model has line of sight to a Friendly Leader model.' },
-        { name: 'VISIONS', description: 'At the beginning of this modelâ€™s first Activation of the Round, you may choose for it to Take Fatigue. If it does, place a Radiation Token anywhere on the Battlefield that is not within 3â€ť of a Search Token, a model, Objective Token, or another Radiation Token.' },
+        { name: 'VISIONS', description: "At the beginning of this model's first Activation of the Round, you may choose for it to Take Fatigue. If it does, place a Radiation Token anywhere on the Battlefield that is not within 3\" of a Search Token, a model, Objective Token, or another Radiation Token." },
         { name: 'KNOW YOUR ENEMY (FACTION)', description: 'When creating the Dice Pool for an Attack Action against an Enemy model from X Faction, this model gains 1 Bonus Dice. If a model gains this Perk, their controller picks the applicable Faction at that time.' },
         { name: 'PERSONAL STASH', description: 'If a crew has one or more models with this Perk (who are not Absent), when purchasing Common Chems, reduce their costs by 3 Caps.' },
         { name: 'V.A.T.S.', description: 'After declaring an Attack Action with this model, but before creating the Dice Pool, you may declare the number of Hits you expect to roll. During the Remove Duds step, if your declared number matches the number of Hits left in the Pool, then each Hit counts as 2 Hits instead.' },
@@ -664,7 +1024,7 @@ async function main(): Promise<void> {
         { name: 'TRIGONOMETRY', description: 'When creating this model Dice Pool for a Ranged Attack, if it is at least 2 inches higher in elevation than its target, add 2 Bonus Dice.' },
         { name: 'CORONER', description: 'During the Treat the Wounded step, if one or more models with this Perk are not Absent, whenever a friendly model rolls on Broken or Dead results, its controller may make an Autopsy Test to gain 1XP for each Hit.' },
         { name: 'GUN NUT', description: 'At the end of the Make Story Actions step of the Story Phase, if one or more models with this Perk are not Absent, its controller may spend Parts to Modify a single Weapon.' },
-        { name: 'PREVIOUS', description: 'At the end of a Round, before adjusting the Round Tracker, if this model crew has the Initiative Token it may make an Action, Taking Fatigue as normal.' },
+        { name: 'DEVIOUS', description: 'At the end of a Round, before adjusting the Round Tracker, if this model crew has the Initiative Token it may make an Action, Taking Fatigue as normal.' },
 
         // Agility perks
         { name: 'SPRINT', description: 'When this model uses the Get Moving Action, it may move an extra 2 inches.' },
@@ -706,7 +1066,7 @@ async function main(): Promise<void> {
     console.log(`Perks seeded: ${PERKS.length}`);
 
 
-    /* 2) EFEKTY BRONI */
+    /* 2) WEAPON EFFECTS */
     const EFFECTS: EffectSpec[] = [
         { name: 'Aim', kind: EffectKind.WEAPON, description: "When creating the Dice Pool for an Attack Action with this weapon, the attacking model can Take Fatigue to add X Bonus Dice to the Pool.", requiresValue: true }, // (+X)
         { name: 'Area', kind: EffectKind.WEAPON, description: "When making an Attack Action with this weapon, the Active player nominates a Target point on the Battlefield instead of a Target model. This must be a point Visible to the attacking model on the Battlefield surface, or a Terrain Feature. Each model (from either crew) within X inches of the selected point counts as a Target model for the attack. Make a single Attack Test, to which no Bonus Dice can be applied. Then resolve the Inflict Damage step once for each Target model, in an order chosen by the Active player. If a rule adjusts the amount of Damage inflicted, or affects the Target model (for example, Ignite (X) or Maim), this does not carry over between models, and is instead tracked on each individual model. Do not resolve Confusion until Damage has been applied to all applicable models.", requiresValue: true }, // (X")
@@ -729,8 +1089,7 @@ async function main(): Promise<void> {
         { name: 'Storm', kind: EffectKind.WEAPON, description: "When creating a Dice Pool for an Attack Action with this weapon, add X Bonus Dice to the Pool if the Target is within half of the weapon's Effective Range. For example, if the weapon has the Rifle (10) Type, the attack will gain X Bonus Dice if its Target is within 5 inches.", requiresValue: true }, // (+X)
         { name: 'Unwieldy', kind: EffectKind.WEAPON, description: "When a model makes an Attack Action with this weapon, if its Strength is lower than X, the Attack Test cannot gain any Bonus Dice.", requiresValue: true }, // (X)
         { name: 'Wind Up', kind: EffectKind.WEAPON, description: "When creating a Dice Pool for an Attack Action with this weapon, add 2 Bonus Dice instead of 1 if the Active model moved into Engagement with the Target model this Turn." },
-
-        // Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€žÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„â€ž CRITICAL EFFECTS z obrazkĂłw
+        // CRITICAL EFFECTS sourced from reference cards
         { name: 'Pushback', kind: EffectKind.CRITICAL, description: "At the end of the Inflict Damage step, the opposing player rolls X dice. For each one that scores higher than the Target model's Strength, it is moved 1 inch directly away from the Active model. If the Target model cannot move this full distance, it moves as far as it can.", requiresValue: true },
         { name: 'Tranquilize', kind: EffectKind.CRITICAL, description: "At the end of the Inflict Damage step, the opposing player rolls X dice. For each one that scores higher than the Target model's Endurance, it suffers one Harm, with Excess Harm causing an Injury. Should this Injury Incapacitate the Target model, do not roll for it during the Treat the Wounded step of the Story Phase, it instead gains the Clean Bill of Health result.", requiresValue: true },
         { name: 'Ignite', kind: EffectKind.CRITICAL, description: "At the start of the Inflict Damage step, the opposing player rolls X dice. For each one that scores higher than the Target model's Agility, the amount of Damage inflicted is increased by 1.", requiresValue: true },
@@ -785,6 +1144,15 @@ async function main(): Promise<void> {
             ],
         },
         {
+            name: 'Flare Gun',
+            base: { baseType: 'Pistol (10")', baseTest: '4A' },
+            baseEffects: [wfx('CQB')],
+            profiles: [
+                { order: 1, typeOverride: 'Pistol (14")', testOverride: null, partsOverride: 2, ratingDelta: 4 },
+                { order: 2, typeOverride: null, testOverride: '5A', partsOverride: 3, ratingDelta: 6 },
+            ],
+        },
+        {
             name: 'Laser Rifle',
             base: { baseType: 'Rifle (18")', baseTest: '4P' },
             baseEffects: [cfx('Ignite', 1)],
@@ -832,6 +1200,11 @@ async function main(): Promise<void> {
                 { order: 1, testOverride: '4S', partsOverride: 3, ratingDelta: 4 },
                 { order: 2, testOverride: null, partsOverride: 3, ratingDelta: 4, effects: [cfx('Maim')] },
             ],
+        },
+        {
+            name: 'Makeshift Weapon',
+            base: { baseType: 'Melee', baseTest: '2S' },
+            baseEffects: [],
         },
         {
             name: 'Ripper',
@@ -1107,6 +1480,11 @@ async function main(): Promise<void> {
                 { order: 1, typeOverride: null, testOverride: '3A', partsOverride: 4, ratingDelta: 6 },
                 { order: 2, typeOverride: null, testOverride: null, partsOverride: 2, ratingDelta: 4, effects: [wfx('Fast'), wfxR('CQB')] },
             ],
+        },
+        {
+            name: 'Hand Cryojet',
+            base: { baseType: 'Pistol (8")', baseTest: '4A' },
+            baseEffects: [wfx('CQB'), cfx('Suppress', 2)],
         },
         {
             name: 'Flame Breath',
@@ -1395,7 +1773,7 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Area', 1), wfx('Slow'), cfx('Ignite', 2)],
             profiles: [
                 { order: 1, typeOverride: 'Heavy (20")', testOverride: null, partsOverride: 5, ratingDelta: 12 },
-                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1”), Storm (3")'), wfxR('Area', 1)] },
+                { order: 2, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1"), Storm (3")'), wfxR('Area', 1)] },
             ],
         },
         {
@@ -1403,7 +1781,7 @@ async function main(): Promise<void> {
             base: { baseType: 'Heavy (14")', baseTest: '4S' },
             baseEffects: [wfx('Slow'), wfx('Storm', 3), cfx('Pierce')],
             profiles: [
-                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1”), Storm (3")'), wfxR('Storm', 3)] },
+                { order: 1, typeOverride: null, testOverride: null, partsOverride: 5, ratingDelta: 12, effects: [wfx('Selective Fire', undefined, 'Area (1"), Storm (3")'), wfxR('Storm', 3)] },
             ],
         },
         {
@@ -1821,11 +2199,2395 @@ async function main(): Promise<void> {
         denyUnitIds: [paladin.id, knight.id],
     });
 
-    console.log('Seed OK: admin, effects, weapons, Brotherhood of Steel, unit templates.');
+    /* 7) SUPER MUTANTS */
+    const superMutants = await upsertFactionFull({
+        name: 'Super Mutants',
+        goalSets: [
+            {
+                name: 'DEAR HEARTS AND GENTLE PEOPLE',
+                goals: [
+                    { tier: 1, description: 'A model in the crew uses the Patch Up Action.', target: 8 },
+                    { tier: 1, description: 'A Rare Chem is added to the Crew Roster.', target: 2 },
+                    { tier: 1, description: 'You purchase a Modification for a Pistol or Rifle.', target: 3 },
+                    { tier: 2, description: 'Your crew takes the Barter Story Action.', target: 4 },
+                    { tier: 2, description: 'You use the No Place Like Home Survivors Ploy.', target: 3 },
+                    { tier: 2, description: 'You Upgrade a model.', target: 4 },
+                    { tier: 3, description: 'You end a game with fewer Incapacitated models than your opponent.', target: 3 },
+                    { tier: 3, description: 'A Champion recovers from Serious Injuries.', target: 5 },
+                    { tier: 3, description: 'Your crew has 5 Champions.', target: 1 },
+                ],
+            },
+            {
+                name: 'MY HOME TOWN',
+                goals: [
+                    { tier: 1, description: 'You build a Facility using the Expand Story Action.', target: 1 },
+                    { tier: 1, description: 'You have at least 50 Caps in your Stash.', target: 1 },
+                    { tier: 1, description: 'You use a Survivors Ploy.', target: 3 },
+                    { tier: 2, description: 'Your crew Incapacitates an Enemy model.', target: 10 },
+                    { tier: 2, description: 'A model in your crew gains a Charisma or Intelligence Perk.', target: 4 },
+                    { tier: 2, description: 'The crew takes the Recruit Story Action.', target: 5 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                    { tier: 3, description: 'You take the Redeem Captive Story Action.', target: 2 },
+                    { tier: 3, description: 'An Enemy model Fails a Confusion Test.', target: 6 },
+                ],
+            },
+            {
+                name: 'DAWN OF A NEW AGE',
+                goals: [
+                    { tier: 1, description: 'You end a game with a model within 3" of at least 2 Objective or Search Tokens.', target: 2 },
+                    { tier: 1, description: 'You choose to play the Hunting Party Objective.', target: 1 },
+                    { tier: 1, description: 'A model in the crew gains a Perk.', target: 4 },
+                    { tier: 2, description: 'Your crew has at least 6 Scouting Points.', target: 1 },
+                    { tier: 2, description: 'You take the Devour Captive Story Action.', target: 1 },
+                    { tier: 2, description: 'A model in the crew Incapacitates an Enemy Champion with a Melee Attack.', target: 4 },
+                    { tier: 3, description: 'A model in the crew Incapacitates an Enemy Leader.', target: 3 },
+                    { tier: 3, description: 'You end a Story Phase with a Monument on your Home Turf.', target: 3 },
+                    { tier: 3, description: 'At least 7 of your models have a Perk that they did not start with.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Super Mutant training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 4, tier2: 6, tier3: 8 },
+            { tag: 'CHAMPION LIMIT', tier1: 2, tier2: 3, tier3: 4 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 8) SUPER MUTANTS - BASE UNIT TEMPLATES + WEAPON SETS */
+    const master = await upsertUnitTemplate('Master', {
+        factionId: superMutants.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(master.id, ['BURLY', 'NATURAL LEADER', 'RAD RESISTANT']);
+    await replaceUnitOptions(master.id, [
+        { weapon1Id: mustWeaponId('Plasma Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 46, rating: 46 },
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), weapon2Id: mustWeaponId('Super Sledge'), costCaps: 48, rating: 48 },
+    ]);
+
+    const brute = await upsertUnitTemplate('Brute', {
+        factionId: superMutants.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 6, p: 5, e: 6, c: 5, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(brute.id, ['BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(brute.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Heavy Pipe Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 40, rating: 40 },
+    ]);
+
+    const enforcer = await upsertUnitTemplate('Enforcer', {
+        factionId: superMutants.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 5, p: 3, e: 5, c: 3, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(enforcer.id, ['BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(enforcer.id, [
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Hand Weapon'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Heavy Pipe Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Molotov Cocktails'), weapon2Id: mustWeaponId('Super Sledge'), costCaps: 26, rating: 26 },
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 28, rating: 28 },
+    ]);
+
+    const hound = await upsertUnitTemplate('Hound', {
+        factionId: superMutants.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 2, e: 4, c: 3, i: 3, a: 5, l: 1,
+    });
+    await setUnitStartPerks(hound.id, ['BEAST', 'BURLY', "SIC 'EM", 'RAD RESISTANT']);
+    await replaceUnitOptions(hound.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 10, rating: 10 },
+    ]);
+
+    const skirmisher = await upsertUnitTemplate('Skirmisher', {
+        factionId: superMutants.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 5, p: 4, e: 5, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(skirmisher.id, ['BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(skirmisher.id, [
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 28, rating: 28 },
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 33, rating: 33 },
+    ]);
+
+    /* 9) SUPER MUTANTS SUBFACTIONS */
+    const floaterAppalachian = await upsertUnitTemplate('Floater (Appalachian Super Mutants)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 5, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(floaterAppalachian.id, ['BEAST', 'RAD RESISTANT', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(floaterAppalachian.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Claws & Jaws'), weapon2Id: mustWeaponId('Frost Breath'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Claws & Jaws'), weapon2Id: mustWeaponId('Flame Breath'), costCaps: 23, rating: 23 },
+    ]);
+
+    const centaurSubfaction = await upsertUnitTemplate('Centaur (Super Mutants)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 3, e: 5, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(centaurSubfaction.id, ['BEAST', 'BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(centaurSubfaction.id, [
+        { weapon1Id: mustWeaponId('Centaur Spit'), weapon2Id: mustWeaponId('Claws & Jaws'), costCaps: 32, rating: 32 },
+    ]);
+
+    const punyHumanCapital = await upsertUnitTemplate('Puny Human (Capital Wasteland Super Mutants)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 3, e: 3, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(punyHumanCapital.id, ['DISPOSABLE', 'KEEP UP!']);
+    await replaceUnitOptions(punyHumanCapital.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 8, rating: 8 },
+        { weapon1Id: mustWeaponId('Baseball Bat'), costCaps: 9, rating: 9 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 15, rating: 15 },
+    ]);
+
+    const masterCommonwealth = await upsertUnitTemplate('Master (Commonwealth Super Mutants)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(masterCommonwealth.id, ['BURLY', 'NATURAL LEADER', 'RAD RESISTANT']);
+    await replaceUnitOptions(masterCommonwealth.id, [
+        { weapon1Id: mustWeaponId('Plasma Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 46, rating: 46 },
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), weapon2Id: mustWeaponId('Super Sledge'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 44, rating: 44 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 46, rating: 46 },
+    ]);
+
+    const bruteCommonwealth = await upsertUnitTemplate('Brute (Commonwealth Super Mutants)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 6, p: 5, e: 6, c: 5, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(bruteCommonwealth.id, ['BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(bruteCommonwealth.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Heavy Pipe Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 31, rating: 31 },
+    ]);
+
+    const suiciderCommonwealth = await upsertUnitTemplate('Suicider (Commonwealth Super Mutants)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 5, p: 3, e: 5, c: 2, i: 2, a: 4, l: 2,
+    });
+    await setUnitStartPerks(suiciderCommonwealth.id, ['BEAST', 'BURLY', 'DISPOSABLE', 'HARDY', 'KABOOM!', 'RAD RESISTANT']);
+    await replaceUnitOptions(suiciderCommonwealth.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 27, rating: 27 },
+    ]);
+
+    const nightkinBlackMountain = await upsertUnitTemplate('Nightkin (Black Mountain)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(nightkinBlackMountain.id, ['BURLY', 'RAD RESISTANT', 'STEALTH BOY', 'TOUGHNESS']);
+    await replaceUnitOptions(nightkinBlackMountain.id, [
+        { weapon1Id: mustWeaponId('Sledgehammer'), costCaps: 42, rating: 42 },
+        { weapon1Id: mustWeaponId('Incinerator'), costCaps: 50, rating: 50 },
+    ]);
+
+    const appalachianSuperMutants = await upsertSubfaction(superMutants.id, 'Appalachian Super Mutants');
+    await replaceSubfactionUnitRules(appalachianSuperMutants.id, {
+        allowUnitIds: [floaterAppalachian.id],
+        denyUnitIds: [enforcer.id],
+    });
+
+    const capitalWastelandSuperMutants = await upsertSubfaction(superMutants.id, 'Capital Wasteland Super Mutants');
+    await replaceSubfactionUnitRules(capitalWastelandSuperMutants.id, {
+        allowUnitIds: [centaurSubfaction.id, punyHumanCapital.id],
+        denyUnitIds: [hound.id],
+    });
+
+    const commonwealthSuperMutants = await upsertSubfaction(superMutants.id, 'Commonwealth Super Mutants');
+    await replaceSubfactionUnitRules(commonwealthSuperMutants.id, {
+        allowUnitIds: [masterCommonwealth.id, bruteCommonwealth.id, suiciderCommonwealth.id],
+        denyUnitIds: [master.id, brute.id, skirmisher.id],
+    });
+
+    const blackMountain = await upsertSubfaction(superMutants.id, 'Black Mountain');
+    await replaceSubfactionUnitRules(blackMountain.id, {
+        allowUnitIds: [nightkinBlackMountain.id, centaurSubfaction.id],
+        denyUnitIds: [brute.id],
+    });
+
+    /* 10) SURVIVORS */
+    const survivors = await upsertFactionFull({
+        name: 'Survivors',
+        goalSets: [
+            {
+                name: 'DEAR HEARTS AND GENTLE PEOPLE',
+                goals: [
+                    { tier: 1, description: 'A model in the crew uses the Patch Up Action.', target: 8 },
+                    { tier: 1, description: 'A Rare Chem is added to the Crew Roster.', target: 2 },
+                    { tier: 1, description: 'You purchase a Modification for a Pistol or Rifle.', target: 3 },
+                    { tier: 2, description: 'Your crew takes the Barter Story Action.', target: 4 },
+                    { tier: 2, description: 'You use the No Place Like Home Survivors Ploy.', target: 3 },
+                    { tier: 2, description: 'You Upgrade a model.', target: 4 },
+                    { tier: 3, description: 'You end a game with fewer Incapacitated models than your opponent.', target: 3 },
+                    { tier: 3, description: 'A Champion recovers from Serious Injuries.', target: 5 },
+                    { tier: 3, description: 'Your crew has 5 Champions.', target: 1 },
+                ],
+            },
+            {
+                name: 'MY HOME TOWN',
+                goals: [
+                    { tier: 1, description: 'You build a Facility using the Expand Story Action.', target: 1 },
+                    { tier: 1, description: 'You have at least 50 Caps in your Stash.', target: 1 },
+                    { tier: 1, description: 'You use a Survivors Ploy.', target: 3 },
+                    { tier: 2, description: 'Your crew Incapacitates an Enemy model.', target: 10 },
+                    { tier: 2, description: 'A model in your crew gains a Charisma or Intelligence Perk.', target: 4 },
+                    { tier: 2, description: 'The crew takes the Recruit Story Action.', target: 5 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                    { tier: 3, description: 'You take the Redeem Captive Story Action.', target: 2 },
+                    { tier: 3, description: 'An Enemy model Fails a Confusion Test.', target: 6 },
+                ],
+            },
+            {
+                name: 'EVERY TIME THAT I RETURN',
+                goals: [
+                    { tier: 1, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'You modify a weapon.', target: 3 },
+                    { tier: 1, description: 'You take the Scout Story Action.', target: 3 },
+                    { tier: 2, description: 'You take the Settle Story Action.', target: 3 },
+                    { tier: 2, description: 'You Upgrade one of your models.', target: 5 },
+                    { tier: 2, description: 'Your crew Incapacitates an Enemy model with a Ranged Attack.', target: 10 },
+                    { tier: 3, description: 'A model in your crew resolves a 7+ on the Crew Training Table.', target: 4 },
+                    { tier: 3, description: 'You rescue a Captured model in a Rescue Objective.', target: 1 },
+                    { tier: 3, description: 'A model in your crew attains a S.P.E.C.I.A.L. statistic of 9.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Survivors training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'FACILITY LIMIT', tier1: 3, tier2: 5, tier3: 6 },
+        ],
+    });
+
+    /* 11) SURVIVORS - BASE UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const survivorsLocalLeader = await upsertUnitTemplate('Local Leader', {
+        factionId: survivors.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(survivorsLocalLeader.id, ['INSPIRATIONAL', 'NATURAL LEADER', 'SURVIVALIST']);
+    await replaceUnitOptions(survivorsLocalLeader.id, [
+        { weapon1Id: mustWeaponId('Junk Jet'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId("Officer's Sword"), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 45, rating: 45 },
+    ]);
+
+    const survivorsSpecialistHunter = await upsertUnitTemplate('Specialist (Hunter)', {
+        factionId: survivors.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivorsSpecialistHunter.id, ['SNIPER', 'SURVIVALIST']);
+    await replaceUnitOptions(survivorsSpecialistHunter.id, [
+        { weapon1Id: mustWeaponId('Precision Hunting Rifle'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 38, rating: 38 },
+    ]);
+
+    const survivorsSpecialistMedic = await upsertUnitTemplate('Specialist (Medic)', {
+        factionId: survivors.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivorsSpecialistMedic.id, ['MEDIC', 'SURVIVALIST']);
+    await replaceUnitOptions(survivorsSpecialistMedic.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 20, rating: 20 },
+    ]);
+
+    const survivorsSpecialistTrader = await upsertUnitTemplate('Specialist (Trader)', {
+        factionId: survivors.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivorsSpecialistTrader.id, ['FORTUNE FINDER', 'SURVIVALIST']);
+    await replaceUnitOptions(survivorsSpecialistTrader.id, [
+        { weapon1Id: mustWeaponId('Flare Gun'), costCaps: 24, rating: 24 },
+    ]);
+
+    const survivorsSecurityGuard = await upsertUnitTemplate('Security Guard', {
+        factionId: survivors.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 5, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivorsSecurityGuard.id, ['SURVIVALIST']);
+    await replaceUnitOptions(survivorsSecurityGuard.id, [
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 22, rating: 22 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 27, rating: 27 },
+    ]);
+
+    const survivorsSwatter = await upsertUnitTemplate('Swatter', {
+        factionId: survivors.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 5, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivorsSwatter.id, ['SURVIVALIST']);
+    await replaceUnitOptions(survivorsSwatter.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('Baseball Grenades'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 27, rating: 27 },
+    ]);
+
+    const survivorsGoodBoy = await upsertUnitTemplate('Good Boy', {
+        factionId: survivors.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 3, c: 3, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(survivorsGoodBoy.id, ['BEAST', "SIC 'EM", 'SURVIVALIST']);
+    await replaceUnitOptions(survivorsGoodBoy.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 7, rating: 7 },
+    ]);
+
+    const survivorsSettler = await upsertUnitTemplate('Settler', {
+        factionId: survivors.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 3, c: 3, i: 4, a: 3, l: 1,
+    });
+    await setUnitStartPerks(survivorsSettler.id, ['SURVIVALIST']);
+    await replaceUnitOptions(survivorsSettler.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 8, rating: 8 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Pipe Bolt-Action Rifle'), costCaps: 16, rating: 16 },
+    ]);
+
+    /* 12) SURVIVORS SUBFACTIONS */
+    const localLeaderDiamondCity = await upsertUnitTemplate('Local Leader (Diamond City Security)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(localLeaderDiamondCity.id, ['INSPIRATIONAL', 'NATURAL LEADER', 'SURVIVALIST']);
+    await replaceUnitOptions(localLeaderDiamondCity.id, [
+        { weapon1Id: mustWeaponId('Junk Jet'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId("Officer's Sword"), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Baseball Grenades'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 37, rating: 37 },
+    ]);
+
+    const specialistHunterDiamondCity = await upsertUnitTemplate('Specialist (Hunter, Diamond City Security)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistHunterDiamondCity.id, ['SNIPER', 'SURVIVALIST']);
+    await replaceUnitOptions(specialistHunterDiamondCity.id, [
+        { weapon1Id: mustWeaponId('Precision Hunting Rifle'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 38, rating: 38 },
+        { weapon1Id: mustWeaponId('Baseball Grenades'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 31, rating: 31 },
+    ]);
+
+    const benchwarmerDiamondCity = await upsertUnitTemplate('Benchwarmer (Diamond City Security)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 2, i: 2, a: 3, l: 1,
+    });
+    await setUnitStartPerks(benchwarmerDiamondCity.id, ['SURVIVALIST']);
+    await replaceUnitOptions(benchwarmerDiamondCity.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 16, rating: 16 },
+        { weapon1Id: mustWeaponId('Baseball Grenades'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 17, rating: 17 },
+    ]);
+
+    const localLeaderGhouls = await upsertUnitTemplate('Local Leader (Ghouls)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(localLeaderGhouls.id, ['INSPIRATIONAL', 'NATURAL LEADER', 'RAD RESISTANT']);
+    await replaceUnitOptions(localLeaderGhouls.id, [
+        { weapon1Id: mustWeaponId('Junk Jet'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId("Officer's Sword"), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 45, rating: 45 },
+    ]);
+
+    const specialistHunterGhouls = await upsertUnitTemplate('Specialist (Hunter, Ghouls)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistHunterGhouls.id, ['SNIPER', 'RAD RESISTANT']);
+    await replaceUnitOptions(specialistHunterGhouls.id, [
+        { weapon1Id: mustWeaponId('Precision Hunting Rifle'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 38, rating: 38 },
+    ]);
+
+    const specialistMedicGhouls = await upsertUnitTemplate('Specialist (Medic, Ghouls)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistMedicGhouls.id, ['MEDIC', 'RAD RESISTANT']);
+    await replaceUnitOptions(specialistMedicGhouls.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 20, rating: 20 },
+    ]);
+
+    const specialistTraderGhouls = await upsertUnitTemplate('Specialist (Trader, Ghouls)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistTraderGhouls.id, ['FORTUNE FINDER', 'RAD RESISTANT']);
+    await replaceUnitOptions(specialistTraderGhouls.id, [
+        { weapon1Id: mustWeaponId('Flare Gun'), costCaps: 24, rating: 24 },
+    ]);
+
+    const settlerGhouls = await upsertUnitTemplate('Settler (Ghouls)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 3, c: 3, i: 4, a: 3, l: 1,
+    });
+    await setUnitStartPerks(settlerGhouls.id, ['RAD RESISTANT']);
+    await replaceUnitOptions(settlerGhouls.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 8, rating: 8 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Pipe Bolt-Action Rifle'), costCaps: 16, rating: 16 },
+    ]);
+
+    const ghoulGuard = await upsertUnitTemplate('Ghoul Guard (Ghouls)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 5, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(ghoulGuard.id, ['RAD RESISTANT']);
+    await replaceUnitOptions(ghoulGuard.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 27, rating: 27 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 30, rating: 30 },
+    ]);
+
+    const coolCat = await upsertUnitTemplate('Cool Cat (Atom Cats)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 7, i: 4, a: 5, l: 3,
+    });
+    await setUnitStartPerks(coolCat.id, ['NATURAL LEADER', 'POWER ARMOR', 'SURVIVALIST']);
+    await replaceUnitOptions(coolCat.id, [
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 43, rating: 43 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 52, rating: 52 },
+    ]);
+
+    const specialistTraderAtomCats = await upsertUnitTemplate('Specialist (Trader, Atom Cats)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistTraderAtomCats.id, ['FORTUNE FINDER', 'SURVIVALIST']);
+    await replaceUnitOptions(specialistTraderAtomCats.id, [
+        { weapon1Id: mustWeaponId('Flare Gun'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), costCaps: 20, rating: 20 },
+    ]);
+
+    const atomCat = await upsertUnitTemplate('Atom Cat (Atom Cats)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 5, c: 6, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(atomCat.id, ['POWER ARMOR', 'SURVIVALIST']);
+    await replaceUnitOptions(atomCat.id, [
+        { weapon1Id: mustWeaponId('Baseball Bat'), costCaps: 31, rating: 31 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 40, rating: 40 },
+    ]);
+
+    const localLeaderWastelandCaravan = await upsertUnitTemplate('Local Leader (Wasteland Caravan)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(localLeaderWastelandCaravan.id, ['STRONG BACK', 'NATURAL LEADER', 'SURVIVALIST']);
+    await replaceUnitOptions(localLeaderWastelandCaravan.id, [
+        { weapon1Id: mustWeaponId('Junk Jet'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), weapon2Id: mustWeaponId("Officer's Sword"), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 45, rating: 45 },
+    ]);
+
+    const specialistCaravanGuard = await upsertUnitTemplate('Specialist (Caravan Guard, Wasteland Caravan)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 5, e: 4, c: 5, i: 6, a: 4, l: 2,
+    });
+    await setUnitStartPerks(specialistCaravanGuard.id, ['KEEP UP!', 'SURVIVALIST']);
+    await replaceUnitOptions(specialistCaravanGuard.id, [
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 38, rating: 38 },
+    ]);
+
+    const packBrahmin = await upsertUnitTemplate('Pack Brahmin (Wasteland Caravan)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 3, e: 5, c: 1, i: 2, a: 2, l: 1,
+    });
+    await setUnitStartPerks(packBrahmin.id, ['BEAST', 'RAD RESISTANT']);
+    await replaceUnitOptions(packBrahmin.id, [
+        { weapon1Id: mustWeaponId('Trample'), costCaps: 15, rating: 15 },
+    ]);
+
+    const diamondCitySecurity = await upsertSubfaction(survivors.id, 'Diamond City Security');
+    await replaceSubfactionUnitRules(diamondCitySecurity.id, {
+        allowUnitIds: [localLeaderDiamondCity.id, specialistHunterDiamondCity.id, benchwarmerDiamondCity.id],
+        denyUnitIds: [survivorsLocalLeader.id, survivorsSpecialistHunter.id, survivorsSettler.id],
+    });
+
+    const ghouls = await upsertSubfaction(survivors.id, 'Ghouls');
+    await replaceSubfactionUnitRules(ghouls.id, {
+        allowUnitIds: [
+            localLeaderGhouls.id,
+            specialistHunterGhouls.id,
+            specialistMedicGhouls.id,
+            specialistTraderGhouls.id,
+            settlerGhouls.id,
+            ghoulGuard.id,
+        ],
+        denyUnitIds: [
+            survivorsLocalLeader.id,
+            survivorsSpecialistHunter.id,
+            survivorsSpecialistMedic.id,
+            survivorsSpecialistTrader.id,
+            survivorsSettler.id,
+            survivorsSecurityGuard.id,
+            survivorsSwatter.id,
+        ],
+    });
+
+    const atomCats = await upsertSubfaction(survivors.id, 'Atom Cats');
+    await replaceSubfactionUnitRules(atomCats.id, {
+        allowUnitIds: [coolCat.id, specialistTraderAtomCats.id, atomCat.id],
+        denyUnitIds: [survivorsLocalLeader.id, survivorsSpecialistTrader.id, survivorsSwatter.id],
+    });
+
+    const wastelandCaravan = await upsertSubfaction(survivors.id, 'Wasteland Caravan');
+    await replaceSubfactionUnitRules(wastelandCaravan.id, {
+        allowUnitIds: [localLeaderWastelandCaravan.id, specialistCaravanGuard.id, packBrahmin.id],
+        denyUnitIds: [survivorsLocalLeader.id, survivorsGoodBoy.id],
+    });
+
+    /* 13) WASTELAND RAIDERS */
+    const wastelandRaiders = await upsertFactionFull({
+        name: 'Wasteland Raiders',
+        goalSets: [
+            {
+                name: 'OURS FOR THE TAKING',
+                goals: [
+                    { tier: 1, description: 'You play a Pillage Objective as the Attacker.', target: 2 },
+                    { tier: 1, description: 'Your crew has at least 6 Scouting Points at the end of a Story Phase.', target: 1 },
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 10 },
+                    { tier: 2, description: 'You play an Ambush Objective as the Attacker.', target: 2 },
+                    { tier: 2, description: 'Play a game as the Underdog.', target: 2 },
+                    { tier: 2, description: 'A model in your crew takes the Rummage Action.', target: 10 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'You have 6 Facilities on your Home Turf.', target: 5 },
+                    { tier: 3, description: 'A model in your crew makes the Rummage Action.', target: 10 },
+                ],
+            },
+            {
+                name: "IT'S PARTY TIME!",
+                goals: [
+                    { tier: 1, description: 'The crew earns 1 XP using Failing Forward.', target: 3 },
+                    { tier: 1, description: 'A model in the crew uses a Chem.', target: 16 },
+                    { tier: 1, description: 'You play a game with the Scavenge Chems Objective.', target: 2 },
+                    { tier: 2, description: 'You have a Chem Lab on your Home Turf.', target: 1 },
+                    { tier: 2, description: 'Your crew purchases a Common Chem during the Prepare Advantages step.', target: 5 },
+                    { tier: 2, description: 'You find a Rare Chem while making a Rummage Action.', target: 3 },
+                    { tier: 3, description: 'You use a Raiders Ploy.', target: 8 },
+                    { tier: 3, description: 'Your crew makes the Craft Chems Story Action.', target: 4 },
+                    { tier: 3, description: 'Your crew uses a Rare Chem.', target: 6 },
+                ],
+            },
+            {
+                name: 'MAKE THEM FEAR US!',
+                goals: [
+                    { tier: 1, description: 'You take the Sell Prisoners Story Action.', target: 1 },
+                    { tier: 1, description: 'You Upgrade a model.', target: 5 },
+                    { tier: 1, description: 'One of your models Incapacitates an Enemy model.', target: 10 },
+                    { tier: 2, description: 'The crew takes the Recruit Story Action.', target: 4 },
+                    { tier: 2, description: 'You modify a weapon.', target: 4 },
+                    { tier: 2, description: 'You Incapacitate an Enemy model with at least 3 of your models within 6 inches.', target: 4 },
+                    { tier: 3, description: 'An Enemy model Fails a Confusion Test.', target: 10 },
+                    { tier: 3, description: 'You force another crew to become Nomadic.', target: 1 },
+                    { tier: 3, description: 'A model in your crew attains a S.P.E.C.I.A.L. statistic of 9.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Wasteland Raiders training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 5, tier3: 5 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 14) WASTELAND RAIDERS - BASE UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const raidersBoss = await upsertUnitTemplate('Boss', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(raidersBoss.id, ['NATURAL LEADER', 'PERSONAL STASH', 'POWER ARMOR']);
+    await replaceUnitOptions(raidersBoss.id, [
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 54, rating: 54 },
+    ]);
+
+    const raidersButcher = await upsertUnitTemplate('Butcher', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 5, c: 4, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(raidersButcher.id, ['POWER ARMOR', 'STICKY FINGERS']);
+    await replaceUnitOptions(raidersButcher.id, [
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 41, rating: 41 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Missile Launcher'), costCaps: 56, rating: 56 },
+    ]);
+
+    const raidersVeteran = await upsertUnitTemplate('Veteran', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 4, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(raidersVeteran.id, ['STICKY FINGERS']);
+    await replaceUnitOptions(raidersVeteran.id, [
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 25, rating: 25 },
+    ]);
+
+    const raidersScavver = await upsertUnitTemplate('Scavver', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 4, c: 3, i: 3, a: 3, l: 2,
+    });
+    await setUnitStartPerks(raidersScavver.id, []);
+    await replaceUnitOptions(raidersScavver.id, [
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), costCaps: 16, rating: 16 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 20, rating: 20 },
+    ]);
+
+    const raidersPsycho = await upsertUnitTemplate('Psycho', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(raidersPsycho.id, []);
+    await replaceUnitOptions(raidersPsycho.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Molotov Cocktails'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 19, rating: 19 },
+        { weapon1Id: mustWeaponId('Baseball Grenades'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 22, rating: 22 },
+    ]);
+
+    const raidersScum = await upsertUnitTemplate('Scum', {
+        factionId: wastelandRaiders.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 3, e: 3, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(raidersScum.id, []);
+    await replaceUnitOptions(raidersScum.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 12, rating: 12 },
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 13, rating: 13 },
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 16, rating: 16 },
+    ]);
+
+    /* 15) WASTELAND RAIDERS SUBFACTIONS */
+    const bossForged = await upsertUnitTemplate('Boss (The Forged)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(bossForged.id, ['NATURAL LEADER', 'PROVE YOUR WORTH', 'POWER ARMOR']);
+    await replaceUnitOptions(bossForged.id, [
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 54, rating: 54 },
+    ]);
+
+    const forgedChampion = await upsertUnitTemplate('Forged (The Forged)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 4, e: 4, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(forgedChampion.id, ['STICKY FINGERS']);
+    await replaceUnitOptions(forgedChampion.id, [
+        { weapon1Id: mustWeaponId('Sledgehammer'), weapon2Id: mustWeaponId('10mm Pistol'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 27, rating: 27 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 33, rating: 33 },
+    ]);
+
+    const volunteerForged = await upsertUnitTemplate('Volunteer (The Forged)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 2, p: 3, e: 4, c: 2, i: 2, a: 2, l: 1,
+    });
+    await setUnitStartPerks(volunteerForged.id, ['DISPOSABLE', 'TRY OUTS']);
+    await replaceUnitOptions(volunteerForged.id, [
+        { weapon1Id: mustWeaponId('Machete'), costCaps: 7, rating: 7 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 10, rating: 10 },
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 12, rating: 12 },
+    ]);
+
+    const bossPackMaster = await upsertUnitTemplate('Boss (Pack Master)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(bossPackMaster.id, ['NATURAL LEADER', 'ANIMAL FRIEND', 'POWER ARMOR']);
+    await replaceUnitOptions(bossPackMaster.id, [
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 54, rating: 54 },
+    ]);
+
+    const trainedDogPackMaster = await upsertUnitTemplate('Trained Dog (Pack Master)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(trainedDogPackMaster.id, ["SIC 'EM"]);
+    await replaceUnitOptions(trainedDogPackMaster.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 14, rating: 14 },
+    ]);
+
+    const stupidMuttPackMaster = await upsertUnitTemplate('Stupid Mutt (Pack Master)', {
+        factionId: null,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 3, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(stupidMuttPackMaster.id, ['BEAST', "SIC 'EM"]);
+    await replaceUnitOptions(stupidMuttPackMaster.id, [
+        { weapon1Id: mustWeaponId('Claws & Jaws'), costCaps: 7, rating: 7 },
+    ]);
+
+    const bossVipers = await upsertUnitTemplate('Boss (The Vipers)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(bossVipers.id, ['NATURAL LEADER', 'INFORMANT', 'POWER ARMOR']);
+    await replaceUnitOptions(bossVipers.id, [
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 54, rating: 54 },
+    ]);
+
+    const butcherVipers = await upsertUnitTemplate('Butcher (The Vipers)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 5, c: 4, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(butcherVipers.id, ['POWER ARMOR', 'DEVIOUS']);
+    await replaceUnitOptions(butcherVipers.id, [
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 41, rating: 41 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Missile Launcher'), costCaps: 56, rating: 56 },
+    ]);
+
+    const veteranVipers = await upsertUnitTemplate('Veteran (The Vipers)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 4, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(veteranVipers.id, ['DEVIOUS']);
+    await replaceUnitOptions(veteranVipers.id, [
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 25, rating: 25 },
+    ]);
+
+    const bossKhans = await upsertUnitTemplate('Boss (The Khans)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(bossKhans.id, ['NATURAL LEADER', 'PERSONAL STASH', 'POWER ARMOR']);
+    await replaceUnitOptions(bossKhans.id, [
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assault Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 54, rating: 54 },
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 52, rating: 52 },
+        { weapon1Id: mustWeaponId('Missile Launcher'), costCaps: 68, rating: 68 },
+    ]);
+
+    const survivalistKhans = await upsertUnitTemplate('Survivalist (The Khans)', {
+        factionId: null,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 4, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(survivalistKhans.id, ['SURVIVALIST']);
+    await replaceUnitOptions(survivalistKhans.id, [
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 28, rating: 28 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 32, rating: 32 },
+    ]);
+
+    const theForged = await upsertSubfaction(wastelandRaiders.id, 'The Forged');
+    await replaceSubfactionUnitRules(theForged.id, {
+        allowUnitIds: [bossForged.id, forgedChampion.id, volunteerForged.id],
+        denyUnitIds: [raidersBoss.id, raidersButcher.id, raidersScum.id],
+    });
+
+    const packMaster = await upsertSubfaction(wastelandRaiders.id, 'Pack Master');
+    await replaceSubfactionUnitRules(packMaster.id, {
+        allowUnitIds: [bossPackMaster.id, trainedDogPackMaster.id, stupidMuttPackMaster.id],
+        denyUnitIds: [raidersBoss.id, raidersPsycho.id, raidersScum.id],
+    });
+
+    const theVipers = await upsertSubfaction(wastelandRaiders.id, 'The Vipers');
+    await replaceSubfactionUnitRules(theVipers.id, {
+        allowUnitIds: [bossVipers.id, butcherVipers.id, veteranVipers.id],
+        denyUnitIds: [raidersBoss.id, raidersButcher.id, raidersVeteran.id],
+    });
+
+    const theKhans = await upsertSubfaction(wastelandRaiders.id, 'The Khans');
+    await replaceSubfactionUnitRules(theKhans.id, {
+        allowUnitIds: [bossKhans.id, survivalistKhans.id],
+        denyUnitIds: [raidersBoss.id, raidersButcher.id],
+    });
+
+    /* 16) THE PACK */
+    const thePack = await upsertFactionFull({
+        name: 'The Pack',
+        goalSets: [
+            {
+                name: 'Rumble in the Jungle',
+                goals: [
+                    { tier: 1, description: 'You play a game as the Attacker.', target: 1 },
+                    { tier: 1, description: 'You Upgrade a model.', target: 5 },
+                    { tier: 1, description: 'Your crew has at least 6 Scouting Points.', target: 1 },
+                    { tier: 2, description: 'A model in your crew gains a Strength Perk.', target: 2 },
+                    { tier: 2, description: 'You spend at least 30 Caps from your Stash on Common Chems before a game.', target: 1 },
+                    { tier: 2, description: 'Your crew scores the most XP from a Duel Objective.', target: 2 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                    { tier: 3, description: 'You spend at least 50 Caps from your Stash on Common Chems before a game.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion.', target: 10 },
+                    { tier: 3, description: 'A model in your crew Passes a Confusion Test.', target: 6 },
+                ],
+            },
+            {
+                name: 'Display Dominance',
+                goals: [
+                    { tier: 1, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 1 },
+                    { tier: 1, description: 'You play an Exert Power Objective.', target: 2 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model with a Melee Attack.', target: 6 },
+                    { tier: 2, description: "Your crew gains the most XP from a game on the opposing crew's Home Turf.", target: 2 },
+                    { tier: 2, description: 'Your crew has at least 5 Reach at the end of the Story Phase.', target: 3 },
+                    { tier: 2, description: 'A model in your crew gains a Charisma Perk.', target: 2 },
+                    { tier: 3, description: 'You play a game as the Attacker.', target: 4 },
+                    { tier: 3, description: 'You have a Lookout on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'You have a Monument on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion with a Melee Attack.', target: 10 },
+                ],
+            },
+            {
+                name: 'Loot and Plunder',
+                goals: [
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 10 },
+                    { tier: 1, description: 'You play a Scavenge Chems, Scavenge Caps, or Scavenge Parts Objective.', target: 4 },
+                    { tier: 1, description: 'You modify a weapon.', target: 4 },
+                    { tier: 2, description: 'You achieve the Story Outcome of a Scavenge Chems, Scavenge Caps, or Scavenge Parts Objective.', target: 3 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 2 },
+                    { tier: 2, description: 'You have at least 50 Caps in your Stash.', target: 1 },
+                    { tier: 2, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 3 },
+                    { tier: 3, description: 'Your crew scores the most XP from a Secure a Vault Objective.', target: 2 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 3 },
+                    { tier: 3, description: 'You use a Pack Ploy.', target: 9 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from The Pack training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 17) THE PACK - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const packAlpha = await upsertUnitTemplate('Alpha (The Pack)', {
+        factionId: thePack.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(packAlpha.id, ['NATURAL LEADER', 'SPRINT']);
+    await replaceUnitOptions(packAlpha.id, [
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Deathclaw Gauntlet'), costCaps: 42, rating: 42 },
+        { weapon1Id: mustWeaponId('Automatic Handmade Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 48, rating: 48 },
+    ]);
+
+    const packTopDog = await upsertUnitTemplate('Top Dog (The Pack)', {
+        factionId: thePack.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 4, e: 5, c: 5, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(packTopDog.id, ['SPRINT']);
+    await replaceUnitOptions(packTopDog.id, [
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('Handmade Rifle'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Sledgehammer'), weapon2Id: mustWeaponId('Predator Grenades'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 36, rating: 36 },
+    ]);
+
+    const packPsycho = await upsertUnitTemplate('Psycho (The Pack)', {
+        factionId: thePack.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 4, i: 3, a: 5, l: 2,
+    });
+    await setUnitStartPerks(packPsycho.id, ['SPRINT']);
+    await replaceUnitOptions(packPsycho.id, [
+        { weapon1Id: mustWeaponId('Sledgehammer'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Light Handmade Rifle'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 24, rating: 24 },
+    ]);
+
+    const packScavver = await upsertUnitTemplate('Scavver (The Pack)', {
+        factionId: thePack.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 3, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(packScavver.id, ['SPRINT']);
+    await replaceUnitOptions(packScavver.id, [
+        { weapon1Id: mustWeaponId('Sawn-Off Shotgun'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Handmade Rifle'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('Automatic Handmade Rifle'), costCaps: 27, rating: 27 },
+    ]);
+
+    const packWaster = await upsertUnitTemplate('Waster (The Pack)', {
+        factionId: thePack.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 3, e: 3, c: 4, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(packWaster.id, ['SPRINT']);
+    await replaceUnitOptions(packWaster.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), costCaps: 12, rating: 12 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), costCaps: 13, rating: 13 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Light Handmade Rifle'), costCaps: 16, rating: 16 },
+    ]);
+
+    /* 18) THE OPERATORS */
+    const theOperators = await upsertFactionFull({
+        name: 'The Operators',
+        goalSets: [
+            {
+                name: 'Best-Kept Secrets',
+                goals: [
+                    { tier: 1, description: 'You play a Search for a Vault Key Objective.', target: 2 },
+                    { tier: 1, description: 'You have a Lookout on your Home Turf.', target: 1 },
+                    { tier: 1, description: 'A model in your crew gains an Intelligence Perk.', target: 4 },
+                    { tier: 2, description: 'Your crew has at least 3 Facilities on your Home Turf.', target: 1 },
+                    { tier: 2, description: 'You play a Pillage Objective as the Attacker.', target: 2 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 10 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader with a Ranged Attack.', target: 6 },
+                    { tier: 3, description: 'Your crew scores the most XP from an Occupy Objective.', target: 3 },
+                    { tier: 3, description: 'At least 5 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                ],
+            },
+            {
+                name: 'Style and Finesse',
+                goals: [
+                    { tier: 1, description: 'A model in your crew Passes a Confusion Test.', target: 6 },
+                    { tier: 1, description: 'Your crew earns at least 3 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'A model in your crew gains a Charisma Perk.', target: 2 },
+                    { tier: 2, description: 'You spend at least 50 Caps from your Stash on Common Chems before a game.', target: 1 },
+                    { tier: 2, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 3 },
+                    { tier: 2, description: 'You Upgrade a model.', target: 5 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'Your crew has 6 Facilities on their Home Turf at the end of the Story Phase.', target: 3 },
+                    { tier: 3, description: 'A model in your crew finds a Rare Chem when it makes a Rummage Action.', target: 3 },
+                    { tier: 3, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 3 },
+                ],
+            },
+            {
+                name: 'The Professionals',
+                goals: [
+                    { tier: 1, description: 'You purchase a Weapon Modification for a Pistol or Rifle.', target: 3 },
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 8 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 10 },
+                    { tier: 2, description: 'You use an Operators Ploy.', target: 4 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 4 },
+                    { tier: 2, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 1 },
+                    { tier: 2, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 3 },
+                    { tier: 3, description: "Your crew gains the most XP from a game on the opposing crew's Home Turf.", target: 3 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader with a Ranged Attack.', target: 6 },
+                    { tier: 3, description: 'You play a Duel Objective.', target: 4 },
+                    { tier: 3, description: 'A model in your crew has 7 Upgrades.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from The Operators training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 3, tier2: 5, tier3: 6 },
+        ],
+    });
+
+    /* 19) THE OPERATORS - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const operatorsBoss = await upsertUnitTemplate('Boss (The Operators)', {
+        factionId: theOperators.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 6, e: 5, c: 5, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(operatorsBoss.id, ['NATURAL LEADER']);
+    await replaceUnitOptions(operatorsBoss.id, [
+        { weapon1Id: mustWeaponId("Marksman's Handmade Rifle"), costCaps: 44, rating: 44 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 50, rating: 50 },
+        { weapon1Id: mustWeaponId('Plasma Pistol'), weapon2Id: mustWeaponId('Shishkebab'), costCaps: 51, rating: 51 },
+    ]);
+
+    const operatorsMadeMan = await upsertUnitTemplate('Made Man (The Operators)', {
+        factionId: theOperators.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 6, e: 4, c: 4, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(operatorsMadeMan.id, []);
+    await replaceUnitOptions(operatorsMadeMan.id, [
+        { weapon1Id: mustWeaponId('Syringer'), costCaps: 31, rating: 31 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Combat Shotgun'), weapon2Id: mustWeaponId('Frag Grenades'), costCaps: 38, rating: 38 },
+        { weapon1Id: mustWeaponId('Missile Launcher'), costCaps: 48, rating: 48 },
+    ]);
+
+    const operatorsPsycho = await upsertUnitTemplate('Psycho (The Operators)', {
+        factionId: theOperators.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 3, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(operatorsPsycho.id, []);
+    await replaceUnitOptions(operatorsPsycho.id, [
+        { weapon1Id: mustWeaponId('10mm Pistol'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Combat Shotgun'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Baseball Bat'), costCaps: 22, rating: 22 },
+    ]);
+
+    const operatorsScavver = await upsertUnitTemplate('Scavver (The Operators)', {
+        factionId: theOperators.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 4, c: 4, i: 5, a: 3, l: 2,
+    });
+    await setUnitStartPerks(operatorsScavver.id, []);
+    await replaceUnitOptions(operatorsScavver.id, [
+        { weapon1Id: mustWeaponId('Handmade Rifle'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId("Marksman's Handmade Rifle"), costCaps: 24, rating: 24 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 27, rating: 27 },
+    ]);
+
+    const operatorsWaster = await upsertUnitTemplate('Waster (The Operators)', {
+        factionId: theOperators.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 3, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(operatorsWaster.id, []);
+    await replaceUnitOptions(operatorsWaster.id, [
+        { weapon1Id: mustWeaponId('Baseball Bat'), costCaps: 10, rating: 10 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 13, rating: 13 },
+        { weapon1Id: mustWeaponId('Handmade Rifle'), costCaps: 14, rating: 14 },
+    ]);
+
+    /* 20) THE DISCIPLES */
+    const theDisciples = await upsertFactionFull({
+        name: 'The Disciples',
+        goalSets: [
+            {
+                name: 'Rise to Power',
+                goals: [
+                    { tier: 1, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'You play an Ambush Objective.', target: 3 },
+                    { tier: 1, description: 'You have at least 50 Caps in your Stash.', target: 1 },
+                    { tier: 2, description: 'You play a Raid Objective as the Attacker.', target: 3 },
+                    { tier: 2, description: 'Your crew has at least 5 Reach at the end of the Story Phase.', target: 3 },
+                    { tier: 2, description: 'You modify a weapon.', target: 5 },
+                    { tier: 3, description: 'Your crew has at least 3 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'A model in your crew gains a Perk.', target: 8 },
+                    { tier: 3, description: 'Your crew has at least 10 Scouting Points.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader.', target: 6 },
+                ],
+            },
+            {
+                name: 'Let Them Know Fear',
+                goals: [
+                    { tier: 1, description: 'You have at least 2 Facilities on your Home Turf.', target: 1 },
+                    { tier: 1, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                    { tier: 1, description: 'You use a Disciples Ploy.', target: 4 },
+                    { tier: 2, description: 'You take the Taken For a Ride Story Action.', target: 1 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy Champion.', target: 8 },
+                    { tier: 2, description: 'You play a game as the Attacker.', target: 5 },
+                    { tier: 2, description: 'A model in your crew has 5 Upgrades.', target: 1 },
+                    { tier: 3, description: 'Your crew scores the most XP from a Duel Objective.', target: 3 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader with a Melee Attack.', target: 5 },
+                    { tier: 3, description: 'At least 7 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                ],
+            },
+            {
+                name: 'The Blooded Blade',
+                goals: [
+                    { tier: 1, description: 'You purchase a Weapon Modification for a Melee weapon.', target: 5 },
+                    { tier: 1, description: 'A model in your crew gains a Strength Perk.', target: 2 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model with a Melee Attack.', target: 10 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy Leader with a Melee Attack.', target: 3 },
+                    { tier: 2, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                    { tier: 2, description: 'You use a Disciples Ploy.', target: 6 },
+                    { tier: 3, description: 'You play a game as the Attacker.', target: 4 },
+                    { tier: 3, description: 'At least 5 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader with a Melee Attack.', target: 8 },
+                    { tier: 3, description: 'You have a Comfortable Quarters on your Home Turf.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from The Disciples training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 21) THE DISCIPLES - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const disciplesTormentor = await upsertUnitTemplate('Tormentor (The Disciples)', {
+        factionId: theDisciples.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 5, c: 5, i: 5, a: 6, l: 3,
+    });
+    await setUnitStartPerks(disciplesTormentor.id, ['NATURAL LEADER']);
+    await replaceUnitOptions(disciplesTormentor.id, [
+        { weapon1Id: mustWeaponId('Plasma Rifle'), costCaps: 43, rating: 43 },
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 47, rating: 47 },
+        { weapon1Id: mustWeaponId('Precision Hunting Rifle'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 49, rating: 49 },
+    ]);
+
+    const disciplesButcher = await upsertUnitTemplate('Butcher (The Disciples)', {
+        factionId: theDisciples.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 4, c: 4, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(disciplesButcher.id, []);
+    await replaceUnitOptions(disciplesButcher.id, [
+        { weapon1Id: mustWeaponId('Syringer'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 28, rating: 28 },
+        { weapon1Id: mustWeaponId('Handmade Rifle'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId("Marksman's Handmade Rifle"), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Nuka Grenade'), costCaps: 34, rating: 34 },
+    ]);
+
+    const disciplesPsycho = await upsertUnitTemplate('Psycho (The Disciples)', {
+        factionId: theDisciples.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 5, p: 3, e: 4, c: 4, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(disciplesPsycho.id, []);
+    await replaceUnitOptions(disciplesPsycho.id, [
+        { weapon1Id: mustWeaponId('Light Handmade Rifle'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 21, rating: 21 },
+    ]);
+
+    const disciplesScavver = await upsertUnitTemplate('Scavver (The Disciples)', {
+        factionId: theDisciples.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 3, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(disciplesScavver.id, []);
+    await replaceUnitOptions(disciplesScavver.id, [
+        { weapon1Id: mustWeaponId('Handmade Rifle'), costCaps: 21, rating: 21 },
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 22, rating: 22 },
+        { weapon1Id: mustWeaponId("Ranger's Hunting Rifle"), costCaps: 23, rating: 23 },
+    ]);
+
+    const disciplesWaster = await upsertUnitTemplate('Waster (The Disciples)', {
+        factionId: theDisciples.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 3, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(disciplesWaster.id, []);
+    await replaceUnitOptions(disciplesWaster.id, [
+        { weapon1Id: mustWeaponId('Short Hunting Rifle'), costCaps: 10, rating: 10 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 13, rating: 13 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 14, rating: 14 },
+    ]);
+
+    /* 22) THE GUNNERS */
+    const theGunners = await upsertFactionFull({
+        name: 'The Gunners',
+        goalSets: [
+            {
+                name: 'The Bottom Line',
+                goals: [
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 10 },
+                    { tier: 1, description: 'You use the Barter Story Action.', target: 5 },
+                    { tier: 1, description: 'You win a game.', target: 3 },
+                    { tier: 2, description: 'You Upgrade a model.', target: 6 },
+                    { tier: 2, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 3 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 3 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'A weapon is modified for the third time.', target: 2 },
+                    { tier: 3, description: 'You spend Resource Points on one or more Radio Beacons.', target: 3 },
+                    { tier: 3, description: 'A model in your crew makes a Patch Up Action.', target: 12 },
+                ],
+            },
+            {
+                name: 'Guns For Hire',
+                goals: [
+                    { tier: 1, description: 'A model in your crew causes Excess Harm.', target: 8 },
+                    { tier: 1, description: 'You purchase a Weapon Modification for a Pistol or Rifle.', target: 3 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 12 },
+                    { tier: 2, description: 'A model in your crew gains a Perk.', target: 4 },
+                    { tier: 2, description: 'Your crew earns at least 3 XP in a single game.', target: 3 },
+                    { tier: 2, description: 'You spend Resource Points on one or more Forward Deployment Points.', target: 6 },
+                    { tier: 3, description: 'Your crew has at least 3 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: "You win a game on another crew's Home Turf.", target: 3 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion with a Ranged Attack.', target: 10 },
+                    { tier: 3, description: 'At least 7 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                ],
+            },
+            {
+                name: 'Take the High Ground',
+                goals: [
+                    { tier: 1, description: 'Your crew has at least 2 Scouting Points in three different locations.', target: 1 },
+                    { tier: 1, description: 'You play an Investigate Objective.', target: 3 },
+                    { tier: 1, description: 'A model in your crew chooses Find Caps and Parts when making a Rummage Action.', target: 10 },
+                    { tier: 2, description: 'Your crew scores the most XP from a Hunting Party or Exert Power Objective.', target: 3 },
+                    { tier: 2, description: 'Your crew has at least 5 Reach at the end of the Story Phase.', target: 3 },
+                    { tier: 2, description: 'A model in your crew Passes a Confusion Test.', target: 8 },
+                    { tier: 3, description: 'You win a game on your Home Turf.', target: 2 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'You use the Recruit Story Action.', target: 5 },
+                    { tier: 3, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 8 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from The Gunners training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'RESOURCE POINTS LIMIT', tier1: 4, tier2: 8, tier3: 12 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 23) THE GUNNERS - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const gunnersCommander = await upsertUnitTemplate('Commander (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 6, i: 5, a: 4, l: 3,
+    });
+    await setUnitStartPerks(gunnersCommander.id, ['NATURAL LEADER', 'POWER ARMOR']);
+    await replaceUnitOptions(gunnersCommander.id, [
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 64, rating: 64 },
+        { weapon1Id: mustWeaponId('Plasma Rifle'), costCaps: 68, rating: 68 },
+        { weapon1Id: mustWeaponId('Plasma Rifle'), weapon2Id: mustWeaponId('Ripper'), costCaps: 74, rating: 74 },
+    ]);
+
+    const gunnersCaptain = await upsertUnitTemplate('Captain (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 4, c: 6, i: 5, a: 4, l: 3,
+    });
+    await setUnitStartPerks(gunnersCaptain.id, ['NATURAL LEADER']);
+    await replaceUnitOptions(gunnersCaptain.id, [
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Plasma Rifle'), costCaps: 39, rating: 39 },
+        { weapon1Id: mustWeaponId('Plasma Rifle'), weapon2Id: mustWeaponId('Ripper'), costCaps: 43, rating: 43 },
+    ]);
+
+    const gunnersOfficer = await upsertUnitTemplate('Officer (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 4, c: 4, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(gunnersOfficer.id, []);
+    await replaceUnitOptions(gunnersOfficer.id, [
+        { weapon1Id: mustWeaponId('Precision Combat Rifle'), costCaps: 28, rating: 28 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 29, rating: 29 },
+        { weapon1Id: mustWeaponId('Plasma Pistol'), weapon2Id: mustWeaponId('Ripper'), costCaps: 34, rating: 34 },
+        { weapon1Id: mustWeaponId('Missile Launcher'), costCaps: 46, rating: 46 },
+    ]);
+
+    const gunnersCorporal = await upsertUnitTemplate('Corporal (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 5, e: 4, c: 2, i: 4, a: 3, l: 2,
+    });
+    await setUnitStartPerks(gunnersCorporal.id, []);
+    await replaceUnitOptions(gunnersCorporal.id, [
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 22, rating: 22 },
+        { weapon1Id: mustWeaponId('Laser Rifle'), weapon2Id: mustWeaponId('Stun Baton'), costCaps: 25, rating: 25 },
+    ]);
+
+    const gunnersAssaultron = await upsertUnitTemplate('Assaultron (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 6, p: 6, e: 5, c: 1, i: 1, a: 5, l: 1,
+    });
+    await setUnitStartPerks(gunnersAssaultron.id, ['HARDY', 'MACHINE', 'PROGRAMMED', 'SPRINT']);
+    await replaceUnitOptions(gunnersAssaultron.id, [
+        { weapon1Id: mustWeaponId('Assaultron Claws'), weapon2Id: mustWeaponId('Assaultron Eye Beam'), costCaps: 41, rating: 41 },
+    ]);
+
+    const gunnersConscript = await upsertUnitTemplate('Conscript (The Gunners)', {
+        factionId: theGunners.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 3, c: 2, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(gunnersConscript.id, []);
+    await replaceUnitOptions(gunnersConscript.id, [
+        { weapon1Id: mustWeaponId('Laser Pistol'), costCaps: 11, rating: 11 },
+        { weapon1Id: mustWeaponId('Laser Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 13, rating: 13 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Frag Grenades'), costCaps: 15, rating: 15 },
+    ]);
+
+    /* 24) FOLLOWERS OF THE WINGED ONE */
+    const followersOfTheWingedOne = await upsertFactionFull({
+        name: 'Followers of the Winged One',
+        goalSets: [
+            {
+                name: 'Servants of the Wood',
+                goals: [
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 8 },
+                    { tier: 1, description: 'Your crew gains at least 3 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'You win a game.', target: 3 },
+                    { tier: 2, description: 'A model in your crew gains an Intelligence Perk.', target: 2 },
+                    { tier: 2, description: 'You take the Scout Story Action.', target: 6 },
+                    { tier: 2, description: 'Your crew scores the most XP from a Hunting Party or Ambush Objective.', target: 3 },
+                    { tier: 2, description: 'Your crew earns 1 XP using Harsh Lesson.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Passes a Confusion Test.', target: 12 },
+                    { tier: 3, description: 'A model in your crew maximizes their Intelligence statistic.', target: 1 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                ],
+            },
+            {
+                name: 'Crusade of the Light',
+                goals: [
+                    { tier: 1, description: 'You play a game as the Attacker.', target: 3 },
+                    { tier: 1, description: 'A model in your crew gains a Charisma Perk.', target: 2 },
+                    { tier: 1, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                    { tier: 2, description: 'Your crew gains more XP from a game than the opposing crew.', target: 3 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy Leader.', target: 3 },
+                    { tier: 2, description: 'You purchase a Weapon Modification.', target: 6 },
+                    { tier: 2, description: 'You have at least 3 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'You use a Followers of the Winged One Ploy.', target: 12 },
+                    { tier: 3, description: 'Your crew gains the most XP from a Duel Objective.', target: 2 },
+                    { tier: 3, description: 'At least 5 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'You win a game as the Overdog.', target: 4 },
+                ],
+            },
+            {
+                name: 'Heralds of Ill Omen',
+                goals: [
+                    { tier: 1, description: 'You win a game on your Home Turf.', target: 1 },
+                    { tier: 1, description: 'A model in your crew gains a Luck Perk.', target: 2 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model.', target: 14 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 2 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 10 },
+                    { tier: 2, description: 'You take the Set Bounty Story Action.', target: 3 },
+                    { tier: 2, description: 'You win a game as the Underdog.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion.', target: 10 },
+                    { tier: 3, description: "You win a game on the opposing crew's Home Turf.", target: 3 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'Your crew reaches its Champion Limit.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Followers of the Winged One training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+            { tag: 'HOLY MOTHMAN LIMIT', tier1: 1, tier2: 1, tier3: 1 },
+        ],
+    });
+
+    /* 25) FOLLOWERS OF THE WINGED ONE - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const followersPriest = await upsertUnitTemplate('Priest (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 5, c: 5, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(followersPriest.id, ['NATURAL LEADER', 'OFFERINGS', 'PRAISE BE!']);
+    await replaceUnitOptions(followersPriest.id, [
+        { weapon1Id: mustWeaponId('Hand Weapon'), costCaps: 18, rating: 18 },
+    ]);
+
+    const holyMothman = await upsertUnitTemplate('Holy Mothman (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 4, s: 6, p: 6, e: 7, c: 5, i: 6, a: 6, l: 3,
+    });
+    await setUnitStartPerks(holyMothman.id, ['BURLY', 'FLIGHT', 'HARDY', 'MYTHICAL', 'RAD RESISTANT']);
+    await replaceUnitOptions(holyMothman.id, [
+        { weapon1Id: mustWeaponId('Mothman Sonic Screech'), weapon2Id: mustWeaponId('Mothman Sonic Wave'), costCaps: 70, rating: 70 },
+    ]);
+
+    const followersFaithful = await upsertUnitTemplate('Faithful (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 5, c: 4, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(followersFaithful.id, ['OFFERINGS']);
+    await replaceUnitOptions(followersFaithful.id, [
+        { weapon1Id: mustWeaponId('Flamer'), costCaps: 32, rating: 32 },
+        { weapon1Id: mustWeaponId('Hunting Rifle'), costCaps: 36, rating: 36 },
+        { weapon1Id: mustWeaponId('Hardened Sniper Rifle'), costCaps: 39, rating: 39 },
+    ]);
+
+    const followersCultist = await upsertUnitTemplate('Cultist (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 4, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(followersCultist.id, ['OFFERINGS']);
+    await replaceUnitOptions(followersCultist.id, [
+        { weapon1Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Molotov Cocktails'), weapon2Id: mustWeaponId('Heavy Pipe Pistol'), costCaps: 16, rating: 16 },
+        { weapon1Id: mustWeaponId('Heavy Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Combat Shotgun'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Hand Weapon'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Handmade Rifle'), costCaps: 20, rating: 20 },
+    ]);
+
+    const mothmanHatchling = await upsertUnitTemplate('Mothman Hatchling (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 3, c: 3, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(mothmanHatchling.id, ['BEAST', 'FLIGHT', 'OMENS', 'POINT BLANK', 'RAD RESISTANT']);
+    await replaceUnitOptions(mothmanHatchling.id, [
+        { weapon1Id: mustWeaponId('Hatchling Screech'), costCaps: 18, rating: 18 },
+    ]);
+
+    const followersSeeker = await upsertUnitTemplate('Seeker (Followers of the Winged One)', {
+        factionId: followersOfTheWingedOne.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 3, e: 4, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(followersSeeker.id, ['OFFERINGS']);
+    await replaceUnitOptions(followersSeeker.id, [
+        { weapon1Id: mustWeaponId('Pipe Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 12, rating: 12 },
+        { weapon1Id: mustWeaponId('10mm Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 14, rating: 14 },
+        { weapon1Id: mustWeaponId('Pipe Revolver'), weapon2Id: mustWeaponId('Machete'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('.44 Pistol'), weapon2Id: mustWeaponId('Machete'), costCaps: 16, rating: 16 },
+    ]);
+
+    /* 26) ZETANS */
+    const zetans = await upsertFactionFull({
+        name: 'Zetans',
+        goalSets: [
+            {
+                name: 'Who Goes There?',
+                goals: [
+                    { tier: 1, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'A model in your crew gains a Perk.', target: 5 },
+                    { tier: 1, description: 'You use the Recruit Story Action to buy a Flatwoods Monster.', target: 1 },
+                    { tier: 2, description: 'A Flatwoods Monster in your crew ends a game without being Incapacitated.', target: 6 },
+                    { tier: 2, description: 'You take the Scout Story Action.', target: 6 },
+                    { tier: 2, description: 'You use a Standard Ploy.', target: 3 },
+                    { tier: 3, description: 'At least 5 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'A Flatwoods Monster in your crew Incapacitates an Enemy model with the weapon of another model.', target: 10 },
+                    { tier: 3, description: 'Your crew scores the most XP from an Objective as the Attacker.', target: 5 },
+                ],
+            },
+            {
+                name: 'Invasion of the Zetans',
+                goals: [
+                    { tier: 1, description: 'A model in your crew triggers the Meltdown Critical Effect.', target: 15 },
+                    { tier: 1, description: 'You play a game as the Attacker.', target: 3 },
+                    { tier: 1, description: "You play a game on the opposing crew's Home Turf.", target: 2 },
+                    { tier: 2, description: 'A model in your crew causes an Injury with the Meltdown Critical Effect.', target: 10 },
+                    { tier: 2, description: "Your crew gains the most XP from a game on the opposing crew's Home Turf.", target: 3 },
+                    { tier: 2, description: 'Your crew has 4 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion with the Meltdown Critical Effect.', target: 6 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                    { tier: 3, description: 'You purchase a Weapon Modification that costs at least 3 Parts.', target: 5 },
+                    { tier: 3, description: 'A model in your crew has 7 Upgrades.', target: 1 },
+                ],
+            },
+            {
+                name: 'Not of This World',
+                goals: [
+                    { tier: 1, description: 'A model in your crew gains an Intelligence Perk.', target: 3 },
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 8 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy Leader.', target: 5 },
+                    { tier: 2, description: 'You Upgrade a Model.', target: 6 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 12 },
+                    { tier: 2, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'You use a Zetans Ploy.', target: 9 },
+                    { tier: 3, description: 'Your crew scores the most XP from an Exert Power Objective.', target: 2 },
+                    { tier: 3, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 12 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Zetans training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 27) ZETANS - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const zetanCommander = await upsertUnitTemplate('Zetan Commander (Zetans)', {
+        factionId: zetans.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 6, e: 7, c: 4, i: 7, a: 5, l: 3,
+    });
+    await setUnitStartPerks(zetanCommander.id, ['NATURAL LEADER', 'POWER ARMOR']);
+    await replaceUnitOptions(zetanCommander.id, [
+        { weapon1Id: mustWeaponId('Electro Suppressor'), weapon2Id: mustWeaponId('Plasma Grenades'), costCaps: 56, rating: 56 },
+        { weapon1Id: mustWeaponId('Alien Disintegrator'), costCaps: 71, rating: 71 },
+    ]);
+
+    const zetanLieutenant = await upsertUnitTemplate('Zetan Lieutenant (Zetans)', {
+        factionId: zetans.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 4, e: 4, c: 4, i: 6, a: 5, l: 2,
+    });
+    await setUnitStartPerks(zetanLieutenant.id, []);
+    await replaceUnitOptions(zetanLieutenant.id, [
+        { weapon1Id: mustWeaponId('Cryo Blaster'), costCaps: 26, rating: 26 },
+        { weapon1Id: mustWeaponId('Toxin Blaster'), costCaps: 28, rating: 28 },
+        { weapon1Id: mustWeaponId('Alien Blaster'), costCaps: 30, rating: 30 },
+    ]);
+
+    const zetanTrooper = await upsertUnitTemplate('Zetan Trooper (Zetans)', {
+        factionId: zetans.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 2, p: 4, e: 4, c: 3, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(zetanTrooper.id, []);
+    await replaceUnitOptions(zetanTrooper.id, [
+        { weapon1Id: mustWeaponId('Cryo Blaster'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Toxin Blaster'), costCaps: 19, rating: 19 },
+        { weapon1Id: mustWeaponId('Alien Blaster'), costCaps: 21, rating: 21 },
+    ]);
+
+    const alienDrone = await upsertUnitTemplate('Alien Drone (Zetans)', {
+        factionId: zetans.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 2, p: 4, e: 6, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(alienDrone.id, ['MACHINE', 'PROGRAMMED']);
+    await replaceUnitOptions(alienDrone.id, [
+        { weapon1Id: mustWeaponId('Alien Laser'), costCaps: 30, rating: 30 },
+    ]);
+
+    const flatwoodsMonster = await upsertUnitTemplate('Flatwoods Monster (Zetans)', {
+        factionId: zetans.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 2, p: 4, e: 5, c: 6, i: 6, a: 5, l: 2,
+    });
+    await setUnitStartPerks(flatwoodsMonster.id, ['MIND CONTROL']);
+    await replaceUnitOptions(flatwoodsMonster.id, [
+        { weapon1Id: mustWeaponId('Alien Laser'), costCaps: 40, rating: 40 },
+    ]);
+
+    /* 28) CHILDREN OF ATOM */
+    const childrenOfAtom = await upsertFactionFull({
+        name: 'Children of Atom',
+        goalSets: [
+            {
+                name: "In Atom's Glow",
+                goals: [
+                    { tier: 1, description: 'A Search Token is replaced with a Radiation Token.', target: 2 },
+                    { tier: 1, description: 'At least five Radiation Tokens have been placed by the end of the game.', target: 6 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy Champion who is within 3 inches of a Radiation Token.', target: 2 },
+                    { tier: 2, description: 'A model in your crew gains the Rad Resistant Perk as part of a Crew Training Story Action.', target: 2 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model affected by the Be Not Afraid Ploy.', target: 5 },
+                    { tier: 2, description: 'You purchase a Weapon Modification for a Pistol or a Rifle.', target: 4 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion with a Gamma Gun or Radium Rifle.', target: 8 },
+                    { tier: 3, description: "Your crew gains the most XP from a game on the opposing crew's Home Turf.", target: 4 },
+                    { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
+                    { tier: 3, description: 'You purchase a Weapon Modification for a Gamma Gun or Radium Rifle.', target: 5 },
+                ],
+            },
+            {
+                name: 'Evangelism',
+                goals: [
+                    { tier: 1, description: 'You play an Occupy Objective.', target: 2 },
+                    { tier: 1, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'Your crew has at least 5 Scouting Points.', target: 1 },
+                    { tier: 2, description: 'You use the Recruit Story Action.', target: 3 },
+                    { tier: 2, description: 'You play a game as the Overdog.', target: 5 },
+                    { tier: 2, description: 'Your crew has at least 4 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'At least 7 of your models have a Perk that they did not start the campaign with.', target: 1 },
+                    { tier: 3, description: 'A model in your crew gains a Charisma Perk.', target: 4 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion.', target: 10 },
+                    { tier: 3, description: 'You gain the most XP from an Occupy Objective as the Attacker.', target: 3 },
+                ],
+            },
+            {
+                name: 'Cathedral of Atom',
+                goals: [
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 8 },
+                    { tier: 1, description: 'You have at least 50 Caps in your Stash.', target: 1 },
+                    { tier: 1, description: 'You take the Barter Story Action.', target: 4 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 2 },
+                    { tier: 2, description: 'A model in your crew Passes a Confusion Test.', target: 6 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 10 },
+                    { tier: 3, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 3 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Leader with a Ranged Attack.', target: 6 },
+                    { tier: 3, description: 'You play a Duel Objective.', target: 4 },
+                    { tier: 3, description: 'A model in your crew has 7 Upgrades.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Children of Atom training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+            { tag: 'EVANGELIST LIMIT', tier1: 1, tier2: 1, tier3: 1 },
+        ],
+    });
+
+    /* 29) CHILDREN OF ATOM - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const atomProphet = await upsertUnitTemplate('Prophet (Children of Atom)', {
+        factionId: childrenOfAtom.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 4, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(atomProphet.id, ['NATURAL LEADER', 'RAD RESISTANT', 'VISIONS']);
+    await replaceUnitOptions(atomProphet.id, [
+        { weapon1Id: mustWeaponId('Gamma Gun'), costCaps: 38, rating: 38 },
+    ]);
+
+    const atomCrusader = await upsertUnitTemplate('Crusader (Children of Atom)', {
+        factionId: childrenOfAtom.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 6, c: 4, i: 4, a: 5, l: 2,
+    });
+    await setUnitStartPerks(atomCrusader.id, ["ATOM'S GLOW"]);
+    await replaceUnitOptions(atomCrusader.id, [
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 38, rating: 38 },
+        { weapon1Id: mustWeaponId('Radium Rifle'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 45, rating: 45 },
+    ]);
+
+    const atomEvangelist = await upsertUnitTemplate('Evangelist (Children of Atom)', {
+        factionId: childrenOfAtom.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 3, p: 3, e: 5, c: 5, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(atomEvangelist.id, ['MANEUVER', 'POWER OF PRAYER', 'VISIONS']);
+    await replaceUnitOptions(atomEvangelist.id, [
+        { weapon1Id: mustWeaponId('Makeshift Weapon'), costCaps: 21, rating: 21 },
+    ]);
+
+    const atomZealot = await upsertUnitTemplate('Zealot (Children of Atom)', {
+        factionId: childrenOfAtom.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 5, e: 5, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(atomZealot.id, ["ATOM'S GLOW"]);
+    await replaceUnitOptions(atomZealot.id, [
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 29, rating: 29 },
+        { weapon1Id: mustWeaponId('Radium Rifle'), costCaps: 31, rating: 31 },
+        { weapon1Id: mustWeaponId('Combat Rifle'), costCaps: 34, rating: 34 },
+    ]);
+
+    const childOfAtom = await upsertUnitTemplate('Child of Atom (Children of Atom)', {
+        factionId: childrenOfAtom.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 4, e: 4, c: 3, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(childOfAtom.id, ["ATOM'S GLOW"]);
+    await replaceUnitOptions(childOfAtom.id, [
+        { weapon1Id: mustWeaponId('Pipe Pistol'), costCaps: 16, rating: 16 },
+        { weapon1Id: mustWeaponId('Automatic Pipe Rifle'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Gamma Gun'), costCaps: 22, rating: 22 },
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 23, rating: 23 },
+        { weapon1Id: mustWeaponId('Radium Rifle'), costCaps: 26, rating: 26 },
+    ]);
+
+    /* 30) TRAPPERS */
+    const trappers = await upsertFactionFull({
+        name: 'Trappers',
+        goalSets: [
+            {
+                name: 'Like Sitting Ducks',
+                goals: [
+                    { tier: 1, description: 'You play a game as the Attacker.', target: 3 },
+                    { tier: 1, description: 'A model in your crew Incapacitates an Enemy model.', target: 8 },
+                    { tier: 1, description: 'A model in your crew gains an Agility Perk.', target: 3 },
+                    { tier: 2, description: 'A model in your crew gains a Perception Perk.', target: 3 },
+                    { tier: 2, description: 'You Incapacitate an Enemy model with the Hook, Line, and... Ploy.', target: 5 },
+                    { tier: 2, description: 'You purchase a Weapon Modification for a Pistol, Rifle, or Heavy Weapon.', target: 4 },
+                    { tier: 3, description: 'A model in your crew Incapacitates an Enemy Champion with a Ranged Attack.', target: 10 },
+                    { tier: 3, description: "Your crew gains the most XP from a game on the opposing crew's Home Turf.", target: 4 },
+                    { tier: 3, description: 'One of your models has 7 Upgrades.', target: 1 },
+                ],
+            },
+            {
+                name: 'Hunting Grounds',
+                goals: [
+                    { tier: 1, description: 'You use a Trappers Ploy.', target: 6 },
+                    { tier: 1, description: 'You play the Pillage Objective.', target: 3 },
+                    { tier: 1, description: 'Your crew has at least 6 Scouting Points.', target: 1 },
+                    { tier: 2, description: 'You win a game on your Home Turf.', target: 1 },
+                    { tier: 2, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                    { tier: 2, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 3, description: 'Your crew has at least 5 Facilities on your Home Turf.', target: 1 },
+                    { tier: 3, description: 'You play the Assert Power Objective.', target: 4 },
+                    { tier: 3, description: 'You play a game as the Overdog.', target: 5 },
+                    { tier: 3, description: 'Your crew gains the most XP from a game on your Home Turf.', target: 3 },
+                ],
+            },
+            {
+                name: 'Flotsam and Jetsam',
+                goals: [
+                    { tier: 1, description: 'A model in your crew makes a Rummage Action.', target: 8 },
+                    { tier: 1, description: 'You play the Hunting Party Objective.', target: 3 },
+                    { tier: 1, description: 'You take the Barter Story Action.', target: 4 },
+                    { tier: 2, description: 'Models in your crew have Perks from at least three different S.P.E.C.I.A.L. categories.', target: 1 },
+                    { tier: 2, description: 'You play the Occupy Objective.', target: 2 },
+                    { tier: 2, description: 'A model in your crew Incapacitates an Enemy model with a Ranged Attack.', target: 12 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'At least 6 of your models have a Perk that they did not start with the campaign.', target: 1 },
+                    { tier: 3, description: 'Your crew scores the most XP from an Ambush Objective.', target: 4 },
+                    { tier: 3, description: 'You have three doses of three different Common Chems in your Stash.', target: 1 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Trappers training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 3, tier2: 5, tier3: 7 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 31) TRAPPERS - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: Rules like "no more than X models with the same weapon set" and
+    // "cannot recruit if half or more grunts are already this type" are not yet
+    // represented in current schema, so only roster data is seeded here.
+    const ruthlessTrapper = await upsertUnitTemplate('Ruthless Trapper (Trappers)', {
+        factionId: trappers.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 5, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(ruthlessTrapper.id, ['NATURAL LEADER']);
+    await replaceUnitOptions(ruthlessTrapper.id, [
+        { weapon1Id: mustWeaponId('Harpoon Gun'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Flechette Harpoon Gun'), costCaps: 49, rating: 49 },
+        { weapon1Id: mustWeaponId('Barbed Harpoon Gun'), costCaps: 50, rating: 50 },
+    ]);
+
+    const relentlessTrapper = await upsertUnitTemplate('Relentless Trapper (Trappers)', {
+        factionId: trappers.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 4, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(relentlessTrapper.id, []);
+    await replaceUnitOptions(relentlessTrapper.id, [
+        { weapon1Id: mustWeaponId('Recon Hunting Rifle'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Meat Hook'), weapon2Id: mustWeaponId('Double-Barreled Shotgun'), costCaps: 36, rating: 36 },
+        { weapon1Id: mustWeaponId('Harpoon Gun'), costCaps: 40, rating: 40 },
+    ]);
+
+    const grimTrapper = await upsertUnitTemplate('Grim Trapper (Trappers)', {
+        factionId: trappers.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 4, i: 3, a: 4, l: 2,
+    });
+    await setUnitStartPerks(grimTrapper.id, []);
+    await replaceUnitOptions(grimTrapper.id, [
+        { weapon1Id: mustWeaponId('Pole Hook'), costCaps: 15, rating: 15 },
+        { weapon1Id: mustWeaponId('Meat Hook'), weapon2Id: mustWeaponId('Pipe Revolver'), costCaps: 17, rating: 17 },
+        { weapon1Id: mustWeaponId('Pole Hook'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 17, rating: 17 },
+    ]);
+
+    const scroungingTrapper = await upsertUnitTemplate('Scrounging Trapper (Trappers)', {
+        factionId: trappers.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 3, c: 3, i: 3, a: 3, l: 1,
+    });
+    await setUnitStartPerks(scroungingTrapper.id, []);
+    await replaceUnitOptions(scroungingTrapper.id, [
+        { weapon1Id: mustWeaponId('Pole Hook'), costCaps: 11, rating: 11 },
+        { weapon1Id: mustWeaponId('Meat Hook'), weapon2Id: mustWeaponId('Pipe Pistol'), costCaps: 12, rating: 12 },
+        { weapon1Id: mustWeaponId('Lever-Action Rifle'), costCaps: 13, rating: 13 },
+    ]);
+
+    const stalkingTrapper = await upsertUnitTemplate('Stalking Trapper (Trappers)', {
+        factionId: trappers.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 4, i: 3, a: 3, l: 2,
+    });
+    await setUnitStartPerks(stalkingTrapper.id, []);
+    await replaceUnitOptions(stalkingTrapper.id, [
+        { weapon1Id: mustWeaponId('Pipe Rifle'), costCaps: 18, rating: 18 },
+        { weapon1Id: mustWeaponId('Lever-Action Rifle'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Precision Pipe Rifle'), costCaps: 22, rating: 22 },
+    ]);
+
+    /* 32) AUTOMATRONS */
+    const automatrons = await upsertFactionFull({
+        name: 'Automatrons',
+        goalSets: [
+            {
+                name: 'Mechanical Menace',
+                goals: [
+                    { tier: 1, description: 'You use the You Will Rue the Day! Ploy.', target: 4 },
+                    { tier: 1, description: 'You play a game as the Attacker.', target: 3 },
+                    { tier: 1, description: 'A model in your crew chooses Find Caps and Parts when making a Rummage Action.', target: 8 },
+                    { tier: 2, description: 'You Upgrade a model.', target: 5 },
+                    { tier: 2, description: 'You take the Recuperate Story Action.', target: 6 },
+                    { tier: 2, description: 'During the Story Phase, you roll on the Vault Table.', target: 1 },
+                    { tier: 3, description: 'You play the Scavenge Parts Objective.', target: 6 },
+                    { tier: 3, description: 'A model in your crew gains its fourth Perk or Automatron Perk via the Crew Training Story Action.', target: 1 },
+                    { tier: 3, description: 'You take the Scout Story Action.', target: 3 },
+                    { tier: 3, description: 'A model with the Machine Perk in your crew attains a S.P.E.C.I.A.L. statistic of 9.', target: 1 },
+                ],
+            },
+            {
+                name: 'An Age of Robots',
+                goals: [
+                    { tier: 1, description: 'A model in your crew uses the Running Shot Trait.', target: 10 },
+                    { tier: 1, description: 'You use the The Flesh is Weak but Steel is Strong! Ploy.', target: 4 },
+                    { tier: 1, description: 'You take the Expand Story Action.', target: 1 },
+                    { tier: 2, description: 'In a game against you, an Enemy model Suffers Fatigue due to the Suppress (X) Critical Effect.', target: 10 },
+                    { tier: 2, description: 'You take the Toil for the Mechanist Story Action.', target: 1 },
+                    { tier: 2, description: 'You modify a weapon.', target: 3 },
+                    { tier: 3, description: 'You have 6 Facilities on your Home Turf at the end of a Story Phase.', target: 3 },
+                    { tier: 3, description: 'In a game against you, an Enemy model Suffers Harm due to the Self-Destruct Perk.', target: 10 },
+                    { tier: 3, description: 'Your crew contains Mr. Handys, Protectrons, or both, with at least three different Weapon Sets at the end of a Story Phase.', target: 4 },
+                    { tier: 3, description: 'You end a game with more than half of the remaining models on the Battlefield having the Machine Perk.', target: 4 },
+                ],
+            },
+            {
+                name: 'The Superhuman Gambit',
+                goals: [
+                    { tier: 1, description: 'Your crew earns at least 4 XP in a single game.', target: 3 },
+                    { tier: 1, description: 'You play a game as a Defender.', target: 3 },
+                    { tier: 1, description: 'You tick a box in the Rivals section of your Story Sheet.', target: 4 },
+                    { tier: 2, description: 'Your Leader Incapacitates an Enemy Champion.', target: 6 },
+                    { tier: 2, description: 'You use the Set Bounty Story Action.', target: 4 },
+                    { tier: 2, description: 'You play the Annihilation Objective.', target: 1 },
+                    { tier: 3, description: 'Your Leader Incapacitates an Enemy Leader.', target: 4 },
+                    { tier: 3, description: 'You play a Raid Objective as the Attacker.', target: 3 },
+                    { tier: 3, description: 'Your crew has 5 Champions.', target: 1 },
+                    { tier: 3, description: 'In a game against you, an Enemy model Fails a Confusion Test.', target: 10 },
+                ],
+            },
+        ],
+        // Current schema stores one value per stat key (no champion/grunt split),
+        // so we use the GRUNT column from the Automatrons training table.
+        upgradeRules: [
+            { statKey: 'hp', ratingPerPoint: 12 },
+            { statKey: 'S', ratingPerPoint: 7 },
+            { statKey: 'P', ratingPerPoint: 7 },
+            { statKey: 'E', ratingPerPoint: 9 },
+            { statKey: 'C', ratingPerPoint: 5 },
+            { statKey: 'I', ratingPerPoint: 5 },
+            { statKey: 'A', ratingPerPoint: 7 },
+            { statKey: 'L', ratingPerPoint: 9 },
+        ],
+        limits: [
+            { tag: 'UPGRADE LIMIT PER MODEL', tier1: 4, tier2: 6, tier3: 8 },
+            { tag: 'CHAMPION LIMIT', tier1: 3, tier2: 4, tier3: 5 },
+            { tag: 'CONTROL LIMIT', tier1: 5, tier2: 10, tier3: 15 },
+            { tag: 'FACILITY LIMIT', tier1: 2, tier2: 4, tier3: 6 },
+        ],
+    });
+
+    /* 33) AUTOMATRONS - UNIT TEMPLATES + WEAPON SETS */
+    // NOTE: We model option-specific Medic as dedicated variants (Medical Unit),
+    // because current schema has no "perk bound to weapon option".
+    // Also weapon options support max two weapons, so the triple-weapon Mr. Handy
+    // set is represented as Flamer + Robot Lasers.
+    const mechanist = await upsertUnitTemplate('The Mechanist (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'CHAMPION',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 4, p: 5, e: 5, c: 5, i: 7, a: 5, l: 3,
+    });
+    await setUnitStartPerks(mechanist.id, ['NATURAL LEADER', 'STEALTH BOY']);
+    await replaceUnitOptions(mechanist.id, [
+        { weapon1Id: mustWeaponId('Laser Pistol'), weapon2Id: mustWeaponId('Mr. Handy Buzz Blade'), costCaps: 42, rating: 42 },
+    ]);
+
+    const legendaryAssaultron = await upsertUnitTemplate('Legendary Assaultron (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 6, p: 6, e: 5, c: 1, i: 1, a: 5, l: 2,
+    });
+    await setUnitStartPerks(legendaryAssaultron.id, ['ALL THE TOYS', 'HARDY', 'MACHINE', 'SPRINT']);
+    await replaceUnitOptions(legendaryAssaultron.id, [
+        { weapon1Id: mustWeaponId('Stunning Claws'), weapon2Id: mustWeaponId('Assaultron Eye Beam'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Assaultron Claws'), weapon2Id: mustWeaponId('Assaultron Eye Beam'), costCaps: 45, rating: 45 },
+        { weapon1Id: mustWeaponId('Shishkebab'), weapon2Id: mustWeaponId('Assaultron Eye Beam'), costCaps: 49, rating: 49 },
+    ]);
+
+    const robobrain = await upsertUnitTemplate('Robobrain (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'CHAMPION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 5, c: 4, i: 5, a: 4, l: 2,
+    });
+    await setUnitStartPerks(robobrain.id, ['HARDY', 'MACHINE']);
+    await replaceUnitOptions(robobrain.id, [
+        { weapon1Id: mustWeaponId('Robot Bash'), weapon2Id: mustWeaponId('Robot Lasers'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Robot Bash'), weapon2Id: mustWeaponId('Mesmetron'), costCaps: 39, rating: 39 },
+    ]);
+
+    const mrHandy = await upsertUnitTemplate('Mr. Handy (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 5, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(mrHandy.id, ['ALL THE TOYS', 'HARDY', 'MACHINE']);
+    await replaceUnitOptions(mrHandy.id, [
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Various Appendages'), costCaps: 52, rating: 52 },
+        { weapon1Id: mustWeaponId('Flamer'), weapon2Id: mustWeaponId('Robot Lasers'), costCaps: 60, rating: 60 },
+    ]);
+
+    const mrHandyMedical = await upsertUnitTemplate('Mr. Handy (Medical Unit, Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 5, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(mrHandyMedical.id, ['ALL THE TOYS', 'HARDY', 'MACHINE', 'MEDIC']);
+    await replaceUnitOptions(mrHandyMedical.id, [
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Various Appendages'), costCaps: 57, rating: 57 },
+    ]);
+
+    const protectron = await upsertUnitTemplate('Protectron (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 1, i: 1, a: 2, l: 1,
+    });
+    await setUnitStartPerks(protectron.id, ['ALL THE TOYS', 'HARDY', 'MACHINE', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(protectron.id, [
+        { weapon1Id: mustWeaponId('Nail Gun'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 32, rating: 32 },
+        { weapon1Id: mustWeaponId('Hand Cryojet'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Shock Hand'), costCaps: 35, rating: 35 },
+    ]);
+
+    const protectronMedical = await upsertUnitTemplate('Protectron (Medical Unit, Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 1, i: 1, a: 2, l: 1,
+    });
+    await setUnitStartPerks(protectronMedical.id, ['ALL THE TOYS', 'HARDY', 'MACHINE', 'MEDIC', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(protectronMedical.id, [
+        { weapon1Id: mustWeaponId('Robot Bash'), costCaps: 33, rating: 33 },
+    ]);
+
+    const eyebot = await upsertUnitTemplate('Eyebot (Automatrons)', {
+        factionId: automatrons.id,
+        roleTag: 'GRUNT',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 2, p: 4, e: 4, c: 1, i: 1, a: 5, l: 1,
+    });
+    await setUnitStartPerks(eyebot.id, ['ALL THE TOYS', 'BULLET MAGNET', 'EYE CATCHING', 'FLIGHT', 'MACHINE']);
+    await replaceUnitOptions(eyebot.id, [
+        { weapon1Id: mustWeaponId('Eyebot Laser'), costCaps: 15, rating: 15 },
+    ]);
+
+    console.log('Seed OK: admin, effects, weapons, Brotherhood of Steel, Super Mutants, Survivors, Wasteland Raiders, The Pack, The Operators, The Disciples, The Gunners, Followers of the Winged One, Zetans, Children of Atom, Trappers, Automatrons, unit templates.');
 }
 main()
     .catch((e) => {
-        console.error('Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂÄ‚â€žĂ„â€¦Ä‚â€žĂ˘â‚¬ĹľÄ‚â€žĂ„â€¦Ă„Ä…Ă‹â€ˇ Seed failed:', e);
+        console.error('Seed failed:', e);
         process.exit(1);
     })
     .finally(async () => {

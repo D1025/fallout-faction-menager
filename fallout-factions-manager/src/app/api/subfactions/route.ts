@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { prisma } from '@/server/prisma';
 
 export const runtime = 'nodejs';
@@ -13,13 +13,13 @@ type SubfactionDelegate = {
     }): Promise<SubfactionRow[]>;
 };
 
-// Uwaga: po zmianie schema.prisma trzeba uruchomić `prisma generate`.
-// W edytorze mogą być stare typy, więc delegat `subfaction` może chwilowo nie istnieć w typach TS.
+// Note: after schema.prisma changes, run `prisma generate`.
+// Editor type cache may be stale, so `subfaction` delegate may be temporarily missing in TS types.
 const p = prisma as unknown as { subfaction: SubfactionDelegate };
 
 /**
  * GET /api/subfactions?factionId=...
- * Zwraca subfrakcje dla wybranej frakcji.
+ * Returns subfactions for the selected faction.
  */
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);

@@ -29,10 +29,10 @@ export default async function Home() {
         <SectionCard>
           <div className="text-center">
             <div className="text-3xl text-amber-300"><UserOutlined /></div>
-            <div className="mt-2 text-lg font-semibold">Wymagane logowanie</div>
-            <p className="mt-2 text-sm vault-muted">Aby śledzić armię, musisz najpierw wejść do terminala dowódcy.</p>
+            <div className="mt-2 text-lg font-semibold">Login required</div>
+            <p className="mt-2 text-sm vault-muted">To track your army, you must first enter the command terminal.</p>
             <Link href="/login">
-              <Button type="primary" className="mt-4" icon={<LoginOutlined />}>Przejdź do logowania</Button>
+              <Button type="primary" className="mt-4" icon={<LoginOutlined />}>Go to login</Button>
             </Link>
           </div>
         </SectionCard>
@@ -44,7 +44,7 @@ export default async function Home() {
     where: { id: userId },
     select: { name: true, role: true, photoEtag: true },
   });
-  const userName = userMeta?.name ?? session?.user?.name ?? 'Dowodca';
+  const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
   const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
   let myArmies: ArmyMeta[] = [];
@@ -103,7 +103,7 @@ export default async function Home() {
       }),
     ]);
 
-    // subfrakcje po id -> nazwa (bez typowanej relacji w Prisma klient)
+    // Subfactions by id -> name (without relying on typed Prisma relation)
     const subIds = Array.from(new Set([
       ...armies.map((a) => (a as unknown as { subfactionId?: string | null }).subfactionId ?? null),
       ...sharedRows.map((s) => (s.army as unknown as { subfactionId?: string | null }).subfactionId ?? null),
@@ -131,7 +131,7 @@ export default async function Home() {
       ruleByFaction.get(r.factionId)!.set(r.statKey, r.ratingPerPoint);
     }
 
-    // profile ratingDelta do broni
+    // weapon profile ratingDelta
     const allTemplateIds = Array.from(new Set([
       ...armies.flatMap((a) => a.units.flatMap((u) => u.weapons.map((w) => w.templateId))),
       ...sharedRows.flatMap((s) => s.army.units.flatMap((u) => u.weapons.map((w) => w.templateId))),

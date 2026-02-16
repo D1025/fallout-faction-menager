@@ -93,7 +93,7 @@ const UnitTemplateInput = z.object({
     startPerks: z.array(StartPerkSchema).optional().default([]),
 }).superRefine((v, ctx) => {
     if (!v.isGlobal && v.factionIds.length === 0) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['factionIds'], message: 'Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['factionIds'], message: 'Select at least one faction or set GLOBAL.' });
     }
 });
 

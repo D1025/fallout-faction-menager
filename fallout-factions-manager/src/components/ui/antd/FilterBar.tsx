@@ -26,7 +26,7 @@ export function FilterBar({
           allowClear
           value={search}
           onChange={(e) => onSearch(e.target.value)}
-          placeholder={searchPlaceholder ?? 'Szukaj'}
+          placeholder={searchPlaceholder ?? 'Search'}
         />
       ) : null}
       {options?.length ? (

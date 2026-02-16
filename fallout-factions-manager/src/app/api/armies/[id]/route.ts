@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
@@ -36,7 +36,7 @@ type AsyncCtx = { params: Promise<{ id: string }> };
 
 const CreateUnitSchema = z.object({
     unitTemplateId: z.string().min(1),
-    optionId: z.string().min(1), // UnitWeaponOption.id (dla wybranego UnitTemplate)
+    optionId: z.string().min(1), // UnitWeaponOption.id for the selected UnitTemplate
 });
 
 async function userHasWriteAccess(armyId: string, userId: string): Promise<boolean> {
@@ -55,10 +55,10 @@ async function userHasWriteAccess(armyId: string, userId: string): Promise<boole
 }
 
 /**
- * Dodaj jednostkę do armii:
- * - weryfikacja, że optionId należy do wskazanego UnitTemplate (unitTemplateId)
- * - utwórz UnitInstance (selectedOptionId = optionId)
- * - na podstawie option.weapon1Id / option.weapon2Id dodaj 1–2 WeaponInstance
+ * Add a unit to an army:
+ * - validate that optionId belongs to the provided UnitTemplate (unitTemplateId)
+ * - create UnitInstance (selectedOptionId = optionId)
+ * - based on option.weapon1Id / option.weapon2Id create 1-2 WeaponInstance rows
  */
 export async function POST(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
@@ -75,11 +75,11 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     }
     const { unitTemplateId, optionId } = parsed.data;
 
-    // uprawnienia
+    // Permission check
     const can = await userHasWriteAccess(armyId, userId);
     if (!can) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
-    // pobierz opcję i zweryfikuj przynależność do template
+    // Fetch option and validate ownership by template
     const option = await p.unitWeaponOption.findUnique({
         where: { id: optionId },
         select: {
@@ -97,7 +97,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
         );
     }
 
-    // przygotuj listę broni (1–2 szt.)
+    // Prepare weapon list (1-2 entries)
     const weaponIds = [option.weapon1Id, option.weapon2Id].filter(
         (x): x is string => typeof x === 'string' && x.length > 0,
     );

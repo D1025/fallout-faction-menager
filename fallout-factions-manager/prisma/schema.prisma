@@ -59,8 +59,13 @@ enum PerkCategory {
   AUTOMATRON
 }
 
+enum ChemRarity {
+  COMMON
+  UNCOMMON
+}
+
 /**
- * ============ UŻYTKOWNICY / ARMIE ============
+ * ============ USERS / ARMIES ============
  */
 model User {
   id        String   @id @default(cuid())
@@ -81,22 +86,21 @@ model Army {
   name      String
   factionId String
   tier      Int
-
-  // zasoby – sumy, bez historii
+  // Resources - aggregate values without history
   caps  Int @default(0)
   parts Int @default(0)
+  scout Int @default(0)
   reach Int @default(0)
   exp   Int @default(0)
-
-  // << NOWE >>
+  ploys Int @default(0)
+  // << NEW >>
   activeGoalSetId String?
   activeGoalSet   FactionGoalSet?    @relation(fields: [activeGoalSetId], references: [id])
   goalProgress    ArmyGoalProgress[]
 
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
-
-  // Subfrakcja jest opcjonalna: null = "czysta" frakcja (standard)
+  // Subfaction is optional: null = base faction (standard).
   subfactionId String?
   subfaction   Subfaction? @relation(fields: [subfactionId], references: [id])
 
@@ -107,6 +111,8 @@ model Army {
   updatedAt DateTime @updatedAt
 
   shares   ArmyShare[]
+  publicShare ArmyPublicShare?
+  chems    ArmyChem[]
   HomeTurf HomeTurf?
 }
 
@@ -114,7 +120,7 @@ model ArmyGoalProgress {
   id        String   @id @default(cuid())
   armyId    String
   goalId    String
-  ticks     Int      @default(0) // ile “dongli” odklikanie
+  ticks     Int      @default(0) // Progress ticks toward goal target
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -139,15 +145,28 @@ model ArmyShare {
   @@unique([armyId, userId])
 }
 
+model ArmyPublicShare {
+  id        String   @id @default(cuid())
+  armyId    String   @unique
+  token     String   @unique
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  army Army @relation(fields: [armyId], references: [id], onDelete: Cascade)
+
+  @@index([token, enabled])
+}
+
 /**
- * ============ FRAKCJE I LIMITY ============
+ * ============ FACTIONS AND LIMITS ============
  */
 model Faction {
   id   String @id @default(cuid())
   name String @unique
 
   limits        FactionLimit[]
-  // unitTemplates: teraz przez M:N (UnitTemplateFaction)
+  // unitTemplates: linked through M:N (UnitTemplateFaction)
   unitTemplates UnitTemplateFaction[]
   armies        Army[]
 
@@ -171,9 +190,9 @@ model FactionLimit {
 }
 
 /**
- * ============ BROŃ, PROFILE, EFEKTY ============
- * - WeaponTemplate ma bazowe staty i bazowe efekty (weapon/critical)
- * - WeaponProfile to upgrade (można wybrać wiele); nadpisuje pola / dodaje rating
+ * ============ WEAPONS, PROFILES, EFFECTS ============
+ * - WeaponTemplate stores base stats and base effects (weapon/critical)
+ * - WeaponProfile is an upgrade (multiple can be selected); it overrides fields / adds rating
  */
 model WeaponTemplate {
   id        String   @id @default(cuid())
@@ -182,21 +201,18 @@ model WeaponTemplate {
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Baza (bez wymagania ratingu/parts — mogą być null)
+  // Base values (rating/parts are optional and may be null)
   baseType   String @default("")
   baseTest   String @default("")
   baseParts  Int?
   baseRating Int?
-
-  // Bazowe efekty (niezależne od profili)
+  // Base effects (independent from profiles)
   baseEffects WeaponBaseEffect[]
 
   profiles         WeaponProfile[]
   optionsAsWeapon1 UnitWeaponOption[] @relation("OptionWeapon1")
   optionsAsWeapon2 UnitWeaponOption[] @relation("OptionWeapon2")
-
-  // subfrakcje: allow/deny
+  // subfactions: allow/deny
   subfactionAllows SubfactionWeaponAllow[]
   subfactionDenies SubfactionWeaponDeny[]
 
@@ -221,8 +237,7 @@ model WeaponBaseEffect {
 model WeaponProfile {
   id       String @id @default(cuid())
   weaponId String
-
-  // Upgrade – nadpisania/dodatki
+  // Upgrade values - overrides/additions
   order         Int     @default(0)
   typeOverride  String?
   testOverride  String?
@@ -264,21 +279,18 @@ model WeaponProfileEffect {
 }
 
 /**
- * ============ PERKI ============
+ * ============ PERKS ============
  */
 model Perk {
   id            String       @id @default(cuid())
   name          String
   description   String
-
-  // kategoria perka: zwykły vs automatronowy
+  // Perk category: standard vs automatron
   category      PerkCategory @default(REGULAR)
-
-  // wymagania na SPECIAL jednostki (opcjonalne)
+  // SPECIAL requirements for unit stats (optional)
   statKey       StatKeySpecial?
-  minValue      Int?         // null = brak wymagań; w praktyce używamy >=
-
-  // perk wrodzony: nie powinien być dodawany w armii, tylko przypinany w template
+  minValue      Int?         // null = no requirement; in practice we use >=
+  // Innate perk: should not be added in army view, only attached to templates
   isInnate      Boolean      @default(false)
 
   requiresValue Boolean      @default(false)
@@ -292,20 +304,16 @@ model Perk {
 }
 
 /**
- * ============ SZABLONY JEDNOSTEK ============
+ * ============ UNIT TEMPLATES ============
  */
 model UnitTemplate {
   id   String @id @default(cuid())
   name String
-
-
-  // globalny template = dostępny dla wszystkich frakcji
+  // Global template = available for all factions
   isGlobal Boolean @default(false)
-
-  // predefiniowana rola/jakość jednostki (do filtrowania i limitów)
+  // Predefined unit role/quality (for filtering and limits)
   roleTag UnitTemplateTag?
-
-  // dodatkowy tag: czy ten template może być leaderm (nie wyklucza roleTag)
+  // Extra tag: whether this template can be a leader (does not exclude roleTag)
   isLeader Boolean @default(false)
 
   hp Int @default(3)
@@ -321,15 +329,13 @@ model UnitTemplate {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // M:N frakcje
+  // M:N factions
   factions UnitTemplateFaction[]
 
   options      UnitWeaponOption[]
   startPerks   UnitStartPerk[]
   UnitInstance UnitInstance[]
-
-  // subfrakcje: allow/deny
+  // subfactions: allow/deny
   subfactionAllows SubfactionUnitAllow[]
   subfactionDenies SubfactionUnitDeny[]
 
@@ -350,7 +356,7 @@ model UnitTemplateFaction {
 }
 
 // =====================================================
-//  Jednostki: warianty uzbrojenia, perki startowe, instancje w armii
+//  Units: weapon loadouts, starting perks, army instances
 // =====================================================
 
 model UnitWeaponOption {
@@ -404,14 +410,12 @@ model UnitInstance {
   army           Army           @relation(fields: [armyId], references: [id])
   unit           UnitTemplate   @relation(fields: [unitId], references: [id])
   selectedOption UnitWeaponOption? @relation("SelectedOption", fields: [optionId], references: [id])
-
-  // wybrane perki na instancji (bez upgrade'ów SPECIAL)
+  // Selected perks on an instance (without SPECIAL upgrades)
   chosenPerks UnitChosenPerk[]
 
   upgrades StatUpgrade[]
   weapons  WeaponInstance[]
-
-  // oznaczenie lidera tymczasowego w armii
+  // Marks this unit as temporary leader in the army
   temporaryLeader Boolean @default(false)
 
   @@index([armyId])
@@ -437,7 +441,7 @@ model WeaponInstance {
   id         String   @id @default(cuid())
   unitId     String
   templateId String
-  // "__profile:<profileId>" — można mieć wiele jednocześnie
+  // "__profile:<profileId>" - multiple entries can be active at once
   activeMods String[] @default([])
 
   unit     UnitInstance   @relation(fields: [unitId], references: [id])
@@ -510,21 +514,84 @@ model HomeTurf {
   id        String   @id @default(cuid())
   armyId    String   @unique
   hazard    String   @default("")
+  hazardDefId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  army       Army           @relation(fields: [armyId], references: [id])
+  army       Army                   @relation(fields: [armyId], references: [id])
+  hazardDef  HomeHazardDefinition?  @relation(fields: [hazardDefId], references: [id], onDelete: SetNull)
   facilities HomeFacility[]
+
+  @@index([hazardDefId])
 }
 
 model HomeFacility {
   id     String @id @default(cuid())
   turfId String
   name   String
+  facilityDefId String?
 
-  turf HomeTurf @relation(fields: [turfId], references: [id])
+  turf        HomeTurf                  @relation(fields: [turfId], references: [id])
+  facilityDef HomeFacilityDefinition?   @relation(fields: [facilityDefId], references: [id], onDelete: SetNull)
 
   @@index([turfId])
+  @@index([facilityDefId])
+  @@unique([turfId, facilityDefId])
+}
+
+model HomeFacilityDefinition {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  selections HomeFacility[]
+
+  @@index([sortOrder, name])
+}
+
+model HomeHazardDefinition {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  turfs HomeTurf[]
+
+  @@index([sortOrder, name])
+}
+
+model Chem {
+  id        String     @id @default(cuid())
+  name      String     @unique
+  rarity    ChemRarity
+  costCaps  Int
+  effect    String
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  armies ArmyChem[]
+
+  @@index([rarity, sortOrder, name])
+}
+
+model ArmyChem {
+  id       String @id @default(cuid())
+  armyId   String
+  chemId   String
+  quantity Int    @default(0)
+
+  army Army @relation(fields: [armyId], references: [id], onDelete: Cascade)
+  chem Chem @relation(fields: [chemId], references: [id])
+
+  @@unique([armyId, chemId])
+  @@index([armyId])
+  @@index([chemId])
 }
 
 model Subfaction {
@@ -593,3 +660,4 @@ model SubfactionWeaponDeny {
   @@unique([subfactionId, weaponId])
   @@index([weaponId])
 }
+

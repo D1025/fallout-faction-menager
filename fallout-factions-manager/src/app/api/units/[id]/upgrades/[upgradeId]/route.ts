@@ -1,9 +1,9 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 
 export const runtime = 'nodejs';
 
-// dopasowane do nazw folderów: [id]/upgrades/[upgradeId]
+// Matches folder segments: [id]/upgrades/[upgradeId]
 type Ctx = { params: Promise<{ id: string; upgradeId: string }> };
 
 async function canWriteByUnit(unitId: string, userId: string) {

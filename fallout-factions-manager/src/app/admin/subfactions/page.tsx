@@ -38,12 +38,12 @@ type RawSubfaction = {
     unitDenies: Array<{ unitId: string }>;
 };
 
-// Usuwamy "p/ps" – w runtime i tak działa realny delegate Prisma.
-// Minimalne typowanie dla mapowania wyników.
+// We intentionally avoid stricter delegate typing here; runtime Prisma delegate is correct.
+// Minimal local typing for result mapping.
 
 export default async function AdminSubfactionsPage() {
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Brak uprawnień.</div>;
+    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Access denied.</div>;
 
     const [factions, rawUnits, subs] = await Promise.all([
         prisma.faction.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
@@ -73,7 +73,7 @@ export default async function AdminSubfactionsPage() {
     }));
 
     return (
-        <MobilePageShell title="Subfrakcje (admin)" backHref="/admin">
+        <MobilePageShell title="Subfactions (admin)" backHref="/admin">
             <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
         </MobilePageShell>
     );

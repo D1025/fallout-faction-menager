@@ -21,18 +21,18 @@ export function RosterClient(props: {
         <Flex gap={8} justify="end">
           {isDesktop ? (
             <Button href={`/army/${props.armyId}`} size="large" style={{ minHeight: 44 }}>
-              Powrót do armii
+              Back to army
             </Button>
           ) : null}
           <Button type="primary" icon={<PlusOutlined />} href={`/army/${props.armyId}/roster/add`} size="large" style={{ minHeight: 44 }}>
-            Dodaj jednostkę
+            Add unit
           </Button>
         </Flex>
       }
     >
       <Row gutter={[12, 12]}>
         {props.units.length === 0 ? (
-          <Col span={24}><EmptyState title="Brak jednostek" description="Dodaj pierwszą jednostkę do rosteru." /></Col>
+          <Col span={24}><EmptyState title="No units" description="Add your first unit to the roster." /></Col>
         ) : null}
         {props.units.map((u) => (
           <Col key={u.id} xs={24} md={12}>
@@ -45,10 +45,10 @@ export function RosterClient(props: {
                   <Space direction="vertical" size={2} style={{ flex: 1 }}>
                     <Flex justify="space-between" align="center" gap={8}>
                       <Typography.Text strong>{u.name}</Typography.Text>
-                      <Tag color={u.present ? 'green' : 'default'}>{u.present ? 'obecny' : 'rezerwa'}</Tag>
+                      <Tag color={u.present ? 'green' : 'default'}>{u.present ? 'present' : 'reserve'}</Tag>
                     </Flex>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      Rany: {u.wounds}/4 • Broń: {u.weaponsCount} • Ulepszenia: {u.upgradesCount}
+                      Wounds: {u.wounds}/4 | Weapon: {u.weaponsCount} | Upgrades: {u.upgradesCount}
                     </Typography.Text>
                   </Space>
                 </Flex>

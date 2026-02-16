@@ -30,20 +30,20 @@ export function ResourcesClient(props: {
 
   return (
     <MobilePageShell
-      title={`Zasoby: ${props.armyName}`}
+      title={`Resources: ${props.armyName}`}
       backHref={`/army/${props.armyId}`}
       desktopSidebar={
-        <Card size="small" title="Filtry historii">
-          <Typography.Text type="secondary">Wersja desktop używa stałego panelu na filtry i skróty.</Typography.Text>
+        <Card size="small" title="History filters">
+          <Typography.Text type="secondary">Desktop version uses a fixed panel for filters and shortcuts.</Typography.Text>
         </Card>
       }
       stickyActions={
         <Flex gap={8} justify="end" wrap>
           <Button type={isDesktop ? 'default' : 'primary'} size="large" style={{ minHeight: 44 }} href={`/army/${props.armyId}`}>
-            Powrót
+            Back
           </Button>
           <Button type={isDesktop ? 'primary' : 'default'} size="large" style={{ minHeight: 44 }}>
-            Eksport historii
+            Export history
           </Button>
         </Flex>
       }
@@ -74,9 +74,9 @@ export function ResourcesClient(props: {
           ))}
         </Row>
 
-        <Card title="Historia" size="small">
+        <Card title="History" size="small">
           <Space direction="vertical" style={{ width: '100%' }}>
-            {props.history.length === 0 ? <EmptyState title="Brak historii" description="Wykonaj pierwszą zmianę zasobów, aby zobaczyć wpisy." /> : null}
+            {props.history.length === 0 ? <EmptyState title="No history" description="Make your first resource change to see entries." /> : null}
             {props.history.map((h) => (
               <Flex key={h.id} justify="space-between" gap={8}>
                 <Typography.Text>

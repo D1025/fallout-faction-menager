@@ -41,7 +41,7 @@ export default async function Page() {
     }
 
     return (
-        <MobilePageShell title="Frakcje (admin)" backHref="/admin">
+        <MobilePageShell title="Factions (admin)" backHref="/admin">
             <FactionsClient initialFactions={factions} />
         </MobilePageShell>
     );

@@ -90,13 +90,13 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
     function openCreate() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '-', target: 1, order })),
         );
         const blank: UIFaction = {
             id: 'NEW',
             name: '',
             limits: [],
-            goalSets: [{ name: 'Zestaw 1', goals: emptyGoals }],
+            goalSets: [{ name: 'Set 1', goals: emptyGoals }],
             upgradeRules: [
                 { statKey: 'hp', ratingPerPoint: 0 },
                 { statKey: 'S', ratingPerPoint: 0 },
@@ -128,8 +128,8 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     }
 
     const activeChips = [
-        ...(q ? [{ key: 'q', label: `Szukaj: ${q}`, onRemove: () => setQ('') }] : []),
-        ...(onlyWithLimits ? [{ key: 'limits', label: 'Tylko z limitami', onRemove: () => setOnlyWithLimits(false) }] : []),
+        ...(q ? [{ key: 'q', label: `Search: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(onlyWithLimits ? [{ key: 'limits', label: 'Only with limits', onRemove: () => setOnlyWithLimits(false) }] : []),
     ] as ActiveFilterChip[];
 
     const clearAll = () => {
@@ -140,7 +140,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     return (
         <div className="app-shell">
             <Header
-                title="Frakcje – limity, zadania, ulepszenia"
+                title="Factions - limits, tasks, upgrades"
                 right={
                     <div className="flex items-center gap-2">
                         <button
@@ -151,39 +151,39 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                                     ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
                                     : 'border-zinc-700 bg-zinc-900 text-zinc-200')
                             }
-                            aria-label="Filtry"
-                            title="Filtry"
+                            aria-label="Filters"
+                            title="Filters"
                         >
                             <FilterOutlined />
                         </button>
                         <button
                             onClick={openCreate}
                             className="ff-btn ff-btn-icon-mobile"
-                            title="Dodaj frakcje"
-                            aria-label="Dodaj frakcje"
+                            title="Add faction"
+                            aria-label="Add faction"
                         >
                             <PlusOutlined className="ff-btn-icon" />
-                            <span className="ff-btn-label">Dodaj frakcje</span>
+                            <span className="ff-btn-label">Add faction</span>
                         </button>
                     </div>
                 }
             />
 
-            {/* Drawer filtrów (bez triggera w treści) */}
+            {/* Filters drawer (without inline trigger) */}
             <FilterBar
                 showTrigger={false}
                 open={filtersOpen}
                 onOpenChangeAction={setFiltersOpen}
                 search={q}
                 onSearchAction={setQ}
-                searchPlaceholder="Szukaj frakcji"
-                quickToggles={<QuickToggle checked={onlyWithLimits} onChangeAction={setOnlyWithLimits} label="Tylko z limitami" />}
+                searchPlaceholder="Search factions"
+                quickToggles={<QuickToggle checked={onlyWithLimits} onChangeAction={setOnlyWithLimits} label="Only with limits" />}
                 activeChips={activeChips}
                 onClearAllAction={clearAll}
             />
 
             <main>
-                {/* usunięto stary kontener filtrów */}
+                {/* removed old inline filter container */}
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                     {filtered.map((f) => (
@@ -209,9 +209,9 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                     }}
                     onDeleteRequest={async (id) => {
                         confirmAction({
-                            title: 'Na pewno usunąć frakcję? Operacja nieodwracalna.',
-                            okText: 'Usuń',
-                            cancelText: 'Anuluj',
+                            title: 'Delete faction? This action cannot be undone.',
+                            okText: 'Delete',
+                            cancelText: 'Cancel',
                             danger: true,
                             onOk: async () => {
                                 await deleteFaction(id);
@@ -258,7 +258,7 @@ function Header({ title, right }: { title: string; right?: React.ReactNode }) {
         <header className="sticky top-0 z-10 vault-panel px-3 py-2 backdrop-blur">
             <div className="mx-auto flex min-h-12 w-full items-center justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="ff-panel-headline">Admin / Frakcje</p>
+                    <p className="ff-panel-headline">Admin / Factions</p>
                     <div className="truncate text-sm font-semibold tracking-wide">{title}</div>
                 </div>
                 <div className="text-xs text-zinc-300">{right}</div>
@@ -280,7 +280,7 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
                 <div className="flex items-center justify-between">
                     <div className="text-base font-semibold leading-tight">{faction.name}</div>
                     <span className="rounded-full border border-amber-300/35 bg-zinc-900 px-2 py-0.5 text-[10px] text-amber-100">
-            edytuj
+            edit
           </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -362,12 +362,12 @@ function EditorSheet({
         }));
     }
 
-    /* === ZESTAWY ZADAŃ === */
+    /* === TASK SETS === */
     function addGoalSet() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '-', target: 1, order })),
         );
-        setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Zestaw ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
+        setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Set ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
     }
     function removeGoalSet(idx: number) {
         setDraft((d) => ({ ...d, goalSets: d.goalSets.filter((_, i) => i !== idx) }));
@@ -400,20 +400,20 @@ function EditorSheet({
 
     async function handleSaveAll() {
         if (!draft.name.trim()) {
-            notifyWarning('Podaj nazwę frakcji.');
+            notifyWarning('Enter faction name.');
             return;
         }
         try {
             const saved = await onSaveAll(draft);
             onSaved(saved);
         } catch (e: unknown) {
-            notifyApiError(getErrorMessage(e), 'Błąd zapisu frakcji');
+            notifyApiError(getErrorMessage(e), 'Failed to save faction');
         }
     }
 
     return (
         <div className="fixed inset-0 z-20">
-            <button aria-label="Zamknij" onClick={handleCancel} className="absolute inset-0 bg-black/60" />
+            <button aria-label="Close" onClick={handleCancel} className="absolute inset-0 bg-black/60" />
 
             <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
                 <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-zinc-700" />
@@ -425,22 +425,22 @@ function EditorSheet({
                             onClick={handleCancel}
                             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 active:scale-[0.99]"
                         >
-                            <ArrowLeftOutlined /> Wróć
+                            <ArrowLeftOutlined /> Back
                         </button>
                         <div className="min-w-0 flex-1 text-center">
                             <div className="truncate text-sm font-semibold">
-                                {mode === 'create' ? 'Nowa frakcja' : 'Edycja frakcji'}
+                                {mode === 'create' ? 'New faction' : 'Edit faction'}
                             </div>
                         </div>
                         <div className="w-[72px]" />
                     </div>
 
-                    {/* nazwa + usuń */}
+                    {/* name + delete */}
                     <div className="mt-3 flex items-center gap-2">
                         <input
                             value={draft.name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="Nazwa frakcji"
+                            placeholder="Faction name"
                             className="flex-1 vault-input px-3 py-2 text-sm"
                         />
                         {mode === 'edit' && (
@@ -450,28 +450,28 @@ function EditorSheet({
                                         await onDeleteRequest(draft.id);
                                         onDeleted(draft.id);
                                     } catch (e: unknown) {
-                                        notifyApiError(getErrorMessage(e), 'Nie udało się usunąć frakcji');
+                                        notifyApiError(getErrorMessage(e), 'Failed to delete faction');
                                     }
                                 }}
                                 className="rounded-xl border border-red-700 bg-red-900/30 px-3 py-2 text-sm text-red-200"
                             >
-                                Usuń
+                                Delete
                             </button>
                         )}
                     </div>
 
                     <div className="mt-2 text-[11px] text-zinc-400">
-                        Tip: możesz zawsze wrócić bez zapisu. Zmiany zapisujesz przyciskiem „Zapisz”.
+                        Tip: you can always go back without saving. Use the Save button to keep changes.
                     </div>
                 </header>
 
                 {/* scrollable content */}
-                <div className="flex-1 overflow-y-auto px-4 pb-28 pt-3">
+                <div className="vault-scrollbar flex-1 overflow-y-auto px-4 pb-28 pt-3">
                     {/* LIMITY */}
                     <section className="mt-1">
                         <div className="flex items-center justify-between">
                             <div className="text-sm font-medium">Limity</div>
-                            <button onClick={addLimit} className="text-xs text-emerald-300">Dodaj limit</button>
+                            <button onClick={addLimit} className="text-xs text-emerald-300">Add limit</button>
                         </div>
                         <div className="mt-2 grid gap-2">
                             {draft.limits.map((l, idx) => (
@@ -480,7 +480,7 @@ function EditorSheet({
                                         <input
                                             value={l.tag}
                                             onChange={(e) => setLimit(idx, 'tag', e.target.value)}
-                                            placeholder="Tag limitu (np. CHAMPION / ELITE SUPPORT)"
+                                            placeholder="Limit tag (e.g. CHAMPION / ELITE SUPPORT)"
                                             className="sm:col-span-6 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
                                         />
                                         <div className="grid grid-cols-3 gap-2 sm:col-span-5">
@@ -506,18 +506,18 @@ function EditorSheet({
                                                 className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
                                             />
                                         </div>
-                                        <button onClick={() => removeLimit(idx)} className="sm:col-span-1 justify-self-end text-xs text-red-300">Usuń</button>
+                                        <button onClick={() => removeLimit(idx)} className="sm:col-span-1 justify-self-end text-xs text-red-300">Delete</button>
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </section>
 
-                    {/* ZESTAWY ZADAŃ */}
+                    {/* TASK SETS */}
                     <section className="mt-6">
                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium">Zestawy zadań</div>
-                            <button onClick={addGoalSet} className="text-xs text-emerald-300">Dodaj zestaw</button>
+                            <div className="text-sm font-medium">Task sets</div>
+                            <button onClick={addGoalSet} className="text-xs text-emerald-300">Add set</button>
                         </div>
 
                         {draft.goalSets.map((gs, setIdx) => (
@@ -528,7 +528,7 @@ function EditorSheet({
                                         onChange={(e) => setGoalSetName(setIdx, e.target.value)}
                                         className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
                                     />
-                                    <button onClick={() => removeGoalSet(setIdx)} className="text-xs text-red-300">Usuń</button>
+                                    <button onClick={() => removeGoalSet(setIdx)} className="text-xs text-red-300">Delete</button>
                                 </div>
 
                                 {[1, 2, 3].map((t) => (
@@ -545,7 +545,7 @@ function EditorSheet({
                                             return (
                                                 <div key={order} className="mt-1 grid grid-cols-12 gap-2">
                                                     <input
-                                                        placeholder={`Opis #${order + 1}`}
+                                                        placeholder={`Description #${order + 1}`}
                                                         value={g.description}
                                                         onChange={(e) => setGoal(setIdx, t as 1 | 2 | 3, order, 'description', e.target.value)}
                                                         className="col-span-9 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
@@ -568,7 +568,7 @@ function EditorSheet({
 
                     {/* UPGRADE RULES */}
                     <section className="mt-6">
-                        <div className="text-sm font-medium">Tabela ulepszeń (rating za +1)</div>
+                        <div className="text-sm font-medium">Upgrade table (rating per +1)</div>
                         <div className="mt-2 grid grid-cols-4 gap-2">
                             {statKeys.map((k) => {
                                 const v = draft.upgradeRules.find((r) => r.statKey === k)?.ratingPerPoint ?? 0;
@@ -598,14 +598,14 @@ function EditorSheet({
                             onClick={handleCancel}
                             className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 active:scale-[0.99]"
                         >
-                            Anuluj
+                            Cancel
                         </button>
                         <button
                             disabled={saving}
                             onClick={() => void handleSaveAll()}
                             className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.99]"
                         >
-                            {saving ? 'Zapisywanie…' : 'Zapisz'}
+                            {saving ? 'Saving...' : 'Save'}
                         </button>
                     </div>
                 </footer>

@@ -19,7 +19,7 @@ export const UnitTemplateUpsertSchema = z.object({
     name: z.string().trim().min(2),
     factionId: z.string().nullable().optional(), // null = global
     roleTag: UnitTemplateTagSchema.optional().nullable(),
-    // Statystyki bazowe profilu jednostki:
+    // Base unit profile stats:
     hp: z.number().int().min(1).max(8),
     s: z.number().int().min(1).max(10),
     p: z.number().int().min(1).max(10),

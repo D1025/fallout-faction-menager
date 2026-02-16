@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
@@ -39,7 +39,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
         return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
     }
 
-    // upewnij się, że goal należy do aktywnego setu tej armii
+    // Ensure goal belongs to this army's active goal set.
     const army = await prisma.army.findUnique({
         where: { id: armyId },
         select: { activeGoalSetId: true },

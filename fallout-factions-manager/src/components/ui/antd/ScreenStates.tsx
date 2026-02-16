@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { Alert, Button, Result, Skeleton, Space, Typography } from 'antd';
 
 export function LoadingState({
-  title = 'Ładowanie danych',
-  description = 'Poczekaj chwilę, przygotowujemy widok.',
+  title = 'Loading data',
+  description = 'Please wait, preparing the view.',
 }: {
   title?: string;
   description?: string;
@@ -20,8 +20,8 @@ export function LoadingState({
 }
 
 export function EmptyState({
-  title = 'Brak danych',
-  description = 'Nie znaleziono żadnych elementów dla bieżących filtrów.',
+  title = 'No data',
+  description = 'No items found for current filters.',
   action,
 }: {
   title?: string;
@@ -40,8 +40,8 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  title = 'Nie udało się pobrać danych',
-  description = 'Sprawdź połączenie i spróbuj ponownie. Jeśli błąd się powtarza, odśwież stronę.',
+  title = 'Failed to load data',
+  description = 'Check your connection and try again. If the problem persists, refresh the page.',
   onRetry,
 }: {
   title?: string;
@@ -58,7 +58,7 @@ export function ErrorState({
           <Typography.Text>{description}</Typography.Text>
           {onRetry ? (
             <Button size="small" onClick={onRetry}>
-              Spróbuj ponownie
+              Try again
             </Button>
           ) : null}
         </Space>

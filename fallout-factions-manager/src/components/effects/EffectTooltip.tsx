@@ -61,7 +61,7 @@ export function EffectTooltip({
         };
     }, [effectId]);
 
-    // zamykanie po kliknięciu poza / Esc (ważne na mobile)
+    // close on outside click / Esc (important on mobile)
     useEffect(() => {
         if (!open) return;
         const onDown = (e: MouseEvent | TouchEvent) => {
@@ -83,7 +83,7 @@ export function EffectTooltip({
     }, [open]);
 
     const desc = useMemo(() => {
-        if (!info) return 'Ładowanie opisu…';
+        if (!info) return 'Loading description...';
         return wrapX(info.description);
     }, [info]);
 
@@ -96,16 +96,16 @@ export function EffectTooltip({
         const vw = window.innerWidth;
         const vh = window.innerHeight;
 
-        // responsywna szerokość
+        // responsive width
         const maxWidth = Math.min(360, Math.max(240, Math.floor(vw * 0.88)));
 
-        // centrowanie względem anchor na wąskich ekranach, ale z clampem
+        // center by anchor on narrow screens, with clamping
         const anchorCenter = r.left + r.width / 2;
         let left = anchorCenter - maxWidth / 2;
         left = Math.max(margin, Math.min(left, vw - maxWidth - margin));
 
-        // FLIP: jeśli za mało miejsca na dole, spróbuj nad anchor
-        const desiredHeight = 140; // heurystyka; realna wysokość zależy od treści
+        // FLIP: if there is not enough space below, try above anchor
+        const desiredHeight = 140; // heuristic; actual height depends on content
         const belowTop = r.bottom + 8;
         const aboveTop = r.top - 8 - desiredHeight;
 
@@ -148,7 +148,7 @@ export function EffectTooltip({
                 }}
                 tabIndex={0}
                 role="button"
-                aria-label={`Opis: ${label}`}
+                aria-label={`Description: ${label}`}
             >
                 {label}
             </span>

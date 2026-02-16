@@ -1,18 +1,18 @@
-﻿import { message, notification, type ModalFuncProps } from 'antd';
+import { message, notification, type ModalFuncProps } from 'antd';
 
 export const UI_FEEDBACK_STANDARD = {
-  toast: 'Uzywaj krotkich toastow (message.*) dla powodzen i lekkich walidacji formularza.',
-  blockingModal: 'Uzywaj modala blokujacego wylacznie przy akcjach nieodwracalnych (usuniecie, reset).',
-  errors: 'Komunikat bledu: co sie nie udalo + wskazowka naprawcza (np. odswiez, sprawdz polaczenie).',
+  toast: 'Use short toasts (message.*) for successes and lightweight form validation.',
+  blockingModal: 'Use blocking modals only for irreversible actions (delete, reset).',
+  errors: 'Error message: what failed + corrective hint (e.g. refresh, check connection).',
 } as const;
 
-export function getErrorMessage(error: unknown, fallback = 'Wystapil nieoczekiwany blad.'): string {
+export function getErrorMessage(error: unknown, fallback = 'An unexpected error occurred.'): string {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message || fallback;
   return fallback;
 }
 
-function withHint(content: string, hint = 'Sprobuj ponownie za chwile.') {
+function withHint(content: string, hint = 'Try again in a moment.') {
   return `${content} ${hint}`.trim();
 }
 
@@ -28,10 +28,10 @@ export function notifyWarning(content: string) {
   message.warning(content);
 }
 
-export function notifyApiError(error: unknown, fallback = 'Nie udalo sie wykonac operacji.') {
+export function notifyApiError(error: unknown, fallback = 'Operation failed.') {
   notification.error({
-    message: 'Blad API',
-    description: withHint(getErrorMessage(error, fallback), 'Sprawdz dane i polaczenie, a potem sprobuj ponownie.'),
+    message: 'API error',
+    description: withHint(getErrorMessage(error, fallback), 'Check your data and connection, then try again.'),
   });
 }
 
@@ -58,8 +58,8 @@ export function confirmAction(options: {
     modalConfirmHandler({
       title: options.title,
       content: options.content,
-      okText: options.okText ?? 'Potwierdz',
-      cancelText: options.cancelText ?? 'Anuluj',
+      okText: options.okText ?? 'Confirm',
+      cancelText: options.cancelText ?? 'Cancel',
       okButtonProps: { danger: options.danger },
       onOk: async () => {
         await options.onOk();

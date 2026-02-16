@@ -92,7 +92,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
 
-        // preview canvas 260px -> przelicz na przestrzeń obrazu
+        // preview canvas 260px -> convert to image space
         const preview = 260;
         const scaledSize = crop.size / zoom;
         const pxToImg = scaledSize / preview;
@@ -134,7 +134,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
         const blob: Blob | null = await new Promise((resolve) => out.toBlob(resolve, mime, quality));
         if (!blob) return;
         if (blob.size > maxBytes) {
-            notifyWarning(`Zdjęcie po przeskalowaniu jest za duże (${Math.round(blob.size / 1024)}KB). Spróbuj większego przybliżenia lub innego zdjęcia.`);
+            notifyWarning(`Resized image is too large (${Math.round(blob.size / 1024)}KB). Try a tighter crop or a different photo.`);
             return;
         }
         onConfirm(blob);
@@ -142,18 +142,18 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
 
     return (
         <div className="fixed inset-0 z-30">
-            <button aria-label="Zamknij" onClick={onCancel} className="absolute inset-0 bg-black/70" />
+            <button aria-label="Close" onClick={onCancel} className="absolute inset-0 bg-black/70" />
 
             <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
                 <div className="p-4">
                     <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                     <div className="flex items-center justify-between gap-3">
                         <button onClick={onCancel} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300">
-                            <ArrowLeftOutlined /> Wróć
+                            <ArrowLeftOutlined /> Back
                         </button>
                         <div className="min-w-0 flex-1 text-center">
-                            <div className="truncate text-sm font-semibold">Przytnij zdjęcie</div>
-                            <div className="text-[11px] text-zinc-400">Wyjście: {targetSize}×{targetSize}</div>
+                            <div className="truncate text-sm font-semibold">Crop photo</div>
+                            <div className="text-[11px] text-zinc-400">Output: {targetSize}x{targetSize}</div>
                         </div>
                         <div className="w-[72px]" />
                     </div>
@@ -171,7 +171,7 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
                     </div>
 
                     <div className="mt-4">
-                        <label className="block text-xs text-zinc-400">Przybliżenie</label>
+                        <label className="block text-xs text-zinc-400">Zoom</label>
                         <input
                             type="range"
                             min={1}
@@ -185,10 +185,10 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
 
                     <div className="mt-4 flex gap-2">
                         <button onClick={onCancel} className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300">
-                            Anuluj
+                            Cancel
                         </button>
                         <button onClick={() => void confirmCrop()} className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950">
-                            Zapisz zdjęcie
+                            Save photo
                         </button>
                     </div>
                 </div>

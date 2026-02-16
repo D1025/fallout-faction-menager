@@ -14,7 +14,7 @@ export function ratingFromStatUpgrades(
 }
 
 export function ratingFromWeapons(weapons: { ratingBase: number; ratingDelta: number }[]): number {
-    // jeśli bazowy rating broni liczony jest gdzie indziej – uwzględnij tylko delty
+    // if base weapon rating is computed elsewhere, include only deltas
     return weapons.reduce((s, w) => s + (w.ratingDelta ?? 0), 0);
 }
 

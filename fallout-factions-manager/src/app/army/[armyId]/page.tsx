@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
+import { auth } from '@/lib/authServer';
 import { ArmyPageClient } from '@/components/army/ArmyPageClient';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
@@ -13,6 +14,16 @@ function isBonusKey(k: string): k is Exclude<BonusKeys, 'HP'> {
 
 export default async function Page({ params }: { params: Promise<{ armyId: string }> }) {
     const { armyId } = await params;
+    const session = await auth();
+    const userId = session?.user?.id;
+    const userMeta = userId
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: { name: true, role: true, photoEtag: true },
+        })
+        : null;
+    const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
+    const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
     const army = await prisma.army.findUnique({
         where: { id: armyId },
@@ -43,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         },
     });
 
-    if (!army) return <div className="p-4 text-red-300">Nie znaleziono armii.</div>;
+    if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
 
     const rules = await prisma.factionUpgradeRule.findMany({
         where: { factionId: army.factionId },
@@ -79,7 +90,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return acc + sum;
         }, 0);
 
-        // ⬇️ TYLKO dodatnie stat-upy liczą się do ratingu
+        // Only positive stat upgrades count toward rating.
         const statsDelta = u.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc; // ignoruj rany
             const key = up.statKey === 'hp' ? 'hp' : up.statKey;
@@ -147,8 +158,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return {
                 name: t?.name ?? `#${w.templateId.slice(0, 6)}`,
                 selectedProfileIds,
-                baseType: t?.baseType ?? '—',
-                baseTest: t?.baseTest ?? '—',
+                baseType: t?.baseType ?? '-',
+                baseTest: t?.baseTest ?? '-',
                 baseEffects,
                 profiles,
             };
@@ -176,6 +187,9 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     return (
         <ArmyPageClient
             backHref="/"
+            userName={userName}
+            userRole={userRole}
+            userPhotoEtag={userMeta?.photoEtag ?? null}
             armyId={army.id}
             armyName={army.name}
             tier={army.tier}
@@ -187,7 +201,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 tier2: l.tier2 ?? null,
                 tier3: l.tier3 ?? null,
             }))}
-            resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
+            resources={{ caps: army.caps, parts: army.parts, scout: army.scout, reach: army.reach, exp: army.exp, ploys: army.ploys }}
             units={uiUnits}
             rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
             subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}

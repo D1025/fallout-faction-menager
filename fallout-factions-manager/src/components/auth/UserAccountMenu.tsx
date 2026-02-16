@@ -2,7 +2,6 @@
 
 import { Avatar, Button, Dropdown, type MenuProps } from 'antd';
 import { LogoutOutlined, ToolOutlined, UserOutlined } from '@ant-design/icons';
-import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { confirmAction } from '@/lib/ui/notify';
 
@@ -21,7 +20,7 @@ export function UserAccountMenu({
         {
             key: 'profile',
             icon: <UserOutlined />,
-            label: 'Profil',
+            label: 'Profile',
         },
         role === 'ADMIN'
             ? {
@@ -33,7 +32,7 @@ export function UserAccountMenu({
         {
             key: 'logout',
             icon: <LogoutOutlined />,
-            label: 'Wyloguj',
+            label: 'Sign out',
             danger: true,
         },
     ];
@@ -53,13 +52,15 @@ export function UserAccountMenu({
         }
         if (selected === 'logout') {
             confirmAction({
-                title: 'Potwierdz wylogowanie',
-                content: 'Czy na pewno chcesz sie wylogowac?',
-                okText: 'Wyloguj',
-                cancelText: 'Anuluj',
+                title: 'Confirm sign out',
+                content: 'Are you sure you want to sign out?',
+                okText: 'Sign out',
+                cancelText: 'Cancel',
                 danger: true,
                 onOk: async () => {
-                    await signOut({ callbackUrl: '/login' });
+                    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+                    router.push('/login');
+                    router.refresh();
                 },
             });
         }
@@ -69,8 +70,8 @@ export function UserAccountMenu({
         <Dropdown menu={{ items, onClick: onSelect }} trigger={['click']} placement="bottomRight">
             <Button
                 type="default"
-                aria-label="Menu konta"
-                title="Menu konta"
+                aria-label="Account menu"
+                title="Account menu"
                 className="ff-ant-btn-icon-mobile ff-account-trigger"
                 icon={
                     <Avatar

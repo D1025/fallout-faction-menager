@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/server/prisma";
 import { verifyPassword } from "@/lib/password";
 
-/* ===== Augmentacja typów ===== */
+/* ===== Module augmentation ===== */
 declare module "next-auth" {
     interface Session {
         user: { id: string; name: string; role: "USER" | "ADMIN"; image?: string | null };
@@ -31,8 +31,8 @@ export const authOptions: AuthOptions = {
         Credentials({
             name: "Login",
             credentials: {
-                name: { label: "Nick", type: "text" },
-                password: { label: "Haslo", type: "password" },
+                name: { label: "Username", type: "text" },
+                password: { label: "Password", type: "password" },
             },
             async authorize(creds): Promise<AppUser | null> {
                 const raw = creds?.name ?? "";

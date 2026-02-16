@@ -8,22 +8,23 @@ import { EntityListItem } from '@/components/ui/antd/EntityListItem';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
 
 const links = [
-    { href: '/admin/factions', label: 'Frakcje', icon: <SettingOutlined className="text-zinc-200" /> },
-    { href: '/admin/subfactions', label: 'Subfrakcje', icon: <AppstoreOutlined className="text-zinc-200" /> },
-    { href: '/admin/templates', label: 'Szablony jednostek', icon: <DeploymentUnitOutlined className="text-zinc-200" /> },
-    { href: '/admin/perks', label: 'Perki', icon: <ToolOutlined className="text-zinc-200" /> },
-    { href: '/admin/weapons', label: 'Broń i zestawy', icon: <DatabaseOutlined className="text-zinc-200" /> },
-    { href: '/admin/effects', label: 'Efekty broni', icon: <SettingOutlined className="text-zinc-200" /> },
+    { href: '/admin/factions', label: 'Factions', icon: <SettingOutlined className="text-zinc-200" /> },
+    { href: '/admin/subfactions', label: 'Subfactions', icon: <AppstoreOutlined className="text-zinc-200" /> },
+    { href: '/admin/home-turf', label: 'Home Turf rules', icon: <SettingOutlined className="text-zinc-200" /> },
+    { href: '/admin/templates', label: 'Unit templates', icon: <DeploymentUnitOutlined className="text-zinc-200" /> },
+    { href: '/admin/perks', label: 'Perks', icon: <ToolOutlined className="text-zinc-200" /> },
+    { href: '/admin/weapons', label: 'Weapons and loadouts', icon: <DatabaseOutlined className="text-zinc-200" /> },
+    { href: '/admin/effects', label: 'Weapon effects', icon: <SettingOutlined className="text-zinc-200" /> },
 ];
 
 export default async function AdminHome() {
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Brak uprawnień.</div>;
+    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Access denied.</div>;
 
     return (
-        <MobilePageShell title="Panel admina" backHref="/">
+        <MobilePageShell title="Admin panel" backHref="/">
             <SectionCard>
-                <p className="text-sm vault-muted">Zarządzaj słownikami i konfiguracją zasad armii. Widok zoptymalizowany pod smartfony.</p>
+                <p className="text-sm vault-muted">Manage dictionaries and army rule configuration. Optimized for mobile screens.</p>
             </SectionCard>
             <div className="mt-3 grid gap-2">
                 {links.map((x) => (

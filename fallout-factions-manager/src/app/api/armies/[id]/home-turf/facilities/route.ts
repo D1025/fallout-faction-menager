@@ -16,7 +16,11 @@ async function canWrite(armyId: string, userId: string) {
     return Boolean(share);
 }
 
-const BodySchema = z.object({ name: z.string().min(1).max(500) });
+const PostSchema = z.object({ name: z.string().min(1).max(500) });
+const PatchSchema = z.object({
+    facilityId: z.string().cuid(),
+    selected: z.boolean(),
+});
 
 export async function POST(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
@@ -27,12 +31,11 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     if (!(await canWrite(id, userId))) return new Response('FORBIDDEN', { status: 403 });
 
     const body = await req.json().catch(() => null);
-    const parsed = BodySchema.safeParse(body);
+    const parsed = PostSchema.safeParse(body);
     if (!parsed.success) {
         return new Response(JSON.stringify(parsed.error.flatten()), { status: 400 });
     }
 
-    // Upewnij się, że turf istnieje
     const turf = await prisma.homeTurf.upsert({
         where: { armyId: id },
         update: {},
@@ -45,4 +48,66 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     });
 
     return new Response(JSON.stringify(fac), { status: 201 });
+}
+
+export async function PATCH(req: Request, ctx: AsyncCtx) {
+    const { id } = await ctx.params;
+
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) return new Response('UNAUTHORIZED', { status: 401 });
+    if (!(await canWrite(id, userId))) return new Response('FORBIDDEN', { status: 403 });
+
+    const body = await req.json().catch(() => null);
+    const parsed = PatchSchema.safeParse(body);
+    if (!parsed.success) {
+        return new Response(JSON.stringify(parsed.error.flatten()), { status: 400 });
+    }
+
+    const def = await prisma.homeFacilityDefinition.findUnique({
+        where: { id: parsed.data.facilityId },
+        select: { id: true, name: true },
+    });
+    if (!def) return new Response(JSON.stringify({ error: 'FACILITY_NOT_FOUND' }), { status: 404 });
+
+    const turf = await prisma.homeTurf.upsert({
+        where: { armyId: id },
+        update: {},
+        create: { armyId: id, hazard: '' },
+        select: { id: true },
+    });
+
+    if (parsed.data.selected) {
+        const existing = await prisma.homeFacility.findFirst({
+            where: { turfId: turf.id, facilityDefId: def.id },
+            select: { id: true },
+        });
+        if (!existing) {
+            await prisma.homeFacility.create({
+                data: {
+                    turfId: turf.id,
+                    name: def.name,
+                    facilityDefId: def.id,
+                },
+            });
+        }
+    } else {
+        await prisma.homeFacility.deleteMany({
+            where: {
+                turfId: turf.id,
+                facilityDefId: def.id,
+            },
+        });
+    }
+
+    const selectedRows = await prisma.homeFacility.findMany({
+        where: { turfId: turf.id, facilityDefId: { not: null } },
+        select: { facilityDefId: true },
+    });
+
+    const selectedFacilityIds = Array.from(
+        new Set(selectedRows.map((row) => row.facilityDefId).filter((v): v is string => Boolean(v))),
+    );
+
+    return new Response(JSON.stringify({ selectedFacilityIds }), { status: 200 });
 }

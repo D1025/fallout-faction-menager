@@ -9,7 +9,7 @@ import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 export default async function WeaponsAdminPage() {
     const raw = await prisma.weaponTemplate.findMany({
         include: {
-            baseEffects: { include: { effect: true } }, // <-- bazowe efekty
+            baseEffects: { include: { effect: true } }, // <-- base effects
             profiles: {
                 include: { effects: { include: { effect: true } } },
                 orderBy: { order: 'asc' },
@@ -28,7 +28,7 @@ export default async function WeaponsAdminPage() {
         baseParts: w.baseParts ?? null,
         baseRating: w.baseRating ?? null,
 
-        // mapowanie bazowych efektów z efektami słownikowymi
+        // map base effects with dictionary effects
         baseEffects: (w.baseEffects ?? []).map((be) => ({
             effectId: be.effectId,
             valueInt: be.valueInt ?? null,
@@ -42,7 +42,7 @@ export default async function WeaponsAdminPage() {
             },
         })),
 
-        // profile: z id + wszystkie efekty z wpiętym obiektem effect
+        // profiles: id + all effects with attached effect object
         profiles: w.profiles.map((p) => ({
             id: p.id,
             order: p.order ?? 0,
@@ -67,7 +67,7 @@ export default async function WeaponsAdminPage() {
     }));
 
     return (
-        <MobilePageShell title="Broń (admin)" backHref="/admin">
+        <MobilePageShell title="Weapons (admin)" backHref="/admin">
             <AdminWeaponsClient initial={list} />
         </MobilePageShell>
     );

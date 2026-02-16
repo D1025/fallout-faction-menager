@@ -25,21 +25,21 @@ declare module "next-auth/jwt" {
     }
 }
 
-/* ===== Nasz user ===== */
+/* ===== App user ===== */
 type AppUser = {
     id: string;
     name: string;
     role: "USER" | "ADMIN";
 };
 
-/* ===== Konfiguracja NextAuth ===== */
+/* ===== NextAuth config ===== */
 const nextAuth = NextAuth({
     providers: [
         Credentials({
             name: "Login",
             credentials: {
-                name: { label: "Nick", type: "text" },
-                password: { label: "Haslo", type: "password" },
+                name: { label: "Username", type: "text" },
+                password: { label: "Password", type: "password" },
             },
             async authorize(creds): Promise<AppUser | null> {
                 const raw = creds?.name ?? "";
@@ -85,7 +85,7 @@ const nextAuth = NextAuth({
     secret: process.env.NEXTAUTH_SECRET,
 });
 
-/* ===== Eksporty zgodne z App Router ===== */
+/* ===== App Router exports ===== */
 export const { handlers, auth, signIn, signOut } = nextAuth;
-/** Bezpośrednie eksporty metod HTTP do re-exportu w route.ts */
+/** Direct HTTP method exports for route.ts re-export */
 export const { GET, POST } = handlers;

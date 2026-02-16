@@ -1,7 +1,7 @@
 // src/components/army/UnitClient.tsx
 'use client';
 
-import { CheckOutlined, CloseOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
@@ -110,7 +110,6 @@ export function UnitClient({
     }, [temporaryLeader]);
 
     async function saveTemporaryLeader(next: boolean) {
-        if (!isLeader) return;
         const prev = tmpLeader;
         setTmpLeader(next);
         const res = await fetch(`/api/units/${unitId}/temporary-leader`, {
@@ -120,13 +119,13 @@ export function UnitClient({
         }).catch(() => null);
         if (!res || !res.ok) {
             setTmpLeader(prev);
-            notifyApiError('Nie udało się zapisać Temporary Leader.');
+            notifyApiError('Failed to save Crew Leader.');
             return;
         }
         router.refresh();
     }
 
-    // cache-busting: po zmianie zdjÄ™cia przeglÄ…darka potrafi trzymaÄ‡ stary obraz z cache
+    // cache-busting: after photo updates, the browser may keep an old image from cache
     const [photoBuster, setPhotoBuster] = useState<number>(0);
     useEffect(() => {
         setPhotoBuster(Date.now());
@@ -139,7 +138,7 @@ export function UnitClient({
         setPhotoMissing(false);
     }, [photoBuster, unitId]);
 
-    // ===== ĹÄ…czne bonusy z ulepszeĹ„ (w tym rany â€“ ujemne) =====
+    // ===== Combined upgrade bonuses (including negative wounds) =====
     const bonus = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const u of upgrades) {
@@ -168,12 +167,13 @@ export function UnitClient({
         return names.includes('ALL THE TOYS');
     }, [startPerkNames]);
 
-    // ===== Perki (lista do dodawania) =====
+    // ===== Perks (addable list) =====
     const [perks, setPerks] = useState<Perk[]>([]);
     const [perkPickerOpen, setPerkPickerOpen] = useState(false);
     const [perkSearch, setPerkSearch] = useState('');
     const [perkCategory, setPerkCategory] = useState<'ALL' | SpecialStatKey>('ALL');
     const [perkSort, setPerkSort] = useState<'CATEGORY' | 'NAME' | 'REQ_ASC' | 'REQ_DESC'>('CATEGORY');
+    const [perkOnlyMeetingReq, setPerkOnlyMeetingReq] = useState(false);
     const [addingPerkId, setAddingPerkId] = useState<string | null>(null);
     useEffect(() => {
         (async () => {
@@ -216,6 +216,9 @@ export function UnitClient({
         if (perkCategory !== 'ALL') {
             list = list.filter((p) => p.statKey === perkCategory);
         }
+        if (perkOnlyMeetingReq) {
+            list = list.filter((p) => p.meetsRequirement);
+        }
         const q = perkSearch.trim().toLowerCase();
         if (q) {
             list = list.filter((p) => p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q));
@@ -238,7 +241,7 @@ export function UnitClient({
             return a.name.localeCompare(b.name, 'pl');
         });
         return out;
-    }, [specialPerks, perkCategory, perkSearch, perkSort]);
+    }, [specialPerks, perkCategory, perkOnlyMeetingReq, perkSearch, perkSort]);
 
     // ===== Akcje =====
     async function setProfiles(weaponInstanceId: string, profileIds: string[]) {
@@ -248,7 +251,7 @@ export function UnitClient({
             body: JSON.stringify({ profileIds }),
         });
         if (!res.ok) {
-            notifyApiError('Nie udało się zmienić profili');
+            notifyApiError('Failed to change profiles');
             return false;
         }
         return true;
@@ -261,10 +264,10 @@ export function UnitClient({
         const res = await fetch(`/api/units/${unitId}/upgrades`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // moĹĽe byÄ‡ ujemny
+            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // can be negative
         });
         if (!res.ok) {
-            notifyApiError('Nie udało się dodać ulepszenia');
+            notifyApiError('Failed to add ulepszenia');
             return;
         }
         location.reload();
@@ -273,7 +276,7 @@ export function UnitClient({
     async function deleteUpgrade(upgradeId: string) {
         const res = await fetch(`/api/units/${unitId}/upgrades/${upgradeId}`, { method: 'DELETE' });
         if (!res.ok) {
-            notifyApiError('Nie udało się cofnąć ulepszenia');
+            notifyApiError('Failed to revert ulepszenia');
             return;
         }
         location.reload();
@@ -283,15 +286,15 @@ export function UnitClient({
         if (!nextPerkId) return;
         const selected = specialPerks.find((p) => p.id === nextPerkId);
         if (!selected) {
-            notifyWarning('Nie znaleziono wybranego perka.');
+            notifyWarning('Selected perk not found.');
             return;
         }
         if (!selected.meetsRequirement) {
-            notifyWarning(`Wymaganie niespelnione: ${selected.statKey} ${selected.minValue} (masz ${selected.currentValue}).`);
+            notifyWarning(`Requirement not met: ${selected.statKey} ${selected.minValue} (you have ${selected.currentValue}).`);
             return;
         }
         if (selected.requiresValue) {
-            notifyWarning('Ten perk wymaga wartosci - na razie nieobslugiwane dla chosenPerkIds.');
+            notifyWarning('This perk requires a value - currently unsupported for chosenPerkIds.');
             return;
         }
 
@@ -303,7 +306,7 @@ export function UnitClient({
                 body: JSON.stringify({ perkId: nextPerkId }),
             });
             if (!res.ok) {
-                notifyApiError('Nie udalo sie dodac perka');
+                notifyApiError('Failed to add perk');
                 return;
             }
             setPerkPickerOpen(false);
@@ -321,13 +324,13 @@ export function UnitClient({
         });
         if (!res.ok) {
             const t = await res.text().catch(() => '');
-            notifyApiError(t || 'Nie udało się™ usunąć perka');
+            notifyApiError(t || 'Failed to delete perk');
             return;
         }
         location.reload();
     }
 
-    /* ===== SPECIAL kompakt z poprawnym +/â’ ===== */
+    /* ===== Compact SPECIAL with correct +/- ===== */
     function renderSpecialCompact() {
         const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
         const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
@@ -363,7 +366,7 @@ export function UnitClient({
         );
     }
 
-    /* ===== helper do efektĂłw: X â†’ valueInt ===== */
+    /* ===== effect helper: X -> valueInt ===== */
     function formatEffect(name: string, valueInt: number | null, valueText?: string | null): string {
         let out = name;
         if (valueInt != null) {
@@ -401,7 +404,7 @@ export function UnitClient({
         return <span>{label}</span>;
     }
 
-    /* ===== Karta broni ===== */
+    /* ===== Weapon card ===== */
     function WeaponCard({ w }: { w: WeaponUI }) {
         const [selected, setSelected] = useState<string[]>(w.selectedProfileIds);
 
@@ -524,7 +527,7 @@ export function UnitClient({
                     <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
                 <div className="mt-1 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                    <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'max-w-full overflow-x-auto'}>
+                    <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
                         <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                             <thead>
                                 <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
@@ -567,8 +570,8 @@ export function UnitClient({
                                                                     ? 'border-emerald-500/50 bg-emerald-700/40 text-emerald-100'
                                                                     : 'border-emerald-500/50 bg-emerald-500 text-emerald-950')
                                                             }
-                                                            title={isSel ? 'Cofnij ulepszenie' : 'Dodaj ulepszenie'}
-                                                            aria-label={isSel ? 'Cofnij ulepszenie' : 'Dodaj ulepszenie'}
+                                                            title={isSel ? 'Revert upgrade' : 'Apply upgrade'}
+                                                            aria-label={isSel ? 'Revert upgrade' : 'Apply upgrade'}
                                                         >
                                                             {isSel ? <CheckOutlined /> : <PlusOutlined />}
                                                         </button>
@@ -613,9 +616,9 @@ export function UnitClient({
 
     async function deletePhoto() {
         confirmAction({
-            title: 'Usunąć zdjęcie jednostki?',
-            okText: 'Usuń',
-            cancelText: 'Anuluj',
+            title: 'Delete this unit photo?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
                 setUploadingPhoto(true);
@@ -624,7 +627,7 @@ export function UnitClient({
                     if (!res.ok) throw new Error(await res.text());
                     router.refresh();
                 } catch {
-                    notifyApiError('Nie udało się usunąć zdjęcia jednostki.');
+                    notifyApiError('Failed to delete unit photo.');
                     throw new Error('delete photo failed');
                 } finally {
                     setUploadingPhoto(false);
@@ -650,7 +653,12 @@ export function UnitClient({
                                 onError={() => setPhotoMissing(true)}
                             />
                         ) : (
-                            <div className="grid h-full w-full place-items-center text-xs text-zinc-500">Brak zdjÄ™cia</div>
+                            <div className="grid h-full w-full place-items-center text-zinc-500">
+                                <div className="flex flex-col items-center gap-1">
+                                    <UserOutlined className="text-base" />
+                                    <span className="text-[10px]">No photo</span>
+                                </div>
+                            </div>
                         )}
                     </div>
 
@@ -665,25 +673,23 @@ export function UnitClient({
                             ) : null}
                             {tmpLeader ? (
                                 <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
-                                    TEMP LEADER
+                                    CREW LEADER
                                 </span>
                             ) : null}
                         </div>
 
-                        {isLeader ? (
-                            <div className="mt-2">
-                                <label className="flex items-center gap-2 text-xs text-zinc-200">
-                                    <input type="checkbox" checked={tmpLeader} onChange={(e) => void saveTemporaryLeader(e.target.checked)} />
-                                    <span>Temporary Leader</span>
-                                </label>
-                            </div>
-                        ) : null}
+                        <div className="mt-2">
+                            <label className="flex items-center gap-2 text-xs text-zinc-200">
+                                <input type="checkbox" checked={tmpLeader} onChange={(e) => void saveTemporaryLeader(e.target.checked)} />
+                                <span>Crew Leader</span>
+                            </label>
+                        </div>
 
-                        <div className="mt-1 text-[11px] text-zinc-400">ZdjÄ™cie jest przypisane do tej instancji w armii.</div>
+                        <div className="mt-1 text-[11px] text-zinc-400">This photo is assigned to this unit instance in the army.</div>
 
                         <div className="mt-2 flex flex-wrap gap-2">
                             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
-                                {uploadingPhoto ? 'Wysyłanie…' : (photoMissing ? 'Zrób / dodaj zdjęcie' : 'Zmień zdjęcie')}
+                                {uploadingPhoto ? 'Uploading...' : (photoMissing ? 'Take / add photo' : 'Change photo')}
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -695,14 +701,14 @@ export function UnitClient({
                                         e.currentTarget.value = '';
                                         if (!file) return;
 
-                                        // wejĹ›ciowa walidacja (zanim otworzymy crop)
+                                        // input validation (before opening crop modal)
                                         const allowed = ['image/jpeg', 'image/png', 'image/webp'];
                                         if (!allowed.includes(file.type)) {
-                                             notifyWarning('Obsługiwane formaty: JPG/PNG/WebP');
+                                             notifyWarning('Supported formats: JPG/PNG/WebP');
                                             return;
                                         }
                                         if (file.size > 2 * 1024 * 1024) {
-                                            notifyWarning('Plik za duży. Wybierz zdjęcie do 2MB.');
+                                            notifyWarning('File too large. Select a photo up to 2MB.');
                                             return;
                                         }
 
@@ -718,7 +724,7 @@ export function UnitClient({
                                     disabled={uploadingPhoto}
                                     className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
                                 >
-                                    Usuń
+                                    Delete
                                 </button>
                             )}
                         </div>
@@ -726,7 +732,7 @@ export function UnitClient({
                 </div>
             </section>
 
-            {/* NagĹ‚Ăłwek + SPECIAL */}
+            {/* Header + SPECIAL */}
             <section className="mt-3 vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 font-semibold truncate">{name}</div>
@@ -742,22 +748,22 @@ export function UnitClient({
                 <div className="mt-3">{renderSpecialCompact()}</div>
             </section>
 
-            {/* BroĹ„ */}
+            {/* Weapon */}
             <section className="mt-4">
-                <div className="text-sm font-medium">Broń</div>
+                <div className="text-sm font-medium">Weapon</div>
                 <div className="mt-2 grid gap-3">
                     {weapons.map((w) => (
                         <WeaponCard key={w.id} w={w} />
                     ))}
-                    {weapons.length === 0 && <div className="text-zinc-500">Brak broni</div>}
+                    {weapons.length === 0 && <div className="text-zinc-500">No weapons</div>}
                 </div>
             </section>
 
-            {/* Ulepszenia (+ Rany) */}
+            {/* Upgrades (+ Wounds) */}
             <section className="mt-4 vault-panel p-3">
-                <div className="text-sm font-medium">Ulepszenia</div>
+                <div className="text-sm font-medium">Upgrades</div>
 
-                {/* Panel dodawania â€“ pozwala na wartoĹ›ci ujemne */}
+                {/* Add panel - supports negative values */}
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select
                         value={upStat}
@@ -777,7 +783,7 @@ export function UnitClient({
                             setUpDelta(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)
                         }
                         className="w-24 vault-input px-2 py-1 text-right"
-                        placeholder="np. -1, 2"
+                        placeholder="e.g. -1, 2"
                     />
                     <div className="flex gap-1">
                         {[-3, -2, -1, +1, +2, +3].map((d) => (
@@ -788,22 +794,22 @@ export function UnitClient({
                                     'rounded-lg border px-2 py-1 text-xs ' +
                                     (d < 0 ? 'border-red-700/60 bg-red-900/20 text-red-300' : 'border-emerald-700/60 bg-emerald-900/20 text-emerald-300')
                                 }
-                                title={d < 0 ? 'Rana (ujemny modyfikator)' : 'Ulepszenie (dodatni)'}
+                                title={d < 0 ? 'Wound (negative modifier)' : 'Upgrade (positive)'}
                             >
                                 {d > 0 ? `+${d}` : d}
                             </button>
                         ))}
                     </div>
                     <button onClick={() => void addUpgrade()} className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950">
-                        Dodaj
+                        Add
                     </button>
                 </div>
 
                 <div className="mt-2 text-[11px] text-zinc-500">
-                    * Ujemne modyfikacje (rany) <span className="text-red-400 font-medium">nie wliczają się do ratingu</span>.
+                    * Negative modifiers (wounds) <span className="text-red-400 font-medium">are not counted toward rating</span>.
                 </div>
 
-                {/* Listy: dodatnie / zerowe */}
+                {/* Positive/zero list */}
                 <div className="mt-3 grid gap-1 text-xs text-zinc-300">
                     {upgrades.filter((u) => u.delta >= 0).map((u) => (
                         <div
@@ -813,26 +819,26 @@ export function UnitClient({
                             <div>
                                 <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
                                 {u.delta > 0 ? `+${u.delta}` : u.delta}
-                                <span className="text-zinc-500"> • {new Date(u.at).toLocaleString()}</span>
+                                <span className="text-zinc-500"> | {new Date(u.at).toLocaleString()}</span>
                             </div>
                             <button
                                 onClick={() => void deleteUpgrade(u.id)}
                                 className="rounded-md border border-zinc-700 px-2 py-0.5 text-zinc-200 hover:bg-zinc-800"
-                                aria-label="Cofnij ulepszenie"
-                                title="Cofnij"
+                                aria-label="Revert upgrade"
+                                title="Revert"
                             >
-                                Cofnij
+                                Revert
                             </button>
                         </div>
                     ))}
                     {upgrades.filter((u) => u.delta >= 0).length === 0 && (
-                        <div className="text-zinc-500">Brak dodatnich ulepszeń</div>
+                        <div className="text-zinc-500">No positive upgrades</div>
                     )}
                 </div>
 
-                {/* Rany (ujemne) */}
+                {/* Wounds (negative) */}
                 <div className="mt-4">
-                    <div className="text-sm font-medium text-red-300">Rany (ujemne)</div>
+                    <div className="text-sm font-medium text-red-300">Wounds (negative)</div>
                     <div className="mt-2 grid gap-1 text-xs">
                         {upgrades.filter((u) => u.delta < 0).map((u) => (
                             <div
@@ -841,33 +847,33 @@ export function UnitClient({
                             >
                                 <div>
                                     <span className="font-semibold">{u.statKey.toUpperCase()}</span> {u.delta}
-                                    <span className="ml-1 text-red-300/70">• {new Date(u.at).toLocaleString()}</span>
+                                    <span className="ml-1 text-red-300/70">| {new Date(u.at).toLocaleString()}</span>
                                 </div>
                                 <button
                                     onClick={() => void deleteUpgrade(u.id)}
                                     className="rounded-md border border-red-700/70 px-2 py-0.5 hover:bg-red-900/30"
-                                    aria-label="Usuń ranę"
-                                    title="Cofnij"
+                                    aria-label="Delete wound"
+                                    title="Revert"
                                 >
-                                    Cofnij
+                                    Revert
                                 </button>
                             </div>
                         ))}
                         {upgrades.filter((u) => u.delta < 0).length === 0 && (
-                            <div className="text-zinc-500">Brak ran</div>
+                            <div className="text-zinc-500">No wounds</div>
                         )}
                     </div>
                 </div>
             </section>
 
-            {/* Perki */}
+            {/* Perks */}
             <section className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium">Perki</div>
-                    <div className="text-[11px] text-zinc-500">Posiadane: {(ownedPerks ?? []).length}</div>
+                    <div className="text-sm font-medium">Perks</div>
+                    <div className="text-[11px] text-zinc-500">Owned: {(ownedPerks ?? []).length}</div>
                 </div>
 
-                {/* Lista posiadanych */}
+                {/* Owned perks list */}
                 <div className="mt-2 grid gap-2">
                     {(ownedPerks ?? []).map((p) => (
                         <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
@@ -880,9 +886,9 @@ export function UnitClient({
                                         type="button"
                                         onClick={() => void removePerk(p.id)}
                                         className="shrink-0 rounded-lg border border-red-700/70 bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30"
-                                        title="Usuń perk"
+                                        title="Delete perk"
                                     >
-                                        Usuń
+                                        Delete
                                     </button>
                                 ) : (
                                     <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
@@ -890,23 +896,23 @@ export function UnitClient({
                                     </span>
                                 )}
                             </div>
-                            <div className="mt-1 text-sm text-zinc-300 whitespace-pre-wrap">{p.description || 'â€”'}</div>
+                            <div className="mt-1 text-sm text-zinc-300 whitespace-pre-wrap">{p.description || '-'}</div>
                         </div>
                     ))}
-                    {(ownedPerks ?? []).length === 0 && <div className="text-sm text-zinc-500">Brak perkĂłw.</div>}
+                    {(ownedPerks ?? []).length === 0 && <div className="text-sm text-zinc-500">No perks.</div>}
                 </div>
 
                 {/* Dodawanie */}
                 <div className="mt-4 flex items-center justify-between gap-2">
                     <div className="text-[11px] text-zinc-500">
-                        Dostepne SPECIAL: <span className="font-semibold text-zinc-300">{specialPerks.length}</span>
+                        Available SPECIAL: <span className="font-semibold text-zinc-300">{specialPerks.length}</span>
                     </div>
                     <button
                         type="button"
                         onClick={() => setPerkPickerOpen(true)}
                         className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950"
                     >
-                        Dodaj perk
+                        Add perk
                     </button>
                 </div>
             </section>
@@ -914,7 +920,7 @@ export function UnitClient({
             {perkPickerOpen && (
                 <div className="fixed inset-0 z-30 overflow-x-hidden">
                     <button
-                        aria-label="Zamknij"
+                        aria-label="Close"
                         onClick={() => setPerkPickerOpen(false)}
                         className="absolute inset-0 bg-black/60"
                     />
@@ -924,14 +930,14 @@ export function UnitClient({
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                             <div className="flex items-start justify-between gap-2">
                                 <div>
-                                    <div className="text-sm font-semibold">Dodaj perk SPECIAL</div>
-                                    <div className="mt-0.5 text-[11px] text-zinc-400">Wyszukuj, filtruj i dodawaj perki z wymaganiami SPECIAL.</div>
+                                    <div className="text-sm font-semibold">Add perk SPECIAL</div>
+                                    <div className="mt-0.5 text-[11px] text-zinc-400">Search, filter and add perks with SPECIAL requirements.</div>
                                 </div>
                                 <button
                                     onClick={() => setPerkPickerOpen(false)}
                                     className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
                                 >
-                                    Zamknij
+                                    Close
                                 </button>
                             </div>
 
@@ -942,13 +948,13 @@ export function UnitClient({
                                         value={perkSearch}
                                         onChange={(e) => setPerkSearch(e.target.value)}
                                         className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                                        placeholder="Szukaj perka..."
+                                        placeholder="Search perk..."
                                     />
                                     {perkSearch && (
                                         <button
                                             onClick={() => setPerkSearch('')}
                                             className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
-                                            aria-label="Wyczysc"
+                                            aria-label="Clear"
                                         >
                                             <CloseOutlined />
                                         </button>
@@ -971,13 +977,13 @@ export function UnitClient({
                                                     : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                                             }
                                         >
-                                            {k === 'ALL' ? 'Wszystkie' : k}
+                                            {k === 'ALL' ? 'All' : k}
                                         </button>
                                     );
                                 })}
                             </div>
 
-                            <div className="mt-3 flex items-center gap-2">
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <select
                                     value={perkSort}
                                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -985,18 +991,27 @@ export function UnitClient({
                                     }
                                     className="vault-input px-2 py-1 text-xs"
                                 >
-                                    <option value="CATEGORY">Sort: kategorie SPECIAL</option>
-                                    <option value="REQ_ASC">Sort: wymaganie rosnaco</option>
-                                    <option value="REQ_DESC">Sort: wymaganie malejaco</option>
-                                    <option value="NAME">Sort: nazwa A-Z</option>
+                                    <option value="CATEGORY">Sort: SPECIAL category</option>
+                                    <option value="REQ_ASC">Sort: requirement ascending</option>
+                                    <option value="REQ_DESC">Sort: requirement descending</option>
+                                    <option value="NAME">Sort: name A-Z</option>
                                 </select>
+                                <label className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={perkOnlyMeetingReq}
+                                        onChange={(e) => setPerkOnlyMeetingReq(e.target.checked)}
+                                        className="h-3.5 w-3.5 accent-emerald-500"
+                                    />
+                                    Only perks meeting requirements
+                                </label>
                                 <div className="text-[11px] text-zinc-500">
-                                    Wyniki: <span className="font-semibold text-zinc-300">{filteredPerks.length}</span>
+                                    Results: <span className="font-semibold text-zinc-300">{filteredPerks.length}</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                        <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
                             <div className="grid gap-2">
                                 {filteredPerks.map((p) => {
                                     const canAdd = p.meetsRequirement && !p.requiresValue && addingPerkId == null;
@@ -1006,7 +1021,7 @@ export function UnitClient({
                                                 <div className="min-w-0">
                                                     <div className="font-medium">{p.name}</div>
                                                     <div className="mt-1 text-[11px] text-zinc-400">
-                                                        Wymaganie: {p.statKey} {p.minValue} • Masz: {p.currentValue}
+                                                        Requirement: {p.statKey} {p.minValue} | Current: {p.currentValue}
                                                     </div>
                                                 </div>
                                                 <button
@@ -1020,22 +1035,22 @@ export function UnitClient({
                                                             : 'border border-zinc-700 bg-zinc-900 text-zinc-500')
                                                     }
                                                 >
-                                                    {addingPerkId === p.id ? 'Dodawanie...' : 'Dodaj'}
+                                                    {addingPerkId === p.id ? 'Adding...' : 'Add'}
                                                 </button>
                                             </div>
-                                            <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{p.description || '—'}</div>
+                                            <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-300">{p.description || '-'}</div>
                                             {p.requiresValue ? (
-                                                <div className="mt-2 text-xs text-amber-300">Ten perk wymaga valueInt (jeszcze nieobslugiwane).</div>
+                                                <div className="mt-2 text-xs text-amber-300">This perk requires valueInt (not supported yet).</div>
                                             ) : null}
                                             {!p.meetsRequirement ? (
-                                                <div className="mt-2 text-xs text-red-300">Niespelnione wymaganie SPECIAL.</div>
+                                                <div className="mt-2 text-xs text-red-300">SPECIAL requirement not met.</div>
                                             ) : null}
                                         </div>
                                     );
                                 })}
                                 {filteredPerks.length === 0 ? (
                                     <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
-                                        Brak perkow dla aktualnych filtrow.
+                                        No perks for current filters.
                                     </div>
                                 ) : null}
                             </div>

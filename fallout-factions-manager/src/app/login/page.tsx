@@ -3,13 +3,20 @@
 import { Suspense, useMemo, useState } from 'react';
 import { Button, Card, Input, Segmented, Typography } from 'antd';
 import { LockOutlined, LoginOutlined, UserAddOutlined, UserOutlined } from '@ant-design/icons';
-import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { LoadingState } from '@/components/ui/antd/ScreenStates';
+import { hashPasswordForTransport } from '@/lib/auth/passwordTransportClient';
 import { notifyError, notifySuccess } from '@/lib/ui/notify';
 
 type Mode = 'login' | 'register';
+
+function isPasswordPolicyValid(password: string): boolean {
+    if (password.length < 8 || password.length > 128) return false;
+    if (!/[A-Za-z]/.test(password)) return false;
+    if (!/[0-9]/.test(password)) return false;
+    return true;
+}
 
 export default function LoginPage() {
     return (
@@ -37,9 +44,20 @@ function LoginForm() {
 
     const canLogin = useMemo(() => loginName.trim().length >= 3 && loginPassword.length >= 8, [loginName, loginPassword]);
     const canRegister = useMemo(
-        () => registerName.trim().length >= 3 && registerPassword.length >= 8 && registerPasswordRepeat.length >= 8,
+        () => registerName.trim().length >= 3 && isPasswordPolicyValid(registerPassword) && registerPasswordRepeat.length >= 8,
         [registerName, registerPassword, registerPasswordRepeat],
     );
+
+    async function readApiError(res: Response, fallback: string): Promise<string> {
+        const text = await res.text().catch(() => '');
+        if (!text) return fallback;
+        try {
+            const parsed = JSON.parse(text) as { error?: string };
+            return parsed.error || fallback;
+        } catch {
+            return text || fallback;
+        }
+    }
 
     async function submitLogin(e: React.FormEvent) {
         e.preventDefault();
@@ -47,16 +65,22 @@ function LoginForm() {
 
         setBusy(true);
         try {
-            const res = await signIn('credentials', {
-                name: loginName.trim(),
-                password: loginPassword,
-                redirect: false,
+            const passwordHash = await hashPasswordForTransport(loginPassword);
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: loginName.trim(),
+                    passwordHash,
+                }),
             });
-            if (res?.ok) {
+            if (res.ok) {
                 router.push(next);
                 return;
             }
-            notifyError('Logowanie nieudane. Sprawdz login i haslo.');
+            notifyError(await readApiError(res, 'Login failed. Check your username and password.'));
+        } catch {
+            notifyError('Secure password hashing failed. Try again.');
         } finally {
             setBusy(false);
         }
@@ -67,42 +91,43 @@ function LoginForm() {
         if (!canRegister || busy) return;
 
         if (registerPassword !== registerPasswordRepeat) {
-            notifyError('Hasla nie sa takie same.');
+            notifyError('Passwords do not match.');
+            return;
+        }
+        if (!isPasswordPolicyValid(registerPassword)) {
+            notifyError('Password must be 8-128 chars and include at least one letter and one digit.');
             return;
         }
 
         setBusy(true);
         try {
+            const registerPasswordHash = await hashPasswordForTransport(registerPassword);
             const registerRes = await fetch('/api/auth/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     name: registerName.trim(),
-                    password: registerPassword,
+                    passwordHash: registerPasswordHash,
                 }),
             });
 
             if (!registerRes.ok) {
-                const errorText = await registerRes.text().catch(() => '');
-                let errorMessage = 'Nie udalo sie utworzyc konta.';
-                try {
-                    const parsed = JSON.parse(errorText) as { error?: string };
-                    if (parsed?.error) errorMessage = parsed.error;
-                } catch {
-                    if (errorText) errorMessage = errorText;
-                }
-                notifyError(errorMessage);
+                notifyError(await readApiError(registerRes, 'Failed to create account.'));
                 return;
             }
 
-            notifySuccess('Konto zostalo utworzone.');
-            const signInRes = await signIn('credentials', {
-                name: registerName.trim(),
-                password: registerPassword,
-                redirect: false,
+            notifySuccess('Account created.');
+            const loginPasswordHash = await hashPasswordForTransport(registerPassword);
+            const loginRes = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: registerName.trim(),
+                    passwordHash: loginPasswordHash,
+                }),
             });
-            if (!signInRes?.ok) {
-                notifyError('Konto utworzone, ale nie udalo sie zalogowac. Sprobuj recznie.');
+            if (!loginRes.ok) {
+                notifyError('Account created, but automatic sign-in failed. Please sign in manually.');
                 setMode('login');
                 setLoginName(registerName.trim());
                 setLoginPassword('');
@@ -110,19 +135,21 @@ function LoginForm() {
             }
 
             router.push(next);
+        } catch {
+            notifyError('Secure password hashing failed. Try again.');
         } finally {
             setBusy(false);
         }
     }
 
     return (
-        <MobilePageShell title="Logowanie">
+        <MobilePageShell title="Login">
             <div className="grid place-items-center pt-10">
                 <Card style={{ width: '100%', maxWidth: 400 }}>
                     <Typography.Text type="secondary">Fallout Factions</Typography.Text>
                     <Typography.Title level={4} style={{ marginTop: 8 }}>
                         <LoginOutlined className="mr-2 text-zinc-300" />
-                        Panel dowodcy
+                        Commander panel
                     </Typography.Title>
 
                     <div className="mt-3">
@@ -131,8 +158,8 @@ function LoginForm() {
                             value={mode}
                             onChange={(value) => setMode(value)}
                             options={[
-                                { label: 'Logowanie', value: 'login', icon: <LoginOutlined /> },
-                                { label: 'Rejestracja', value: 'register', icon: <UserAddOutlined /> },
+                                { label: 'Login', value: 'login', icon: <LoginOutlined /> },
+                                { label: 'Register', value: 'register', icon: <UserAddOutlined /> },
                             ]}
                         />
                     </div>
@@ -149,7 +176,7 @@ function LoginForm() {
                             <Input.Password
                                 value={loginPassword}
                                 onChange={(e) => setLoginPassword(e.target.value)}
-                                placeholder="Haslo"
+                                placeholder="Password"
                                 autoComplete="current-password"
                                 prefix={<LockOutlined className="text-zinc-400" />}
                             />
@@ -160,7 +187,7 @@ function LoginForm() {
                                 loading={busy}
                                 icon={<LoginOutlined />}
                             >
-                                Zaloguj
+                                Sign in
                             </Button>
                         </form>
                     ) : (
@@ -168,21 +195,21 @@ function LoginForm() {
                             <Input
                                 value={registerName}
                                 onChange={(e) => setRegisterName(e.target.value)}
-                                placeholder="Nazwa uzytkownika"
+                                placeholder="Username"
                                 autoComplete="username"
                                 prefix={<UserOutlined className="text-zinc-400" />}
                             />
                             <Input.Password
                                 value={registerPassword}
                                 onChange={(e) => setRegisterPassword(e.target.value)}
-                                placeholder="Haslo (min. 8 znakow, litera i cyfra)"
+                                placeholder="Password (min. 8 chars, letter and number)"
                                 autoComplete="new-password"
                                 prefix={<LockOutlined className="text-zinc-400" />}
                             />
                             <Input.Password
                                 value={registerPasswordRepeat}
                                 onChange={(e) => setRegisterPasswordRepeat(e.target.value)}
-                                placeholder="Powtorz haslo"
+                                placeholder="Repeat password"
                                 autoComplete="new-password"
                                 prefix={<LockOutlined className="text-zinc-400" />}
                             />
@@ -193,7 +220,7 @@ function LoginForm() {
                                 loading={busy}
                                 icon={<UserAddOutlined />}
                             >
-                                Utworz konto
+                                Create account
                             </Button>
                         </form>
                     )}

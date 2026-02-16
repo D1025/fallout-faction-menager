@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 export function BackButton({
     fallbackHref,
-    label = 'Wróć',
+    label = 'Back',
     className,
 }: {
     fallbackHref: string;
