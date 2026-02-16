@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { createHash } from 'crypto';
 
@@ -66,7 +66,7 @@ export async function POST(req: Request, ctx: Ctx) {
             photoBytes: buf,
             photoMime: file.type,
             photoEtag: etag,
-            // legacy FS path czyścimy, żeby nie było rozjazdów
+            // Clear legacy FS path to avoid state divergence.
             photoPath: null,
         },
     });

@@ -8,28 +8,28 @@ type SubfactionDelegate = {
     findUnique(args: { where: { id: string }; select: { id: true; factionId: true } }): Promise<{ id: string; factionId: string } | null>;
 };
 
-// Uwaga: po zmianie schema.prisma trzeba uruchomić `prisma generate`.
-// W edytorze mogą być stare typy, więc delegat `subfaction` może chwilowo nie istnieć w typach TS.
+// Note: after schema.prisma changes, run `prisma generate`.
+// Editor types may be stale, so `subfaction` delegate can temporarily be missing in TS types.
 const pSub = prisma as unknown as { subfaction: SubfactionDelegate };
 
 const CreateArmySchema = z.object({
     name: z.string().min(3),
     factionId: z.string(),
     tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-    // NOWE: goalSetId z frontu (opcjonalne, bo bezpieczeństwo)
+    // NEW: goalSetId from frontend (optional, for safety)
     goalSetId: z.string().optional().nullable(),
-    // NOWE: subfrakcja jest opcjonalna
+    // NEW: subfaction is optional
     subfactionId: z.string().optional().nullable(),
 });
 
 async function ensureUserExists(userId: string): Promise<boolean> {
-    // W normalnym flow user jest tworzony w authorize() (Credentials),
-    // ale w praktyce środowiska mogą się rozjechać (inna baza w runtime vs auth).
+    // In normal flow user is created in authorize() (Credentials),
+    // but environments can drift in practice (different DB for runtime vs auth).
     const exists = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (exists) return true;
 
-    // Nie mamy wystarczających danych by stworzyć poprawnego usera (name/role),
-    // więc tylko sygnalizujemy problem.
+    // We do not have enough data to create a correct user (name/role),
+    // so we only signal the problem.
     return false;
 }
 
@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
     }
 
-    // Guard: upewnij się, że user istnieje w tej bazie
+    // Guard: make sure user exists in this database
     const userOk = await ensureUserExists(ownerId);
     if (!userOk) {
         return NextResponse.json(
             {
                 error: 'OWNER_NOT_FOUND',
-                details: 'Nie znaleziono użytkownika ownerId w bazie danych. Zaloguj się ponownie lub sprawdź konfigurację DATABASE_URL/APP_DATABASE_URL.',
+                details: 'ownerId user was not found in the database. Log in again or verify DATABASE_URL/APP_DATABASE_URL configuration.',
             },
             { status: 409 },
         );
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
     const { name, factionId, tier, goalSetId, subfactionId } = parsed.data;
 
-    // jeżeli podano subfactionId – sprawdź, czy istnieje i należy do frakcji
+    // if subfactionId is provided, verify it exists and belongs to faction
     let finalSubfactionId: string | null = null;
     if (subfactionId) {
         const sf = await pSub.subfaction.findUnique({
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         finalSubfactionId = sf.id;
     }
 
-    // jeśli podano goalSetId – sprawdź, czy istnieje i należy do wybranej frakcji
+    // if goalSetId is provided, verify it exists and belongs to selected faction
     let activeGoalSetId: string | null = null;
     if (goalSetId) {
         const set = await prisma.factionGoalSet.findUnique({
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-        // Utwórz armię z aktywnym zestawem (jeśli podano)
+        // Create army with active goal set (if provided)
         const army = await (prisma as unknown as { army: { create: (args: unknown) => Promise<{ id: string; activeGoalSetId: string | null }> } }).army.create({
             data: {
                 name,
@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
             select: { id: true, activeGoalSetId: true },
         });
 
-        // (opcjonalnie) zasiej progress = 0 dla wszystkich celów z wybranego setu
+        // (optional) seed progress = 0 for all goals in selected set
         if (army.activeGoalSetId) {
             const goals = await prisma.factionGoal.findMany({
                 where: { setId: army.activeGoalSetId },
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json(
                 {
                     error: 'FOREIGN_KEY_CONSTRAINT',
-                    details: 'Nie udało się utworzyć armii (foreign key). Najczęściej ownerId z sesji nie istnieje w tej bazie. Sprawdź, czy backend i auth używają tej samej bazy (DATABASE_URL/APP_DATABASE_URL) i zaloguj się ponownie.',
+                    details: 'Failed to create army (foreign key). Most often the ownerId from session does not exist in this database. Verify backend/auth use the same database (DATABASE_URL/APP_DATABASE_URL) and log in again.',
                 },
                 { status: 409 },
             );
@@ -142,7 +142,7 @@ export async function GET() {
     const userId = session?.user?.id;
     if (!userId) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
 
-    // armie które posiadasz lub masz share
+    // armies you own or that are shared with you
     const owned = await prisma.army.findMany({
         where: { ownerId: userId },
         select: { id: true, name: true, factionId: true, tier: true, activeGoalSetId: true },

@@ -4,7 +4,7 @@ export const revalidate = 0;
 
 import { prisma } from "@/server/prisma";
 import { AdminUnitTemplatesClient } from "@/components/AdminUnitTemplatesClient";
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 /** DTO do komponentu klientowego */
 export type FactionDTO = { id: string; name: string };
@@ -126,16 +126,13 @@ export default async function TemplatesAdminPage() {
         .sort((a, b) => (a.isGlobal === b.isGlobal ? a.name.localeCompare(b.name) : a.isGlobal ? -1 : 1));
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <AppHeader title="Szablony jednostek (admin)" backHref="/admin" />
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <AdminUnitTemplatesClient
-                    initial={templates}
-                    factions={factions.map(f => ({ id: f.id, name: f.name ?? "" }))}
-                    perks={perks}
-                    weapons={weapons as WeaponDTO[]}
-                />
-            </main>
-        </div>
+        <MobilePageShell title="Unit templates (admin)" backHref="/admin">
+            <AdminUnitTemplatesClient
+                initial={templates}
+                factions={factions.map(f => ({ id: f.id, name: f.name ?? "" }))}
+                perks={perks}
+                weapons={weapons as WeaponDTO[]}
+            />
+        </MobilePageShell>
     );
 }

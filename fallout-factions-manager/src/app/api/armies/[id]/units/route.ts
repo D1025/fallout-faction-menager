@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
@@ -52,10 +52,10 @@ async function userHasWriteAccess(armyId: string, userId: string): Promise<boole
 }
 
 /**
- * Dodaj jednostkę do armii:
- * - weryfikacja, że optionId należy do wskazanego UnitTemplate (unitTemplateId)
- * - utwórz UnitInstance (selectedOptionId = optionId)
- * - na podstawie option.weapon1Id / option.weapon2Id dodaj 1–2 WeaponInstance
+ * Add a unit to an army:
+ * - validate that optionId belongs to the provided UnitTemplate (unitTemplateId)
+ * - create UnitInstance (selectedOptionId = optionId)
+ * - based on option.weapon1Id / option.weapon2Id create 1-2 WeaponInstance rows
  */
 
 export async function POST(req: Request, ctx: AsyncCtx) {

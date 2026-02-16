@@ -1,4 +1,4 @@
-import { prisma } from '@/server/prisma';
+﻿import { prisma } from '@/server/prisma';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -7,7 +7,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const ids = searchParams.getAll('id').filter(Boolean);
 
-    // zabezpieczenie przed bardzo długimi URLami / nadużyciem
+    // Guard against very long URLs / abuse.
     const limited = ids.slice(0, 100);
 
     const rows = limited.length

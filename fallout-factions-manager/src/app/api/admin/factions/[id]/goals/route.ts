@@ -23,7 +23,7 @@ const PayloadSchema = z.object({
     sets: z.array(GoalSetSchema).max(20),
 });
 
-// Uwaga: w tej instalacji Next.js kontekst ma params jako Promise
+// Note: in this Next.js setup, route context params are Promise-based
 type AsyncCtx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, ctx: AsyncCtx) {

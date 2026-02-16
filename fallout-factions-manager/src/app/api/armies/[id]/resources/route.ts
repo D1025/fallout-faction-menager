@@ -9,11 +9,13 @@ type AsyncCtx = { params: Promise<{ id: string }> };
 const PatchSchema = z.object({
     caps: z.number().int().min(0).optional(),
     parts: z.number().int().min(0).optional(),
+    scout: z.number().int().min(0).optional(),
     reach: z.number().int().min(0).optional(),
     exp:  z.number().int().min(0).optional(),
+    ploys: z.number().int().min(0).optional(),
 }).refine(
-    (obj) => 'caps' in obj || 'parts' in obj || 'reach' in obj || 'exp' in obj,
-    { message: 'At least one of caps/parts/reach/exp must be provided' }
+    (obj) => 'caps' in obj || 'parts' in obj || 'scout' in obj || 'reach' in obj || 'exp' in obj || 'ploys' in obj,
+    { message: 'At least one of caps/parts/scout/reach/exp/ploys must be provided' }
 );
 
 async function canWrite(armyId: string, userId: string) {
@@ -34,7 +36,7 @@ export async function GET(_req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
     const army = await prisma.army.findUnique({
         where: { id },
-        select: { id: true, caps: true, parts: true, reach: true, exp: true },
+        select: { id: true, caps: true, parts: true, scout: true, reach: true, exp: true, ploys: true },
     });
     if (!army) return new Response('NOT_FOUND', { status: 404 });
     return new Response(JSON.stringify(army), { status: 200 });
@@ -60,7 +62,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     const updated = await prisma.army.update({
         where: { id },
         data: parsed.data,
-        select: { id: true, caps: true, parts: true, reach: true, exp: true },
+        select: { id: true, caps: true, parts: true, scout: true, reach: true, exp: true, ploys: true },
     });
 
     return new Response(JSON.stringify(updated), { status: 200 });

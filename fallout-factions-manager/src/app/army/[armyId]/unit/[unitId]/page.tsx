@@ -2,8 +2,10 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
+import { auth } from '@/lib/authServer';
 import { UnitClient } from '@/components/army/UnitClient';
-import { BackButton } from '@/components/nav/BackButton';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { UserAccountMenu } from '@/components/auth/UserAccountMenu';
 
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -13,6 +15,16 @@ function isStatKey(x: string): x is StatKey {
 
 export default async function Page({ params }: { params: Promise<{ armyId: string; unitId: string }> }) {
     const { unitId } = await params;
+    const session = await auth();
+    const userId = session?.user?.id;
+    const userMeta = userId
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: { name: true, role: true, photoEtag: true },
+        })
+        : null;
+    const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
+    const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
     const unit = await prisma.unitInstance.findUnique({
         where: { id: unitId },
@@ -32,20 +44,20 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     a: true,
                     l: true,
                     baseRating: true,
-                    startPerks: { select: { perk: { select: { id: true, name: true, description: true, isInnate: true } } } },
+                    startPerks: { select: { perk: { select: { id: true, name: true, description: true, isInnate: true, statKey: true, minValue: true } } } },
                 },
             },
             upgrades: true,
             weapons: true,
             chosenPerks: {
-                select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true } } },
+                select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true, statKey: true, minValue: true } } },
                 orderBy: { perkId: 'asc' },
             },
         },
     });
-    if (!unit) return <div className="p-4 text-red-300">Nie znaleziono jednostki.</div>;
+    if (!unit) return <div className="p-4 text-red-300">Unit not found.</div>;
 
-    // dociągnięcie szablonów broni + profili + bazowych efektów
+    // fetch weapon templates + profiles + base effects
     const templateIds = unit.weapons.map((w) => w.templateId);
     const templates = templateIds.length
         ? await prisma.weaponTemplate.findMany({
@@ -58,7 +70,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         : [];
     const byId = new Map(templates.map((t) => [t.id, t]));
 
-    // UI broni: każdy profil to "efektywny" wpis (baza + override)
+    // weapon UI: each profile is an effective row (base + override)
     const weapons = unit.weapons.map((w) => {
         const t = byId.get(w.templateId);
         const selected = new Set(w.activeMods.filter((m) => m.startsWith('__profile:')).map((m) => m.slice(10)));
@@ -66,9 +78,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         const profiles =
             t?.profiles.map((p) => ({
                 id: p.id,
-                // zastosuj override na bazie
-                type: p.typeOverride ?? t.baseType ?? '',
-                test: p.testOverride ?? t.baseTest ?? '',
+                type: p.typeOverride ?? null,
+                test: p.testOverride ?? null,
                 parts: p.partsOverride ?? t.baseParts ?? null,
                 rating: p.ratingDelta ?? null,
                 effects: p.effects.map((e) => ({
@@ -77,6 +88,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: e.effect.name,
                     kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: e.valueInt,
+                    valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                 })),
             })) ?? [];
 
@@ -84,6 +97,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             id: w.id,
             name: t?.name ?? `#${w.templateId.slice(0, 6)}`,
             selectedProfileIds: [...selected],
+            baseType: t?.baseType ?? '',
+            baseTest: t?.baseTest ?? '',
             baseEffects:
                 t?.baseEffects.map((be) => ({
                     id: be.effectId,
@@ -91,6 +106,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
+                    valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: 'ADD' as const,
                 })) ?? [],
             profiles,
         };
@@ -108,18 +125,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     };
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <BackButton fallbackHref={`/army/${unit.armyId}`} />
-                    <div className="min-w-0 flex-1 px-2 text-center">
-                        <div className="truncate text-base font-semibold">{unit.unit?.name ?? unit.id.slice(0, 6)}</div>
-                    </div>
-                    <div className="w-[64px]" />
-                </div>
-            </header>
+        <MobilePageShell
+            title={unit.unit?.name ?? unit.id.slice(0, 6)}
+            backHref={`/army/${unit.armyId}`}
+            headerRight={<UserAccountMenu name={userName} role={userRole} photoEtag={userMeta?.photoEtag ?? null} />}
+        >
 
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
                 <UnitClient
                     unitId={unit.id}
                     armyId={unit.armyId}
@@ -140,25 +151,28 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     weapons={weapons}
                     startPerkNames={unit.unit?.startPerks?.map((sp) => sp.perk.name) ?? []}
                     ownedPerks={[
-                        // startowe perki z templatu (zwykle INNATE)
+                        // template starting perks (usually INNATE)
                         ...(unit.unit?.startPerks ?? []).map((sp) => ({
                             id: sp.perk.id,
                             name: sp.perk.name,
                             description: sp.perk.description ?? '',
                             isInnate: Boolean(sp.perk.isInnate ?? true),
+                            statKey: (sp.perk as unknown as { statKey?: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | null }).statKey ?? null,
+                            minValue: (sp.perk as unknown as { minValue?: number | null }).minValue ?? null,
                         })),
-                        // perki wybrane w armii
+                        // perks selected in army
                         ...unit.chosenPerks.map((cp) => ({
                             id: cp.perk.id,
                             name: cp.perk.name,
                             description: cp.perk.description ?? '',
                             isInnate: Boolean(cp.perk.isInnate ?? false),
+                            statKey: (cp.perk as unknown as { statKey?: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | null }).statKey ?? null,
+                            minValue: (cp.perk as unknown as { minValue?: number | null }).minValue ?? null,
                         })),
                     ]
-                        // deduplikacja po id perka
+                        // deduplicate by perk id
                         .filter((p, idx, arr) => arr.findIndex((x) => x.id === p.id) === idx)}
                 />
-            </main>
-        </div>
+        </MobilePageShell>
     );
 }

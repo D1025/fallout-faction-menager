@@ -1,9 +1,12 @@
-'use client';
+﻿'use client';
 
+import { FilterOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
+import { FilterBar, QuickToggle, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import type { FactionDTO, PerkDTO, WeaponDTO, UnitTemplateDTO } from '@/app/admin/templates/page';
+import { notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
-/** Opcja: 1–2 bronie + koszt + (opcjonalny) rating */
+/** Option: 1-2 weapons + cost + optional rating */
 type FormOption = { weapon1Id: string; weapon2Id: string | null; costCaps: number; rating: number | null };
 type FormStartPerk = { perkId: string; valueInt: number | null };
 
@@ -37,7 +40,7 @@ export function AdminUnitTemplatesClient({
     const [form, setForm] = useState<FormState>(blankForm());
     const [saving, setSaving] = useState(false);
 
-    // picker startowych perków
+    // starting perks picker
     const [perkQ, setPerkQ] = useState('');
     const [perkCategory, setPerkCategory] = useState<'ALL' | 'REGULAR' | 'AUTOMATRON'>('ALL');
     const [perkInnate, setPerkInnate] = useState<'ALL' | 'INNATE' | 'NON_INNATE'>('ALL');
@@ -92,27 +95,27 @@ export function AdminUnitTemplatesClient({
 
     async function reload(): Promise<void> {
         const res = await fetch('/api/admin/unit-templates', { cache: 'no-store' });
-        if (!res.ok) { alert('Nie udało się pobrać jednostek'); return; }
+        if (!res.ok) { notifyApiError('Failed to fetch unit templates'); return; }
         const data: UnitTemplateDTO[] = await res.json();
         setList(data);
     }
 
     function validateOptions(): string | null {
-        if (form.options.length === 0) return 'Dodaj przynajmniej jeden pakiet uzbrojenia.';
+        if (form.options.length === 0) return 'Add at least one loadout package.';
         for (const [idx, o] of form.options.entries()) {
-            if (!o.weapon1Id) return `Pakiet #${idx+1}: wybierz przynajmniej jedną broń.`;
-            if (o.weapon2Id && o.weapon2Id === o.weapon1Id) return `Pakiet #${idx+1}: druga broń nie może być tą samą.`;
-            if (!Number.isFinite(o.costCaps) || o.costCaps < 0) return `Pakiet #${idx+1}: koszt musi być nieujemny.`;
+            if (!o.weapon1Id) return `Package #${idx + 1}: select at least one weapon.`;
+            if (o.weapon2Id && o.weapon2Id === o.weapon1Id) return `Package #${idx + 1}: second weapon cannot be the same as the first one.`;
+            if (!Number.isFinite(o.costCaps) || o.costCaps < 0) return `Package #${idx + 1}: cost must be non-negative.`;
         }
         return null;
     }
 
     async function save(): Promise<void> {
-        if (!form.name.trim()) { alert('Podaj nazwę jednostki'); return; }
+        if (!form.name.trim()) { notifyWarning('Enter unit name'); return; }
         const optErr = validateOptions();
-        if (optErr) { alert(optErr); return; }
+        if (optErr) { notifyWarning(optErr); return; }
         if (!form.isGlobal && form.factionIds.length === 0) {
-            alert('Wybierz przynajmniej jedną frakcję albo ustaw GLOBAL.');
+            notifyWarning('Select at least one faction or enable GLOBAL.');
             return;
         }
 
@@ -123,7 +126,7 @@ export function AdminUnitTemplatesClient({
 
             const res = await fetch(url, {
                 method,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Typee': 'application/json' },
                 body: JSON.stringify({
                     name: form.name,
                     isGlobal: form.isGlobal,
@@ -139,7 +142,7 @@ export function AdminUnitTemplatesClient({
             });
             if (!res.ok) {
                 const pld = await res.json().catch(async()=>({status:res.status, text:await res.text()}));
-                alert('Błąd zapisu: ' + JSON.stringify(pld));
+                notifyApiError(JSON.stringify(pld), 'Failed to save units');
                 return;
             }
             await reload();
@@ -161,7 +164,7 @@ export function AdminUnitTemplatesClient({
             options: f.options.map((o, idx) => {
                 if (idx !== i) return o;
                 if (which === 1) {
-                    // jeśli druga broń równa nowej pierwszej – wyczyść drugą
+                    // if second weapon matches new first weapon, clear second weapon
                     const weapon2Id = o.weapon2Id === id ? null : o.weapon2Id;
                     return { ...o, weapon1Id: id, weapon2Id };
                 }
@@ -177,7 +180,7 @@ export function AdminUnitTemplatesClient({
         setForm(f=> ({...f, options: f.options.map((o,idx)=> idx===i ? ({...o, rating}) : o)}));
     }
 
-    const weaponName = (id?: string | null) => weapons.find(w=>w.id===id)?.name ?? '—';
+    const weaponName = (id?: string | null) => weapons.find(w=>w.id===id)?.name ?? '-';
 
     function toggleFaction(id: string) {
         setForm((f) => {
@@ -186,70 +189,57 @@ export function AdminUnitTemplatesClient({
         });
     }
 
-    return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100 p-3 max-w-screen-sm mx-auto">
-            <h1 className="text-lg font-semibold">Jednostki</h1>
+    // list controls
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [q, setQ] = useState('');
+    const [onlyGlobal, setOnlyGlobal] = useState(false);
+    const [onlyLeader, setOnlyLeader] = useState(false);
+    const [sort, setSort] = useState<'NAME:ASC' | 'NAME:DESC'>('NAME:ASC');
 
-            {/* LISTA */}
-            <div className="mt-3 grid gap-2">
-                {list.map(u=>(
-                    <div key={u.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
-                        <button
-                            className="w-full text-left"
-                            onClick={()=> setForm({
-                                id: u.id,
-                                name: u.name,
-                                isGlobal: u.isGlobal,
-                                factionIds: u.factionIds,
-                                roleTag: u.roleTag,
-                                isLeader: Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false),
-                                hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
-                                baseRating: u.baseRating,
-                                options: u.options.map(o=> ({
-                                    weapon1Id: o.weapon1Id,
-                                    weapon2Id: o.weapon2Id,
-                                    costCaps: o.costCaps,
-                                    rating: o.rating
-                                })),
-                                startPerks: u.startPerks,
-                            })}
-                        >
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <div className="font-medium">{u.name}</div>
-                                    <div className="mt-1 text-xs text-zinc-400">
-                                        {u.isGlobal ? 'GLOBAL' : (u.factionIds.length ? `Frakcje: ${u.factionIds.length}` : 'Brak frakcji')} • HP {u.hp} • S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
-                                    </div>
-                                </div>
-                                <div className="text-xs text-zinc-400">{u.options.length} pakiet(y)</div>
-                            </div>
-                            {u.options.length > 0 && (
-                                <div className="mt-2 text-xs text-zinc-400">
-                                    {u.options.map((o,idx)=>(
-                                        <div key={idx}>#{idx+1}: {weaponName(o.weapon1Id)}{o.weapon2Id ? ` + ${weaponName(o.weapon2Id)}` : ''} • {o.costCaps} caps{typeof o.rating==='number' ? ` • rating ${o.rating}` : ''}</div>
-                                    ))}
-                                </div>
-                            )}
-                        </button>
-                        {(u as unknown as { isLeader?: boolean }).isLeader ? (
-                            <div className="mt-2 text-[11px] text-sky-200">
-                                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold">LEADER</span>
-                            </div>
-                        ) : null}
-                     </div>
-                 ))}
+    const filteredSorted = useMemo(() => {
+        const query = q.trim().toLowerCase();
+        let arr = list;
+        if (query) arr = arr.filter((u) => u.name.toLowerCase().includes(query));
+        if (onlyGlobal) arr = arr.filter((u) => u.isGlobal);
+        if (onlyLeader) arr = arr.filter((u) => Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false));
+        const dir = sort === 'NAME:ASC' ? 1 : -1;
+        return [...arr].sort((a, b) => a.name.localeCompare(b.name, 'pl') * dir);
+    }, [list, q, onlyGlobal, onlyLeader, sort]);
+
+    const chips: ActiveFilterChip[] = [
+        ...(q ? [{ key: 'q', label: `Search: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(onlyGlobal ? [{ key: 'global', label: 'Only GLOBAL', onRemove: () => setOnlyGlobal(false) }] : []),
+        ...(onlyLeader ? [{ key: 'leader', label: 'Only LEADER', onRemove: () => setOnlyLeader(false) }] : []),
+        ...(sort !== 'NAME:ASC' ? [{ key: 'sort', label: `Sort: ${sort}`, onRemove: () => setSort('NAME:ASC') }] : []),
+    ];
+
+    const clearAll = () => {
+        setQ('');
+        setOnlyGlobal(false);
+        setOnlyLeader(false);
+        setSort('NAME:ASC');
+    };
+
+    return (
+        <div className="app-shell pt-3">
+            <div className="vault-panel p-3">
+                <p className="ff-panel-headline">Admin / Templates</p>
+                <h1 className="ff-panel-title">Units and starting configurations</h1>
+                <p className="mt-1 text-sm vault-muted">
+                    Define unit roles, SPECIAL stats, loadout options and starting perks.
+                </p>
             </div>
 
-            {/* FORMULARZ */}
-            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-3">
+            {/* FORM */}
+            <div className="mt-4 vault-panel p-3">
                 <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium">{form.id ? 'Edytuj jednostkę' : 'Nowa jednostka'}</div>
-                    {form.id && <button onClick={()=>setForm(blankForm())} className="text-xs text-zinc-300">Nowa</button>}
+                    <div className="text-sm font-medium">{form.id ? 'Edit unit' : 'New unit'}</div>
+                    {form.id && <button onClick={()=>setForm(blankForm())} className="text-xs text-zinc-300">New</button>}
                 </div>
 
-                <label className="block mt-2 text-xs text-zinc-400">Nazwa</label>
+                <label className="block mt-2 text-xs text-zinc-400">Name</label>
                 <input value={form.name} onChange={e=>setForm({...form, name:e.target.value})}
-                       className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
+                       className="w-full vault-input px-3 py-2 text-sm"/>
 
                 <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                     <label className="flex items-center gap-2 text-sm">
@@ -258,12 +248,12 @@ export function AdminUnitTemplatesClient({
                             checked={form.isGlobal}
                             onChange={(e) => setForm({ ...form, isGlobal: e.target.checked })}
                         />
-                        <span className="font-medium">GLOBAL (dostępna dla wszystkich frakcji)</span>
+                        <span className="font-medium">GLOBAL (available to all factions)</span>
                     </label>
 
                     {!form.isGlobal && (
                         <div className="mt-2">
-                            <div className="text-xs text-zinc-400">Przypisz do frakcji (wiele)</div>
+                            <div className="text-xs text-zinc-400">Assign to faction(s)</div>
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {factions.map((f) => {
                                     const active = form.factionIds.includes(f.id);
@@ -288,13 +278,13 @@ export function AdminUnitTemplatesClient({
                     )}
                 </div>
 
-                <label className="block mt-2 text-xs text-zinc-400">Tag roli (opcjonalnie)</label>
+                <label className="block mt-2 text-xs text-zinc-400">Role tag (optional)</label>
                 <select
                     value={form.roleTag ?? ''}
                     onChange={(e) => setForm({ ...form, roleTag: (e.target.value || null) as UnitTemplateTag | null })}
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="w-full vault-input px-3 py-2 text-sm"
                 >
-                    <option value="">(brak)</option>
+                    <option value="">(none)</option>
                     <option value="CHAMPION">CHAMPION</option>
                     <option value="GRUNT">GRUNT</option>
                     <option value="COMPANION">COMPANION</option>
@@ -304,7 +294,7 @@ export function AdminUnitTemplatesClient({
                 <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                     <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" checked={form.isLeader} onChange={(e) => setForm({ ...form, isLeader: e.target.checked })} />
-                        <span className="font-medium">LEADER (ten template może być liderem)</span>
+                        <span className="font-medium">LEADER (this template can be a leader)</span>
                     </label>
                 </div>
 
@@ -313,68 +303,68 @@ export function AdminUnitTemplatesClient({
                     <div>
                         <label className="block text-[10px] text-zinc-400">HP</label>
                         <input inputMode="numeric" value={form.hp} onChange={e=>setForm({...form, hp:n(e.target.value,3)})}
-                               className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                               className="w-full vault-input px-2 py-1 text-sm"/>
                     </div>
                     {primaryKeys.map(k=>(
                         <div key={k}>
                             <label className="block text-[10px] text-zinc-400">{k.toUpperCase()}</label>
                             <input inputMode="numeric" value={form[k]} onChange={e=>updateStat(k, n(e.target.value,5))}
-                                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                   className="w-full vault-input px-2 py-1 text-sm"/>
                         </div>
                     ))}
                     {secondaryKeys.map(k=>(
                         <div key={k}>
                             <label className="block text-[10px] text-zinc-400">{k.toUpperCase()}</label>
                             <input inputMode="numeric" value={form[k]} onChange={e=>updateStat(k, n(e.target.value,5))}
-                                   className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                   className="w-full vault-input px-2 py-1 text-sm"/>
                         </div>
                     ))}
                 </div>
 
-                <label className="block mt-3 text-xs text-zinc-400">Bazowy rating (opcjonalnie)</label>
+                <label className="block mt-3 text-xs text-zinc-400">Base Rating (optional)</label>
                 <input inputMode="numeric" value={form.baseRating ?? ''} onChange={e=>setForm({...form, baseRating:nOrNull(e.target.value)})}
-                       placeholder="np. 6" className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"/>
+                       placeholder="e.g. 6" className="w-full vault-input px-3 py-2 text-sm"/>
 
-                {/* OPCJE UZBROJENIA */}
+                {/* LOADOUT OPTIONS */}
                 <div className="mt-4">
-                    <div className="text-xs text-zinc-400 mb-1">Pakiety uzbrojenia (max 2 bronie)</div>
+                    <div className="text-xs text-zinc-400 mb-1">Loadout packages (max 2 weapons)</div>
 
                     {form.options.map((o, i)=>(
                         <div key={i} className="mb-3 rounded-xl border border-zinc-800 p-2">
                             <div className="flex items-center justify-between">
-                                <div className="text-xs text-zinc-400">Pakiet #{i+1}</div>
-                                <button onClick={()=>removeOption(i)} className="text-xs text-red-300">Usuń</button>
+                                <div className="text-xs text-zinc-400">Package #{i+1}</div>
+                                <button onClick={()=>removeOption(i)} className="text-xs text-red-300">Delete</button>
                             </div>
 
                             <div className="mt-2 grid grid-cols-2 gap-2">
                                 <select
                                     value={o.weapon1Id}
                                     onChange={e=>setOptionWeapon(i, 1, e.target.value)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                 >
-                                    <option value="">— wybierz broń #1 —</option>
+                                    <option value="">- select weapon #1 -</option>
                                     {weapons.map(w=> <option key={w.id} value={w.id}>{w.name}</option>)}
                                 </select>
 
                                 <select
                                     value={o.weapon2Id ?? ''}
                                     onChange={e=>setOptionWeapon(i, 2, e.target.value)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="vault-input px-2 py-1 text-sm"
                                 >
-                                    <option value="">(opcjonalnie) broń #2</option>
+                                    <option value="">(optional) weapon #2</option>
                                     {weapons
-                                        .filter(w => w.id !== o.weapon1Id) // nie pozwól wybrać tej samej
+                                        .filter(w => w.id !== o.weapon1Id) // do not allow selecting the same weapon
                                         .map(w=> <option key={w.id} value={w.id}>{w.name}</option>)}
                                 </select>
                             </div>
 
                             <div className="mt-3 grid grid-cols-3 gap-2">
-                                <input inputMode="numeric" placeholder="Koszt (caps)" value={o.costCaps}
+                                <input inputMode="numeric" placeholder="Cost (caps)" value={o.costCaps}
                                        onChange={e=>setOptionCost(i, n(e.target.value, 0))}
-                                       className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
-                                <input inputMode="numeric" placeholder="Rating (opc.)" value={o.rating ?? ''}
+                                       className="vault-input px-2 py-1 text-sm"/>
+                                <input inputMode="numeric" placeholder="Rating (opt.)" value={o.rating ?? ''}
                                        onChange={e=>setOptionRating(i, nOrNull(e.target.value))}
-                                       className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"/>
+                                       className="vault-input px-2 py-1 text-sm"/>
                             </div>
                         </div>
                     ))}
@@ -382,62 +372,62 @@ export function AdminUnitTemplatesClient({
                     <div className="flex gap-2">
                         <button onClick={addOption}
                                 className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm">
-                            Dodaj pakiet
+                            Add package
                         </button>
                     </div>
                 </div>
 
-                {/* Startowe perki (opcjonalnie) */}
+                {/* Starting perks (optional) */}
                 <div className="mt-4">
-                    <div className="text-xs text-zinc-400 mb-2">Startowe perki (opcjonalnie)</div>
+                    <div className="text-xs text-zinc-400 mb-2">Starting perks (optional)</div>
 
                     {/* Picker */}
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
-                        <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
-                            <span className="text-zinc-400">🔎</span>
+                        <div className="flex items-center gap-2 vault-panel px-3 py-2">
+                            <SearchOutlined className="text-zinc-400" />
                             <input
                                 value={perkQ}
                                 onChange={(e) => setPerkQ(e.target.value)}
                                 className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                                placeholder="Szukaj perka…"
+                                placeholder="Search perk..."
                             />
                             {perkQ ? (
-                                <button type="button" onClick={() => setPerkQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800" aria-label="Wyczyść">
-                                    ✕
+                                <button type="button" onClick={() => setPerkQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800" aria-label="Clear">
+                                    <CloseOutlined />
                                 </button>
                             ) : null}
                         </div>
 
                         <div className="mt-2 grid grid-cols-2 gap-2">
                             <div>
-                                <label className="block text-[10px] text-zinc-400">Kategoria</label>
+                                <label className="block text-[10px] text-zinc-400">Category</label>
                                 <select
                                     value={perkCategory}
                                     onChange={(e) => setPerkCategory(e.target.value as 'ALL' | 'REGULAR' | 'AUTOMATRON')}
-                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="mt-1 w-full vault-input px-2 py-1 text-sm"
                                 >
-                                    <option value="ALL">Wszystkie</option>
+                                    <option value="ALL">All</option>
                                     <option value="REGULAR">Regular</option>
                                     <option value="AUTOMATRON">Automatron</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-[10px] text-zinc-400">Typ</label>
+                                <label className="block text-[10px] text-zinc-400">Type</label>
                                 <select
                                     value={perkInnate}
                                     onChange={(e) => setPerkInnate(e.target.value as 'ALL' | 'INNATE' | 'NON_INNATE')}
-                                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                    className="mt-1 w-full vault-input px-2 py-1 text-sm"
                                 >
-                                    <option value="ALL">Wszystkie</option>
-                                    <option value="INNATE">Tylko INNATE</option>
-                                    <option value="NON_INNATE">Tylko nie-INNATE</option>
+                                    <option value="ALL">All</option>
+                                    <option value="INNATE">INNATE only</option>
+                                    <option value="NON_INNATE">Non-INNATE only</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-zinc-800">
+                        <div className="vault-scrollbar mt-3 max-h-56 overflow-y-auto rounded-xl border border-zinc-800">
                             {filteredPerks.length === 0 ? (
-                                <div className="p-3 text-sm text-zinc-500">Brak wyników.</div>
+                                <div className="p-3 text-sm text-zinc-500">No results.</div>
                             ) : (
                                 <div className="divide-y divide-zinc-800">
                                     {filteredPerks.map((p) => {
@@ -477,14 +467,14 @@ export function AdminUnitTemplatesClient({
                         </div>
 
                         <div className="mt-2 text-[11px] text-zinc-500">
-                            Kliknij perk na liście, aby dodać go do startowych perków. Duplikaty są blokowane.
+                            Click a perk in the list to add it to starting perks. Duplicates are blocked.
                         </div>
                     </div>
 
-                    {/* Wybrane perki */}
+                    {/* Selected perks */}
                     <div className="mt-3">
                         {form.startPerks.length === 0 ? (
-                            <div className="text-sm text-zinc-500">Brak startowych perków.</div>
+                            <div className="text-sm text-zinc-500">No starting perks.</div>
                         ) : (
                             form.startPerks.map((sp, i) => {
                                 const perk = perkById.get(sp.perkId);
@@ -493,7 +483,7 @@ export function AdminUnitTemplatesClient({
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                                 <div className="flex flex-wrap items-center gap-2">
-                                                    <div className="font-medium truncate">{perk?.name ?? '— wybierz —'}</div>
+                                                    <div className="font-medium truncate">{perk?.name ?? '- select -'}</div>
                                                     {perk?.category === 'AUTOMATRON' ? (
                                                         <span className="rounded-full border border-purple-500/40 bg-purple-500/10 px-2 py-0.5 text-[10px] font-semibold text-purple-200">AUTOMATRON</span>
                                                     ) : (
@@ -503,7 +493,7 @@ export function AdminUnitTemplatesClient({
                                                         <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">INNATE</span>
                                                     ) : null}
                                                 </div>
-                                                <div className="mt-1 text-[11px] text-zinc-500">ID: {sp.perkId || '—'}</div>
+                                                <div className="mt-1 text-[11px] text-zinc-500">ID: {sp.perkId || '-'}</div>
                                             </div>
 
                                             <button
@@ -511,7 +501,7 @@ export function AdminUnitTemplatesClient({
                                                 className="text-xs text-red-300"
                                                 onClick={() => setForm((f) => ({ ...f, startPerks: f.startPerks.filter((_, idx) => idx !== i) }))}
                                             >
-                                                Usuń
+                                                Delete
                                             </button>
                                         </div>
 
@@ -524,9 +514,9 @@ export function AdminUnitTemplatesClient({
                                                         startPerks: f.startPerks.map((x, idx) => (idx === i ? { ...x, perkId: e.target.value } : x)),
                                                     }))
                                                 }
-                                                className="col-span-3 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                className="col-span-3 vault-input px-2 py-1 text-sm"
                                             >
-                                                <option value="">— wybierz —</option>
+                                                <option value="">- select -</option>
                                                 {perks.map((p) => (
                                                     <option key={p.id} value={p.id}>
                                                         {p.name}
@@ -547,13 +537,13 @@ export function AdminUnitTemplatesClient({
                                                             ),
                                                         }))
                                                     }
-                                                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                                    className="vault-input px-2 py-1 text-sm"
                                                 />
                                             ) : (
-                                                <div className="text-xs text-zinc-500">—</div>
+                                                <div className="text-xs text-zinc-500">-</div>
                                             )}
 
-                                            <div className="text-xs text-zinc-400">{perk?.requiresValue ? 'wymaga X' : ''}</div>
+                                            <div className="text-xs text-zinc-400">{perk?.requiresValue ? 'requires X' : ''}</div>
                                         </div>
                                     </div>
                                 );
@@ -565,17 +555,120 @@ export function AdminUnitTemplatesClient({
                 <div className="mt-4 flex gap-2">
                     <button onClick={()=>setForm(blankForm())}
                             className="flex-1 h-10 rounded-xl border border-zinc-700">
-                        Wyczyść
+                        Clear
                     </button>
                     <button
                         disabled={saving}
                         onClick={() => void save()}
                         className="flex-1 h-10 rounded-xl bg-emerald-500 text-emerald-950 font-semibold disabled:opacity-50"
                     >
-                        {saving ? 'Zapisywanie…' : 'Zapisz'}
+                        {saving ? 'Saving...' : 'Save'}
                     </button>
                 </div>
+            </div>
+
+            {/* LIST */}
+            <div className="mt-3 grid gap-2">
+                <div className="flex items-start justify-between gap-2 rounded-xl border border-zinc-800 p-3">
+                    <div>
+                        <div className="text-sm font-medium">Unit list</div>
+                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                            Results: <span className="font-semibold text-zinc-200">{filteredSorted.length}</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen(true)}
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (chips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
+                            aria-label="Filters"
+                            title="Filters"
+                        >
+                            <FilterOutlined />
+                        </button>
+                    </div>
+                </div>
+
+                <FilterBar
+                    showTrigger={false}
+                    open={filtersOpen}
+                    onOpenChangeAction={setFiltersOpen}
+                    search={q}
+                    onSearchAction={setQ}
+                    searchPlaceholder="Search units..."
+                    quickToggles={
+                        <div className="flex flex-wrap gap-2">
+                            <QuickToggle checked={onlyGlobal} onChangeAction={setOnlyGlobal} label="Only GLOBAL" />
+                            <QuickToggle checked={onlyLeader} onChangeAction={setOnlyLeader} label="Only LEADER" />
+                        </div>
+                    }
+                    controls={
+                        <SortSelect
+                            value={sort}
+                            onChange={(v) => setSort(v as typeof sort)}
+                            options={[
+                                { value: 'NAME:ASC', label: 'Sort: name A-Z' },
+                                { value: 'NAME:DESC', label: 'Sort: name Z-A' },
+                            ]}
+                        />
+                    }
+                    activeChips={chips}
+                    onClearAllAction={clearAll}
+                />
+
+                {filteredSorted.map(u => (
+                    <div key={u.id} className="vault-panel p-3">
+                        <button
+                            className="w-full text-left"
+                            onClick={()=> setForm({
+                                id: u.id,
+                                name: u.name,
+                                isGlobal: u.isGlobal,
+                                factionIds: u.factionIds,
+                                roleTag: u.roleTag,
+                                isLeader: Boolean((u as unknown as { isLeader?: boolean }).isLeader ?? false),
+                                hp: u.hp, s:u.s,p:u.p,e:u.e,c:u.c,i:u.i,a:u.a,l:u.l,
+                                baseRating: u.baseRating,
+                                options: u.options.map(o=> ({
+                                    weapon1Id: o.weapon1Id,
+                                    weapon2Id: o.weapon2Id,
+                                    costCaps: o.costCaps,
+                                    rating: o.rating
+                                })),
+                                startPerks: u.startPerks,
+                            })}
+                        >
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <div className="font-medium">{u.name}</div>
+                                    <div className="mt-1 text-xs text-zinc-400">
+                                        {u.isGlobal ? 'GLOBAL' : (u.factionIds.length ? `Factions: ${u.factionIds.length}` : 'No faction')} | HP {u.hp} | S{u.s} P{u.p} E{u.e} C{u.c} I{u.i} A{u.a} L{u.l}
+                                    </div>
+                                </div>
+                                <div className="text-xs text-zinc-400">{u.options.length} package(s)</div>
+                            </div>
+                            {u.options.length > 0 && (
+                                <div className="mt-2 text-xs text-zinc-400">
+                                    {u.options.map((o,idx)=>(
+                                        <div key={idx}>#{idx+1}: {weaponName(o.weapon1Id)}{o.weapon2Id ? ` + ${weaponName(o.weapon2Id)}` : ''} | {o.costCaps} caps{typeof o.rating==='number' ? ` | Rating ${o.rating}` : ''}</div>
+                                    ))}
+                                </div>
+                            )}
+                        </button>
+                        {(u as unknown as { isLeader?: boolean }).isLeader ? (
+                            <div className="mt-2 text-[11px] text-sky-200">
+                                <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 font-semibold">LEADER</span>
+                            </div>
+                        ) : null}
+                     </div>
+                 ))}
             </div>
         </div>
     );
 }
+

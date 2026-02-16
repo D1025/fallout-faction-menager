@@ -2,11 +2,13 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import Link from 'next/link';
+import { Button } from 'antd';
+import { LoginOutlined, UserOutlined } from '@ant-design/icons';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
-import { SignOutButton } from '@/components/auth/SignOutButton';
-import CreateArmySheet from '@/components/home/CreateArmySheet';
-import HomeArmiesTabs from '@/components/home/HomeArmiesTabs';
+import { HomeClient } from '@/components/home/HomeClient';
 
 type ArmyMeta = {
   id: string;
@@ -20,24 +22,30 @@ type ArmyMeta = {
 export default async function Home() {
   const session = await auth();
   const userId = session?.user?.id;
-  const isAdmin = session?.user.role === 'ADMIN';
 
   if (!userId) {
     return (
-        <div className="min-h-dvh grid place-items-center bg-zinc-950 text-zinc-100 p-4">
-          <div className="w-full max-w-sm rounded-3xl border border-zinc-800 bg-zinc-900 p-5 text-center">
-            <div className="text-lg font-semibold">Wymagane logowanie</div>
-            <p className="mt-2 text-sm text-zinc-400">Przejdź do strony logowania.</p>
-            <Link
-                href="/login"
-                className="mt-4 inline-block rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 active:scale-[0.99]"
-            >
-              Zaloguj
+      <MobilePageShell title="Fallout Army Tracker">
+        <SectionCard>
+          <div className="text-center">
+            <div className="text-3xl text-amber-300"><UserOutlined /></div>
+            <div className="mt-2 text-lg font-semibold">Login required</div>
+            <p className="mt-2 text-sm vault-muted">To track your army, you must first enter the command terminal.</p>
+            <Link href="/login">
+              <Button type="primary" className="mt-4" icon={<LoginOutlined />}>Go to login</Button>
             </Link>
           </div>
-        </div>
+        </SectionCard>
+      </MobilePageShell>
     );
   }
+
+  const userMeta = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, role: true, photoEtag: true },
+  });
+  const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
+  const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
   let myArmies: ArmyMeta[] = [];
   let shared:
@@ -95,7 +103,7 @@ export default async function Home() {
       }),
     ]);
 
-    // subfrakcje po id -> nazwa (bez typowanej relacji w Prisma klient)
+    // Subfactions by id -> name (without relying on typed Prisma relation)
     const subIds = Array.from(new Set([
       ...armies.map((a) => (a as unknown as { subfactionId?: string | null }).subfactionId ?? null),
       ...sharedRows.map((s) => (s.army as unknown as { subfactionId?: string | null }).subfactionId ?? null),
@@ -123,7 +131,7 @@ export default async function Home() {
       ruleByFaction.get(r.factionId)!.set(r.statKey, r.ratingPerPoint);
     }
 
-    // profile ratingDelta do broni
+    // weapon profile ratingDelta
     const allTemplateIds = Array.from(new Set([
       ...armies.flatMap((a) => a.units.flatMap((u) => u.weapons.map((w) => w.templateId))),
       ...sharedRows.flatMap((s) => s.army.units.flatMap((u) => u.weapons.map((w) => w.templateId))),
@@ -219,26 +227,13 @@ export default async function Home() {
   }
 
   return (
-      <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-            <div className="text-base font-semibold">Twoje drużyny</div>
-            <div className="flex items-center gap-2">
-              {isAdmin && (
-                  <Link href="/admin" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                    Admin
-                  </Link>
-              )}
-              <SignOutButton />
-            </div>
-          </div>
-        </header>
-
-        <main className="mx-auto max-w-screen-sm px-3 pb-24">
-          <HomeArmiesTabs myArmies={myArmies} shared={shared}>
-            <CreateArmySheet factions={factions} />
-          </HomeArmiesTabs>
-        </main>
-      </div>
+    <HomeClient
+      userName={userName}
+      userRole={userRole}
+      userPhotoEtag={userMeta?.photoEtag ?? null}
+      myArmies={myArmies}
+      shared={shared}
+      factions={factions}
+    />
   );
 }

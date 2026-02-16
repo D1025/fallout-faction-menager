@@ -1,8 +1,9 @@
 // app/admin/subfactions/page.tsx
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const runtime = 'nodejs';
 
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { AdminSubfactionsClient } from '@/components/AdminSubfactionsClient';
@@ -29,10 +30,6 @@ type RawUnitTemplate = {
     factions: Array<{ factionId: string }>;
 };
 
-type UnitTemplateDelegate = {
-    findMany(args: { include: { factions: true }; orderBy: Array<{ name: 'asc' | 'desc' }> }): Promise<RawUnitTemplate[]>;
-};
-
 type RawSubfaction = {
     id: string;
     name: string;
@@ -41,30 +38,17 @@ type RawSubfaction = {
     unitDenies: Array<{ unitId: string }>;
 };
 
-type SubfactionDelegate = {
-    findMany(args: {
-        select: {
-            id: true;
-            name: true;
-            factionId: true;
-            unitAllows: { select: { unitId: true } };
-            unitDenies: { select: { unitId: true } };
-        };
-        orderBy: Array<{ factionId: 'asc' | 'desc' } | { name: 'asc' | 'desc' }>;
-    }): Promise<RawSubfaction[]>;
-};
-
-const p = prisma as unknown as { unitTemplate: UnitTemplateDelegate };
-const ps = prisma as unknown as { subfaction: SubfactionDelegate };
+// We intentionally avoid stricter delegate typing here; runtime Prisma delegate is correct.
+// Minimal local typing for result mapping.
 
 export default async function AdminSubfactionsPage() {
     const session = await auth();
-    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Brak uprawnień.</div>;
+    if (session?.user.role !== 'ADMIN') return <div className="p-4 text-red-300">Access denied.</div>;
 
     const [factions, rawUnits, subs] = await Promise.all([
         prisma.faction.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-        p.unitTemplate.findMany({ include: { factions: true }, orderBy: [{ name: 'asc' }] }),
-        ps.subfaction.findMany({
+        prisma.unitTemplate.findMany({ include: { factions: true }, orderBy: [{ name: 'asc' }] }) as unknown as RawUnitTemplate[],
+        prisma.subfaction.findMany({
             select: {
                 id: true,
                 name: true,
@@ -73,7 +57,7 @@ export default async function AdminSubfactionsPage() {
                 unitDenies: { select: { unitId: true } },
             },
             orderBy: [{ factionId: 'asc' }, { name: 'asc' }],
-        }),
+        }) as unknown as RawSubfaction[],
     ]);
 
     const units: UnitTemplateDTO[] = rawUnits
@@ -89,11 +73,8 @@ export default async function AdminSubfactionsPage() {
     }));
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <AppHeader title="Subfrakcje (admin)" backHref="/admin" />
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
-            </main>
-        </div>
+        <MobilePageShell title="Subfactions (admin)" backHref="/admin">
+            <AdminSubfactionsClient factions={factions} initialSubfactions={subfactions} unitTemplates={units} />
+        </MobilePageShell>
     );
 }

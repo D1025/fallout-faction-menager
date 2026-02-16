@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 export const runtime = 'nodejs';
 
-// helpery odczytu z obiektu o nieaktualnych typach Prisma w edytorze
+// helper readers for object fields when Prisma editor types are stale
 function readBool(obj: unknown, key: string): boolean {
     if (!obj || typeof obj !== 'object') return false;
     const v = (obj as Record<string, unknown>)[key];
@@ -15,6 +15,12 @@ function readString(obj: unknown, key: string): string | null {
     if (!obj || typeof obj !== 'object') return null;
     const v = (obj as Record<string, unknown>)[key];
     return typeof v === 'string' ? v : null;
+}
+
+function readNumber(obj: unknown, key: string): number | null {
+    if (!obj || typeof obj !== 'object') return null;
+    const v = (obj as Record<string, unknown>)[key];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 type UnitChosenPerkDelegate = {
@@ -30,7 +36,7 @@ type UnitChosenPerkDeleteDelegate = {
 
 const pDel = prisma as unknown as { unitChosenPerk: UnitChosenPerkDeleteDelegate };
 
-// dopasowane do nazwy folderu: [id]
+// aligned with folder name: [id]
 type Ctx = { params: Promise<{ id: string }> };
 
 const Input = z.object({ perkId: z.string().min(1) });
@@ -51,7 +57,7 @@ async function canWriteByUnit(unitId: string, userId: string) {
 
 export async function POST(req: Request, ctx: Ctx) {
     const { id } = await ctx.params;
-    const unitId = id; // <-- nazwę ujednolicamy lokalnie
+    const unitId = id; // normalize local variable name
 
     const session = await auth();
     const userId = session?.user?.id;
@@ -71,18 +77,34 @@ export async function POST(req: Request, ctx: Ctx) {
     const perkRequiresValue = readBool(perkAny, 'requiresValue');
     const perkIsInnate = readBool(perkAny, 'isInnate');
     const perkCategory = (readString(perkAny, 'category') ?? 'REGULAR') as 'REGULAR' | 'AUTOMATRON';
+    const perkStatKey = (readString(perkAny, 'statKey') ?? '').trim().toUpperCase();
+    const perkMinValue = readNumber(perkAny, 'minValue');
+    const isSpecialLinked = Boolean(perkStatKey && perkMinValue != null);
 
-    if (perkIsInnate) {
+    if (perkIsInnate && !isSpecialLinked) {
         return new Response(JSON.stringify({ error: 'Perk is INNATE and cannot be added to unit in army.' }), { status: 400 });
     }
 
-    // sprawdź czy jednostka ma startowy INNATE perk "ALL THE TOYS"
+    if (!isSpecialLinked) {
+        return new Response(JSON.stringify({ error: 'Only SPECIAL-linked perks can be added here.' }), { status: 400 });
+    }
+    const requiredMinValue = perkMinValue as number;
+
+    // check whether the unit has INNATE start perk "ALL THE TOYS"
     const unitWithStartPerks = await prisma.unitInstance.findUnique({
         where: { id: unitId },
         select: {
             id: true,
+            upgrades: { select: { statKey: true, delta: true } },
             unit: {
                 select: {
+                    s: true,
+                    p: true,
+                    e: true,
+                    c: true,
+                    i: true,
+                    a: true,
+                    l: true,
                     startPerks: { select: { perk: { select: { name: true } } } },
                 },
             },
@@ -101,14 +123,40 @@ export async function POST(req: Request, ctx: Ctx) {
         return new Response(JSON.stringify({ error: 'This unit has ALL THE TOYS and can only take Automatron perks.' }), { status: 400 });
     }
 
-    if (perkRequiresValue) {
+    const finalSpecial: Record<'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number> = {
+        S: unitWithStartPerks.unit.s,
+        P: unitWithStartPerks.unit.p,
+        E: unitWithStartPerks.unit.e,
+        C: unitWithStartPerks.unit.c,
+        I: unitWithStartPerks.unit.i,
+        A: unitWithStartPerks.unit.a,
+        L: unitWithStartPerks.unit.l,
+    };
+    for (const up of unitWithStartPerks.upgrades) {
+        const key = (up.statKey ?? '').toUpperCase();
+        if (key === 'S' || key === 'P' || key === 'E' || key === 'C' || key === 'I' || key === 'A' || key === 'L') {
+            finalSpecial[key] += up.delta;
+        }
+    }
+
+    if (perkStatKey !== 'S' && perkStatKey !== 'P' && perkStatKey !== 'E' && perkStatKey !== 'C' && perkStatKey !== 'I' && perkStatKey !== 'A' && perkStatKey !== 'L') {
+        return new Response(JSON.stringify({ error: 'Perk has invalid SPECIAL requirement.' }), { status: 400 });
+    }
+    if (finalSpecial[perkStatKey] < requiredMinValue) {
         return new Response(
-            JSON.stringify({ error: 'Perk requires value. Użyj endpointu z valueInt (TODO).' }),
+            JSON.stringify({ error: `SPECIAL requirement not met: ${perkStatKey} ${requiredMinValue} (current ${finalSpecial[perkStatKey]}).` }),
             { status: 400 },
         );
     }
 
-    // upewniamy się, że unit istnieje
+    if (perkRequiresValue) {
+        return new Response(
+            JSON.stringify({ error: 'Perk requires value. Use endpoint with valueInt (TODO).' }),
+            { status: 400 },
+        );
+    }
+
+    // ensure unit exists
     const exists = await prisma.unitInstance.findUnique({ where: { id: unitId }, select: { id: true } });
     if (!exists) return new Response('NOT_FOUND', { status: 404 });
 
@@ -147,15 +195,18 @@ export async function DELETE(req: Request, ctx: Ctx) {
     const ok = await canWriteByUnit(unitId, userId);
     if (!ok) return new Response('FORBIDDEN', { status: 403 });
 
-    // Sprawdź, czy perk istnieje i czy jest INNATE
+    // check whether perk exists and whether it is INNATE
     const perkAny = await prisma.perk.findUnique({ where: { id: perkId } });
     if (!perkAny) return new Response('NOT_FOUND', { status: 404 });
     const perkIsInnate = readBool(perkAny, 'isInnate');
-    if (perkIsInnate) {
+    const perkStatKey = (readString(perkAny, 'statKey') ?? '').trim().toUpperCase();
+    const perkMinValue = readNumber(perkAny, 'minValue');
+    const isSpecialLinked = Boolean(perkStatKey && perkMinValue != null);
+    if (perkIsInnate && !isSpecialLinked) {
         return new Response(JSON.stringify({ error: 'INNATE perks cannot be removed.' }), { status: 400 });
     }
 
-    // Usuń tylko z chosen perks (perki wybrane w armii). Startowe INNATE perki są w template i nie są tu dotykane.
+    // remove only from chosen perks (selected in army). Starting INNATE perks live in template and are not touched here.
     const r = await pDel.unitChosenPerk.deleteMany({ where: { unitId, perkId } });
 
     return new Response(JSON.stringify({ ok: true, removed: r.count }), { status: 200 });

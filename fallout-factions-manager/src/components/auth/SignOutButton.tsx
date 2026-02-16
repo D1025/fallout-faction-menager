@@ -1,15 +1,24 @@
 'use client';
 
-import { signOut } from 'next-auth/react';
+import { LogoutOutlined } from '@ant-design/icons';
+import { useRouter } from 'next/navigation';
 
 export function SignOutButton() {
+    const router = useRouter();
+
     return (
         <button
-            onClick={() => signOut({ callbackUrl: '/login' })}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs active:scale-[0.98]"
+            onClick={async () => {
+                await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+                router.push('/login');
+                router.refresh();
+            }}
+            className="ff-btn ff-btn-icon-mobile"
             title="Wyloguj"
+            aria-label="Wyloguj"
         >
-            Wyloguj
+            <LogoutOutlined className="ff-btn-icon" />
+            <span className="ff-btn-label">Wyloguj</span>
         </button>
     );
 }

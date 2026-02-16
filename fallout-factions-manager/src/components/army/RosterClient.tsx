@@ -1,38 +1,62 @@
 'use client';
 
+import { FileImageOutlined, PlusOutlined } from '@ant-design/icons';
+import { Avatar, Button, Card, Col, Flex, Grid, Row, Space, Tag, Typography } from 'antd';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
+import { EmptyState } from '@/components/ui/antd/ScreenStates';
+
 export function RosterClient(props: {
-    armyId: string;
-    armyName: string;
-    units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string|null }[];
+  armyId: string;
+  armyName: string;
+  units: { id: string; name: string; wounds: number; present: boolean; weaponsCount: number; upgradesCount: number; photoPath: string | null }[];
 }) {
-    return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-                <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                    <a href={`/army/${props.armyId}`} className="text-sm text-zinc-300">←</a>
-                    <div className="text-base font-semibold">Roster: {props.armyName}</div>
-                    <span className="w-6" />
-                </div>
-            </header>
+  const screens = Grid.useBreakpoint();
+  const isDesktop = Boolean(screens.lg);
 
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <div className="mt-3 grid gap-2">
-                    {props.units.map(u => (
-                        <a key={u.id} href={`/army/${props.armyId}/unit/${u.id}`} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 active:scale-[0.99]">
-                            <div className="h-12 w-12 rounded-xl bg-zinc-800 grid place-items-center text-zinc-300">{u.photoPath ? '🖼️' : u.name.slice(0,2)}</div>
-                            <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                    <div className="font-medium">{u.name}</div>
-                                    <div className="text-xs text-zinc-400">{u.present ? 'obecny' : 'rezerwa'}</div>
-                                </div>
-                                <div className="text-xs text-zinc-400">Rany: {u.wounds}/4 • Broń: {u.weaponsCount} • Ulepszenia: {u.upgradesCount}</div>
-                            </div>
-                        </a>
-                    ))}
-                </div>
-
-                <a href={`/army/${props.armyId}/roster/add`} className="fixed bottom-5 right-5 grid h-14 w-14 place-items-center rounded-full bg-emerald-500 text-2xl text-emerald-950 shadow-lg active:scale-95">＋</a>
-            </main>
-        </div>
-    );
+  return (
+    <MobilePageShell
+      title={`Roster: ${props.armyName}`}
+      backHref={`/army/${props.armyId}`}
+      stickyActions={
+        <Flex gap={8} justify="end">
+          {isDesktop ? (
+            <Button href={`/army/${props.armyId}`} size="large" style={{ minHeight: 44 }}>
+              Back to army
+            </Button>
+          ) : null}
+          <Button type="primary" icon={<PlusOutlined />} href={`/army/${props.armyId}/roster/add`} size="large" style={{ minHeight: 44 }}>
+            Add unit
+          </Button>
+        </Flex>
+      }
+    >
+      <Row gutter={[12, 12]}>
+        {props.units.length === 0 ? (
+          <Col span={24}><EmptyState title="No units" description="Add your first unit to the roster." /></Col>
+        ) : null}
+        {props.units.map((u) => (
+          <Col key={u.id} xs={24} md={12}>
+            <a href={`/army/${props.armyId}/unit/${u.id}`} style={{ width: '100%', display: 'block' }}>
+              <Card size="small" styles={{ body: { padding: 12 } }}>
+                <Flex align="center" gap={12}>
+                  <Avatar shape="square" size={48}>
+                    {u.photoPath ? <FileImageOutlined /> : u.name.slice(0, 2)}
+                  </Avatar>
+                  <Space direction="vertical" size={2} style={{ flex: 1 }}>
+                    <Flex justify="space-between" align="center" gap={8}>
+                      <Typography.Text strong>{u.name}</Typography.Text>
+                      <Tag color={u.present ? 'green' : 'default'}>{u.present ? 'present' : 'reserve'}</Tag>
+                    </Flex>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      Wounds: {u.wounds}/4 | Weapon: {u.weaponsCount} | Upgrades: {u.upgradesCount}
+                    </Typography.Text>
+                  </Space>
+                </Flex>
+              </Card>
+            </a>
+          </Col>
+        ))}
+      </Row>
+    </MobilePageShell>
+  );
 }

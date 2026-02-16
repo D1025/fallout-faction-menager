@@ -4,12 +4,12 @@ export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { AdminWeaponsClient } from '@/components/AdminWeaponsClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default async function WeaponsAdminPage() {
     const raw = await prisma.weaponTemplate.findMany({
         include: {
-            baseEffects: { include: { effect: true } }, // <-- bazowe efekty
+            baseEffects: { include: { effect: true } }, // <-- base effects
             profiles: {
                 include: { effects: { include: { effect: true } } },
                 orderBy: { order: 'asc' },
@@ -28,10 +28,11 @@ export default async function WeaponsAdminPage() {
         baseParts: w.baseParts ?? null,
         baseRating: w.baseRating ?? null,
 
-        // mapowanie bazowych efektów z efektami słownikowymi
+        // map base effects with dictionary effects
         baseEffects: (w.baseEffects ?? []).map((be) => ({
             effectId: be.effectId,
             valueInt: be.valueInt ?? null,
+            valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
             effect: {
                 id: be.effect.id,
                 name: be.effect.name,
@@ -41,7 +42,7 @@ export default async function WeaponsAdminPage() {
             },
         })),
 
-        // profile: z id + wszystkie efekty z wpiętym obiektem effect
+        // profiles: id + all effects with attached effect object
         profiles: w.profiles.map((p) => ({
             id: p.id,
             order: p.order ?? 0,
@@ -52,6 +53,8 @@ export default async function WeaponsAdminPage() {
             effects: p.effects.map((e) => ({
                 effectId: e.effectId,
                 valueInt: e.valueInt ?? null,
+                valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                 effect: {
                     id: e.effect.id,
                     name: e.effect.name,
@@ -64,12 +67,8 @@ export default async function WeaponsAdminPage() {
     }));
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <AppHeader title="Broń (admin)" backHref="/admin" />
-
-            <main className="mx-auto max-w-screen-sm px-3 pb-24">
-                <AdminWeaponsClient initial={list} />
-            </main>
-        </div>
+        <MobilePageShell title="Weapons (admin)" backHref="/admin">
+            <AdminWeaponsClient initial={list} />
+        </MobilePageShell>
     );
 }

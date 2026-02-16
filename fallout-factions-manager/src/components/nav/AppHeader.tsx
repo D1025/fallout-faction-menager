@@ -1,28 +1,38 @@
 'use client';
 
 import type React from 'react';
+import { Layout, Typography } from 'antd';
 import { BackButton } from '@/components/nav/BackButton';
 
 export function AppHeader({
     title,
     backHref,
     right,
+    maxWidth = 560,
 }: {
     title: string;
     backHref?: string;
     right?: React.ReactNode;
+    maxWidth?: number;
 }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-            <div className="mx-auto flex h-14 max-w-screen-sm items-center justify-between px-3">
-                <div className="min-w-0">
-                    {backHref ? <BackButton fallbackHref={backHref} /> : <div className="w-[64px]" />}
+        <Layout.Header className="ff-app-header">
+            <div className="ff-app-header__inner" style={{ maxWidth }}>
+                <div className="ff-app-header__left">{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
+
+                <Typography.Text
+                    strong
+                    className="ff-app-header__title"
+                    ellipsis
+                    title={title}
+                >
+                    {title}
+                </Typography.Text>
+
+                <div className="ff-app-header__right">
+                    {right}
                 </div>
-                <div className="min-w-0 flex-1 px-2 text-center">
-                    <div className="truncate text-base font-semibold">{title}</div>
-                </div>
-                <div className="min-w-0 text-right">{right ?? <div className="w-[64px]" />}</div>
             </div>
-        </header>
+        </Layout.Header>
     );
 }

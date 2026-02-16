@@ -1,13 +1,13 @@
 // src/app/factions/page.tsx
-export const dynamic = 'force-dynamic'; // nie generuj w czasie builda
+export const dynamic = 'force-dynamic'; // do not generate at build time
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
 import { FactionsClient, type Faction as UIFaction } from '@/components/FactionsClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
 export default async function Page() {
-    // Pobierz frakcje + limity z DB; w razie błędu pokaż pustą listę (UI się załaduje)
+    // Fetch factions + limits from DB; on error return an empty list (UI still loads)
     let factions: UIFaction[];
     try {
         const rows = await prisma.faction.findMany({
@@ -15,7 +15,7 @@ export default async function Page() {
             orderBy: { name: 'asc' },
         });
 
-        // Mapowanie do typu używanego przez UI
+        // Map to UI type
         factions = rows.map((f) => ({
             id: f.id,
             name: f.name,
@@ -25,7 +25,7 @@ export default async function Page() {
                 tier2: l.tier2 ?? null,
                 tier3: l.tier3 ?? null,
             })),
-            // wymagane przez typ Faction w FactionsClient:
+            // required by Faction type in FactionsClient:
             goalSets: [],
             upgradeRules: [],
         }));
@@ -34,9 +34,8 @@ export default async function Page() {
     }
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <AppHeader title="Frakcje" backHref="/" />
+        <MobilePageShell title="Factions" backHref="/">
             <FactionsClient initialFactions={factions} />
-        </div>
+        </MobilePageShell>
     );
 }

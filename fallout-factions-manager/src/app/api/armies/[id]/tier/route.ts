@@ -1,4 +1,4 @@
-import { auth } from '@/lib/authServer';
+﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
@@ -61,7 +61,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
 
     const currentTier = army.tier;
     const goalsThisTier = (army.activeGoalSet?.goals ?? []).filter(g => g.tier === currentTier);
-    // jeśli brak goalów na ten tier – pozwól awansować
+    // If there are no goals for this tier, allow advancement.
     if (goalsThisTier.length > 0) {
         const prog = await prisma.armyGoalProgress.findMany({
             where: { armyId },

@@ -6,6 +6,15 @@ export const runtime = 'nodejs';
 
 type AsyncCtx = { params: Promise<{ id: string }> };
 
+type TurfPayload = {
+    hazardId: string | null;
+    hazardLegacy: string;
+    hazards: { id: string; name: string; description: string; sortOrder: number }[];
+    facilities: { id: string; name: string; description: string; sortOrder: number }[];
+    selectedFacilityIds: string[];
+    legacyFacilities: { id: string; name: string }[];
+};
+
 async function canWrite(armyId: string, userId: string) {
     const army = await prisma.army.findUnique({ where: { id: armyId }, select: { ownerId: true } });
     if (!army) return false;
@@ -17,30 +26,60 @@ async function canWrite(armyId: string, userId: string) {
     return Boolean(share);
 }
 
+async function loadTurfPayload(armyId: string): Promise<TurfPayload> {
+    const [turf, hazards, facilities] = await Promise.all([
+        prisma.homeTurf.findUnique({
+            where: { armyId },
+            include: {
+                facilities: {
+                    select: {
+                        id: true,
+                        name: true,
+                        facilityDefId: true,
+                    },
+                },
+            },
+        }),
+        prisma.homeHazardDefinition.findMany({
+            orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+            select: { id: true, name: true, description: true, sortOrder: true },
+        }),
+        prisma.homeFacilityDefinition.findMany({
+            orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+            select: { id: true, name: true, description: true, sortOrder: true },
+        }),
+    ]);
+
+    const selectedFacilityIds = Array.from(
+        new Set(
+            (turf?.facilities ?? [])
+                .map((f) => f.facilityDefId)
+                .filter((id): id is string => Boolean(id)),
+        ),
+    );
+
+    const legacyFacilities = (turf?.facilities ?? [])
+        .filter((f) => !f.facilityDefId)
+        .map((f) => ({ id: f.id, name: f.name }));
+
+    return {
+        hazardId: turf?.hazardDefId ?? null,
+        hazardLegacy: turf?.hazard ?? '',
+        hazards,
+        facilities,
+        selectedFacilityIds,
+        legacyFacilities,
+    };
+}
+
 export async function GET(_req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
-
-    const turf = await prisma.homeTurf.findUnique({
-        where: { armyId: id },
-        include: { facilities: { select: { id: true, name: true } } },
-    });
-
-    if (!turf) {
-        // Brak rekordu – zwróć “puste” dane
-        return new Response(
-            JSON.stringify({ hazard: '', facilities: [] as { id: string; name: string }[] }),
-            { status: 200 },
-        );
-    }
-
-    return new Response(
-        JSON.stringify({ hazard: turf.hazard, facilities: turf.facilities }),
-        { status: 200 },
-    );
+    const payload = await loadTurfPayload(id);
+    return new Response(JSON.stringify(payload), { status: 200 });
 }
 
 const PatchSchema = z.object({
-    hazard: z.string().max(2000).optional(), // dowolny string, może być pusty
+    hazardId: z.string().cuid().nullable(),
 });
 
 export async function PATCH(req: Request, ctx: AsyncCtx) {
@@ -57,16 +96,22 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
         return new Response(JSON.stringify(parsed.error.flatten()), { status: 400 });
     }
 
-    // Utwórz turf jeśli brak
-    const updated = await prisma.homeTurf.upsert({
+    if (parsed.data.hazardId) {
+        const exists = await prisma.homeHazardDefinition.findUnique({
+            where: { id: parsed.data.hazardId },
+            select: { id: true },
+        });
+        if (!exists) {
+            return new Response(JSON.stringify({ error: 'HAZARD_NOT_FOUND' }), { status: 404 });
+        }
+    }
+
+    await prisma.homeTurf.upsert({
         where: { armyId: id },
-        create: { armyId: id, hazard: parsed.data.hazard ?? '' },
-        update: { hazard: parsed.data.hazard ?? '' },
-        include: { facilities: { select: { id: true, name: true } } },
+        create: { armyId: id, hazard: '', hazardDefId: parsed.data.hazardId },
+        update: { hazardDefId: parsed.data.hazardId },
     });
 
-    return new Response(
-        JSON.stringify({ hazard: updated.hazard, facilities: updated.facilities }),
-        { status: 200 },
-    );
+    const payload = await loadTurfPayload(id);
+    return new Response(JSON.stringify(payload), { status: 200 });
 }

@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { prisma } from '@/server/prisma';
 
 export const runtime = 'nodejs';
@@ -27,6 +27,8 @@ type SubfactionDelegate = {
 type WeaponEffectRow = {
     effectId: string;
     valueInt: number | null;
+    valueText?: string | null;
+    effectMode?: 'ADD' | 'REMOVE';
     effect: { id: string; name: string; kind: 'WEAPON' | 'CRITICAL'; description: string; requiresValue: boolean };
 };
 
@@ -99,7 +101,7 @@ type UnitTemplateDelegate = {
     }): Promise<UnitTemplateRow[]>;
 };
 
-// Uwaga: po zmianie schema.prisma trzeba uruchomić `prisma generate`.
+// Note: after schema.prisma changes, run `prisma generate`.
 const p = prisma as unknown as {
     subfaction: SubfactionDelegate;
     unitTemplate: UnitTemplateDelegate;
@@ -148,8 +150,7 @@ export async function GET(req: NextRequest) {
             },
         },
     } as const;
-
-    // helper: mapuj templates + dociągnij opisy broni
+    // Helper: map templates and optionally hydrate weapon details.
     function collectWeaponIds(rows: UnitTemplateRow[]): string[] {
         const ids: string[] = [];
         for (const t of rows) {
@@ -187,6 +188,8 @@ export async function GET(req: NextRequest) {
             baseEffects: (w.baseEffects ?? []).map((be) => ({
                 effectId: be.effectId,
                 valueInt: be.valueInt ?? null,
+                valueText: (be as { valueText?: string | null }).valueText ?? null,
+                effectMode: 'ADD' as const,
                 effect: {
                     id: be.effect.id,
                     name: be.effect.name,
@@ -208,6 +211,8 @@ export async function GET(req: NextRequest) {
                     effects: (p.effects ?? []).map((e) => ({
                         effectId: e.effectId,
                         valueInt: e.valueInt ?? null,
+                        valueText: (e as { valueText?: string | null }).valueText ?? null,
+                        effectMode: (e as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                         effect: {
                             id: e.effect.id,
                             name: e.effect.name,
@@ -219,8 +224,7 @@ export async function GET(req: NextRequest) {
                 })),
         };
     }
-
-    // Bez frakcji: zwróć globalne + wszystkie frakcyjne jak dotąd
+    // Without faction filter: return global + faction-bound templates (current behavior).
     if (!factionId) {
         const rows = await p.unitTemplate.findMany({
             where: {
@@ -261,11 +265,10 @@ export async function GET(req: NextRequest) {
         if (!limit) return new Response(JSON.stringify(items), { status: 200 });
         return new Response(JSON.stringify({ items, nextCursor: next }), { status: 200 });
     }
-
-    // 1) baza: global + przypisane do frakcji
+    // 1) Base set: global + assigned to this faction.
     const baseWhere = {
         OR: [{ isGlobal: true }, { factions: { some: { factionId } } }],
-        // jeśli NIE wybrano subfrakcji: ukryj jednostki, które są "allow" w jakiejkolwiek subfrakcji tej frakcji
+        // If no subfaction is selected: hide units explicitly allowed by any subfaction of this faction.
         ...(subfactionId
             ? {}
             : {
@@ -299,8 +302,7 @@ export async function GET(req: NextRequest) {
               })
             : Promise.resolve(null),
     ]);
-
-    // jeśli podano subfactionId, ale nie istnieje albo nie należy do frakcji – traktuj jak brak subfrakcji
+    // If subfactionId is invalid or does not belong to the faction, treat as no subfaction.
     const allowIds = new Set<string>();
     const denyIds = new Set<string>();
 
@@ -308,8 +310,7 @@ export async function GET(req: NextRequest) {
         for (const a of sub.unitAllows) allowIds.add(a.unitId);
         for (const d of sub.unitDenies) denyIds.add(d.unitId);
     }
-
-    // 2) dołóż allow (dodatkowe jednostki)
+    // 2) Add explicit allow-list units.
     const extraIds = [...allowIds].filter((id) => !denyIds.has(id));
     const extraRows =
         extraIds.length > 0
@@ -374,3 +375,4 @@ export async function GET(req: NextRequest) {
     if (!limit) return new Response(JSON.stringify(items), { status: 200 });
     return new Response(JSON.stringify({ items, nextCursor }), { status: 200 });
 }
+

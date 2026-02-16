@@ -1,7 +1,10 @@
 'use client';
 
+import { ArrowLeftOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
+import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import { useRouter } from 'next/navigation';
+import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 
 /* ===== Types ===== */
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null };
@@ -74,24 +77,26 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
     const router = useRouter();
     const [q, setQ] = useState('');
     const [factions, setFactions] = useState<UIFaction[]>(initialFactions);
+    const [onlyWithLimits, setOnlyWithLimits] = useState(false);
     const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
     const [savingAll, setSavingAll] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(false);
 
     const filtered = useMemo(() => {
         const s = q.trim().toLowerCase();
         if (!s) return factions;
-        return factions.filter((f) => f.name.toLowerCase().includes(s));
-    }, [q, factions]);
+        return factions.filter((f) => f.name.toLowerCase().includes(s)).filter((f) => (onlyWithLimits ? f.limits.length > 0 : true));
+    }, [q, factions, onlyWithLimits]);
 
     function openCreate() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '-', target: 1, order })),
         );
         const blank: UIFaction = {
             id: 'NEW',
             name: '',
             limits: [],
-            goalSets: [{ name: 'Zestaw 1', goals: emptyGoals }],
+            goalSets: [{ name: 'Set 1', goals: emptyGoals }],
             upgradeRules: [
                 { statKey: 'hp', ratingPerPoint: 0 },
                 { statKey: 'S', ratingPerPoint: 0 },
@@ -122,22 +127,63 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
         setFactions((prev) => prev.filter((f) => f.id !== id));
     }
 
+    const activeChips = [
+        ...(q ? [{ key: 'q', label: `Search: ${q}`, onRemove: () => setQ('') }] : []),
+        ...(onlyWithLimits ? [{ key: 'limits', label: 'Only with limits', onRemove: () => setOnlyWithLimits(false) }] : []),
+    ] as ActiveFilterChip[];
+
+    const clearAll = () => {
+        setQ('');
+        setOnlyWithLimits(false);
+    };
+
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
+        <div className="app-shell">
             <Header
-                title="Frakcje – limity, zadania, ulepszenia"
+                title="Factions - limits, tasks, upgrades"
                 right={
-                    <button
-                        onClick={openCreate}
-                        className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
-                    >
-                        + Dodaj frakcję
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setFiltersOpen(true)}
+                            className={
+                                'grid h-9 w-9 place-items-center rounded-xl border ' +
+                                (activeChips.length > 0
+                                    ? 'border-amber-300/50 bg-amber-300/10 text-amber-100'
+                                    : 'border-zinc-700 bg-zinc-900 text-zinc-200')
+                            }
+                            aria-label="Filters"
+                            title="Filters"
+                        >
+                            <FilterOutlined />
+                        </button>
+                        <button
+                            onClick={openCreate}
+                            className="ff-btn ff-btn-icon-mobile"
+                            title="Add faction"
+                            aria-label="Add faction"
+                        >
+                            <PlusOutlined className="ff-btn-icon" />
+                            <span className="ff-btn-label">Add faction</span>
+                        </button>
+                    </div>
                 }
             />
 
-            <main className="mx-auto w-full max-w-screen-sm px-3 pb-24">
-                <Search value={q} onChange={setQ} placeholder="Szukaj frakcji" />
+            {/* Filters drawer (without inline trigger) */}
+            <FilterBar
+                showTrigger={false}
+                open={filtersOpen}
+                onOpenChangeAction={setFiltersOpen}
+                search={q}
+                onSearchAction={setQ}
+                searchPlaceholder="Search factions"
+                quickToggles={<QuickToggle checked={onlyWithLimits} onChangeAction={setOnlyWithLimits} label="Only with limits" />}
+                activeChips={activeChips}
+                onClearAllAction={clearAll}
+            />
+
+            <main>
+                {/* removed old inline filter container */}
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                     {filtered.map((f) => (
@@ -162,9 +208,16 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                         router.refresh();
                     }}
                     onDeleteRequest={async (id) => {
-                        if (!confirm('Na pewno usunąć frakcję? Operacja nieodwracalna.')) return;
-                        await deleteFaction(id);
-                        router.refresh();
+                        confirmAction({
+                            title: 'Delete faction? This action cannot be undone.',
+                            okText: 'Delete',
+                            cancelText: 'Cancel',
+                            danger: true,
+                            onOk: async () => {
+                                await deleteFaction(id);
+                                router.refresh();
+                            },
+                        });
                     }}
                     saving={savingAll}
                     onSaveAll={async (draft) => {
@@ -202,41 +255,15 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
 
 function Header({ title, right }: { title: string; right?: React.ReactNode }) {
     return (
-        <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-            <div className="mx-auto flex h-14 w-full max-w-screen-sm items-center justify-between px-3">
-                <div className="text-lg font-semibold tracking-wide">{title}</div>
-                <div className="text-xs text-zinc-400">{right}</div>
+        <header className="sticky top-0 z-10 vault-panel px-3 py-2 backdrop-blur">
+            <div className="mx-auto flex min-h-12 w-full items-center justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="ff-panel-headline">Admin / Factions</p>
+                    <div className="truncate text-sm font-semibold tracking-wide">{title}</div>
+                </div>
+                <div className="text-xs text-zinc-300">{right}</div>
             </div>
         </header>
-    );
-}
-
-function Search({
-                    value,
-                    onChange,
-                    placeholder,
-                }: {
-    value: string;
-    onChange: (v: string) => void;
-    placeholder?: string;
-}) {
-    return (
-        <label className="block">
-            <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
-                <Magnifier className="h-5 w-5 text-zinc-400" />
-                <input
-                    value={value}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={placeholder}
-                    className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                />
-                {value && (
-                    <button onClick={() => onChange('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95">
-                        ✕
-                    </button>
-                )}
-            </div>
-        </label>
     );
 }
 
@@ -244,16 +271,16 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
     return (
         <button
             onClick={onOpen}
-            className="group flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-left active:scale-[0.99]"
+            className="group flex items-center gap-3 vault-panel p-3 text-left active:scale-[0.99]"
         >
-            <div className="grid h-12 w-12 place-items-center rounded-xl bg-zinc-800 text-zinc-300">
+            <div className="grid h-12 w-12 place-items-center rounded-xl border border-amber-300/30 bg-zinc-900 text-amber-200">
                 {faction.name.slice(0, 2)}
             </div>
             <div className="flex-1">
                 <div className="flex items-center justify-between">
                     <div className="text-base font-semibold leading-tight">{faction.name}</div>
-                    <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-300">
-            edytuj
+                    <span className="rounded-full border border-amber-300/35 bg-zinc-900 px-2 py-0.5 text-[10px] text-amber-100">
+            edit
           </span>
                 </div>
                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -268,10 +295,10 @@ function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => vo
 
 function LimitBadge({ tag, values }: { tag: string; values: (number | null | undefined)[] }) {
     return (
-        <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-300">
-      <span className="font-medium">{tag}</span>
-      <span className="text-zinc-500">{values.map((v) => (v ?? '–')).join('/')}</span>
-    </span>
+        <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+            <span className="max-w-[12rem] truncate font-medium" title={tag}>{tag}</span>
+            <span className="shrink-0 text-zinc-500">{values.map((v) => (v ?? '-')).join('/')}</span>
+        </span>
     );
 }
 
@@ -335,12 +362,12 @@ function EditorSheet({
         }));
     }
 
-    /* === ZESTAWY ZADAŃ === */
+    /* === TASK SETS === */
     function addGoalSet() {
         const emptyGoals = ([1, 2, 3] as const).flatMap((t) =>
-            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '—', target: 1, order })),
+            [0, 1, 2].map((order) => ({ tier: t as 1 | 2 | 3, description: '-', target: 1, order })),
         );
-        setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Zestaw ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
+        setDraft((d) => ({ ...d, goalSets: [...d.goalSets, { name: `Set ${d.goalSets.length + 1}`, goals: emptyGoals }] }));
     }
     function removeGoalSet(idx: number) {
         setDraft((d) => ({ ...d, goalSets: d.goalSets.filter((_, i) => i !== idx) }));
@@ -373,20 +400,20 @@ function EditorSheet({
 
     async function handleSaveAll() {
         if (!draft.name.trim()) {
-            alert('Podaj nazwę frakcji.');
+            notifyWarning('Enter faction name.');
             return;
         }
         try {
             const saved = await onSaveAll(draft);
             onSaved(saved);
         } catch (e: unknown) {
-            alert('Błąd zapisu: ' + getErrorMessage(e));
+            notifyApiError(getErrorMessage(e), 'Failed to save faction');
         }
     }
 
     return (
         <div className="fixed inset-0 z-20">
-            <button aria-label="Zamknij" onClick={handleCancel} className="absolute inset-0 bg-black/60" />
+            <button aria-label="Close" onClick={handleCancel} className="absolute inset-0 bg-black/60" />
 
             <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
                 <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-zinc-700" />
@@ -398,23 +425,23 @@ function EditorSheet({
                             onClick={handleCancel}
                             className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 active:scale-[0.99]"
                         >
-                            ← Wróć
+                            <ArrowLeftOutlined /> Back
                         </button>
                         <div className="min-w-0 flex-1 text-center">
                             <div className="truncate text-sm font-semibold">
-                                {mode === 'create' ? 'Nowa frakcja' : 'Edycja frakcji'}
+                                {mode === 'create' ? 'New faction' : 'Edit faction'}
                             </div>
                         </div>
                         <div className="w-[72px]" />
                     </div>
 
-                    {/* nazwa + usuń */}
+                    {/* name + delete */}
                     <div className="mt-3 flex items-center gap-2">
                         <input
                             value={draft.name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="Nazwa frakcji"
-                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                            placeholder="Faction name"
+                            className="flex-1 vault-input px-3 py-2 text-sm"
                         />
                         {mode === 'edit' && (
                             <button
@@ -423,70 +450,74 @@ function EditorSheet({
                                         await onDeleteRequest(draft.id);
                                         onDeleted(draft.id);
                                     } catch (e: unknown) {
-                                        alert('Nie udało się usunąć: ' + getErrorMessage(e));
+                                        notifyApiError(getErrorMessage(e), 'Failed to delete faction');
                                     }
                                 }}
                                 className="rounded-xl border border-red-700 bg-red-900/30 px-3 py-2 text-sm text-red-200"
                             >
-                                Usuń
+                                Delete
                             </button>
                         )}
                     </div>
 
                     <div className="mt-2 text-[11px] text-zinc-400">
-                        Tip: możesz zawsze wrócić bez zapisu. Zmiany zapisujesz przyciskiem „Zapisz”.
+                        Tip: you can always go back without saving. Use the Save button to keep changes.
                     </div>
                 </header>
 
                 {/* scrollable content */}
-                <div className="flex-1 overflow-y-auto px-4 pb-28 pt-3">
+                <div className="vault-scrollbar flex-1 overflow-y-auto px-4 pb-28 pt-3">
                     {/* LIMITY */}
                     <section className="mt-1">
                         <div className="flex items-center justify-between">
                             <div className="text-sm font-medium">Limity</div>
-                            <button onClick={addLimit} className="text-xs text-emerald-300">Dodaj limit</button>
+                            <button onClick={addLimit} className="text-xs text-emerald-300">Add limit</button>
                         </div>
                         <div className="mt-2 grid gap-2">
                             {draft.limits.map((l, idx) => (
-                                <div key={idx} className="grid grid-cols-7 items-center gap-2 rounded-xl border border-zinc-800 p-2">
-                                    <input
-                                        value={l.tag}
-                                        onChange={(e) => setLimit(idx, 'tag', e.target.value)}
-                                        placeholder="Tag (np. LEADER)"
-                                        className="col-span-3 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier1 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T1"
-                                        onChange={(e) => setLimit(idx, 'tier1', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier2 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T2"
-                                        onChange={(e) => setLimit(idx, 'tier2', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <input
-                                        value={l.tier3 ?? ''}
-                                        inputMode="numeric"
-                                        placeholder="T3"
-                                        onChange={(e) => setLimit(idx, 'tier3', e.target.value)}
-                                        className="col-span-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                    />
-                                    <button onClick={() => removeLimit(idx)} className="text-xs text-red-300">Usuń</button>
+                                <div key={idx} className="rounded-xl border border-zinc-800 p-2">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
+                                        <input
+                                            value={l.tag}
+                                            onChange={(e) => setLimit(idx, 'tag', e.target.value)}
+                                            placeholder="Limit tag (e.g. CHAMPION / ELITE SUPPORT)"
+                                            className="sm:col-span-6 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                        />
+                                        <div className="grid grid-cols-3 gap-2 sm:col-span-5">
+                                            <input
+                                                value={l.tier1 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T1"
+                                                onChange={(e) => setLimit(idx, 'tier1', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                            <input
+                                                value={l.tier2 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T2"
+                                                onChange={(e) => setLimit(idx, 'tier2', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                            <input
+                                                value={l.tier3 ?? ''}
+                                                inputMode="numeric"
+                                                placeholder="T3"
+                                                onChange={(e) => setLimit(idx, 'tier3', e.target.value)}
+                                                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                                            />
+                                        </div>
+                                        <button onClick={() => removeLimit(idx)} className="sm:col-span-1 justify-self-end text-xs text-red-300">Delete</button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </section>
 
-                    {/* ZESTAWY ZADAŃ */}
+                    {/* TASK SETS */}
                     <section className="mt-6">
                         <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium">Zestawy zadań</div>
-                            <button onClick={addGoalSet} className="text-xs text-emerald-300">Dodaj zestaw</button>
+                            <div className="text-sm font-medium">Task sets</div>
+                            <button onClick={addGoalSet} className="text-xs text-emerald-300">Add set</button>
                         </div>
 
                         {draft.goalSets.map((gs, setIdx) => (
@@ -497,7 +528,7 @@ function EditorSheet({
                                         onChange={(e) => setGoalSetName(setIdx, e.target.value)}
                                         className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
                                     />
-                                    <button onClick={() => removeGoalSet(setIdx)} className="text-xs text-red-300">Usuń</button>
+                                    <button onClick={() => removeGoalSet(setIdx)} className="text-xs text-red-300">Delete</button>
                                 </div>
 
                                 {[1, 2, 3].map((t) => (
@@ -514,7 +545,7 @@ function EditorSheet({
                                             return (
                                                 <div key={order} className="mt-1 grid grid-cols-12 gap-2">
                                                     <input
-                                                        placeholder={`Opis #${order + 1}`}
+                                                        placeholder={`Description #${order + 1}`}
                                                         value={g.description}
                                                         onChange={(e) => setGoal(setIdx, t as 1 | 2 | 3, order, 'description', e.target.value)}
                                                         className="col-span-9 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
@@ -537,7 +568,7 @@ function EditorSheet({
 
                     {/* UPGRADE RULES */}
                     <section className="mt-6">
-                        <div className="text-sm font-medium">Tabela ulepszeń (rating za +1)</div>
+                        <div className="text-sm font-medium">Upgrade table (rating per +1)</div>
                         <div className="mt-2 grid grid-cols-4 gap-2">
                             {statKeys.map((k) => {
                                 const v = draft.upgradeRules.find((r) => r.statKey === k)?.ratingPerPoint ?? 0;
@@ -567,27 +598,18 @@ function EditorSheet({
                             onClick={handleCancel}
                             className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 active:scale-[0.99]"
                         >
-                            Anuluj
+                            Cancel
                         </button>
                         <button
                             disabled={saving}
                             onClick={() => void handleSaveAll()}
                             className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.99]"
                         >
-                            {saving ? 'Zapisywanie…' : 'Zapisz'}
+                            {saving ? 'Saving...' : 'Save'}
                         </button>
                     </div>
                 </footer>
             </div>
         </div>
-    );
-}
-
-function Magnifier(props: React.HTMLAttributes<SVGSVGElement>) {
-    return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" {...props}>
-            <circle cx="11" cy="11" r="7" strokeWidth="2" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
-        </svg>
     );
 }

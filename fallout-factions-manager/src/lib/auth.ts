@@ -3,11 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import type { Session, User as NAUser } from "next-auth";
 import type { JWT } from "next-auth/jwt";
 import { prisma } from "@/server/prisma";
+import { verifyPassword } from "@/lib/password";
 
 /* ===== Module augmentation ===== */
 declare module "next-auth" {
     interface Session {
-        user: { id: string; name: string; role: "USER" | "ADMIN" };
+        user: { id: string; name: string; role: "USER" | "ADMIN"; image?: string | null };
     }
     interface User {
         id: string;
@@ -20,33 +21,42 @@ declare module "next-auth/jwt" {
         id: string;
         role: "USER" | "ADMIN";
         name?: string;
+        image?: string | null;
     }
 }
 
-/* ===== Nasz user ===== */
+/* ===== App user ===== */
 type AppUser = {
     id: string;
     name: string;
     role: "USER" | "ADMIN";
 };
 
-/* ===== Konfiguracja NextAuth ===== */
+/* ===== NextAuth config ===== */
 const nextAuth = NextAuth({
     providers: [
         Credentials({
             name: "Login",
-            credentials: { name: { label: "Nick", type: "text" } },
+            credentials: {
+                name: { label: "Username", type: "text" },
+                password: { label: "Password", type: "password" },
+            },
             async authorize(creds): Promise<AppUser | null> {
                 const raw = creds?.name ?? "";
                 const name = String(raw).trim();
-                if (!name) return null;
+                const password = String(creds?.password ?? "");
+                if (!name || !password) return null;
 
-                const existing = await prisma.user.findFirst({ where: { name } });
-                if (existing) {
-                    return { id: existing.id, name: existing.name, role: existing.role as "USER" | "ADMIN" };
-                }
-                const created = await prisma.user.create({ data: { name } });
-                return { id: created.id, name: created.name, role: created.role as "USER" | "ADMIN" };
+                const existing = await prisma.user.findFirst({
+                    where: { name: { equals: name, mode: "insensitive" } },
+                    select: { id: true, name: true, role: true, passwordHash: true },
+                });
+                if (!existing?.passwordHash) return null;
+
+                const valid = await verifyPassword(password, existing.passwordHash).catch(() => false);
+                if (!valid) return null;
+
+                return { id: existing.id, name: existing.name, role: existing.role as "USER" | "ADMIN" };
             },
         }),
     ],
@@ -66,6 +76,7 @@ const nextAuth = NextAuth({
                 id: token.id,
                 name: token.name ?? (session.user?.name ?? ""),
                 role: token.role,
+                image: token.image ?? session.user?.image ?? null,
             };
             return session;
         },
@@ -74,7 +85,7 @@ const nextAuth = NextAuth({
     secret: process.env.NEXTAUTH_SECRET,
 });
 
-/* ===== Eksporty zgodne z App Router ===== */
+/* ===== App Router exports ===== */
 export const { handlers, auth, signIn, signOut } = nextAuth;
-/** Bezpośrednie eksporty metod HTTP do re-exportu w route.ts */
+/** Direct HTTP method exports for route.ts re-export */
 export const { GET, POST } = handlers;

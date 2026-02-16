@@ -3,8 +3,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { prisma } from '@/server/prisma';
-import ArmyDashboardClient from '@/components/army/ArmyDashboardClient';
-import { AppHeader } from '@/components/nav/AppHeader';
+import { auth } from '@/lib/authServer';
+import { ArmyPageClient } from '@/components/army/ArmyPageClient';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;
@@ -14,11 +14,30 @@ function isBonusKey(k: string): k is Exclude<BonusKeys, 'HP'> {
 
 export default async function Page({ params }: { params: Promise<{ armyId: string }> }) {
     const { armyId } = await params;
+    const session = await auth();
+    const userId = session?.user?.id;
+    const userMeta = userId
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: { name: true, role: true, photoEtag: true },
+        })
+        : null;
+    const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
+    const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
     const army = await prisma.army.findUnique({
         where: { id: armyId },
         include: {
-            faction: { select: { id: true, name: true } },
+            faction: {
+                select: {
+                    id: true,
+                    name: true,
+                    limits: {
+                        select: { tag: true, tier1: true, tier2: true, tier3: true },
+                        orderBy: { tag: 'asc' },
+                    },
+                },
+            },
             units: {
                 include: {
                     unit: {
@@ -35,7 +54,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         },
     });
 
-    if (!army) return <div className="p-4 text-red-300">Nie znaleziono armii.</div>;
+    if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
 
     const rules = await prisma.factionUpgradeRule.findMany({
         where: { factionId: army.factionId },
@@ -71,7 +90,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return acc + sum;
         }, 0);
 
-        // ⬇️ TYLKO dodatnie stat-upy liczą się do ratingu
+        // Only positive stat upgrades count toward rating.
         const statsDelta = u.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc; // ignoruj rany
             const key = up.statKey === 'hp' ? 'hp' : up.statKey;
@@ -114,6 +133,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     name: be.effect.name,
                     kind: be.effect.kind as 'WEAPON' | 'CRITICAL',
                     valueInt: be.valueInt,
+                    valueText: (be as unknown as { valueText?: string | null }).valueText ?? null,
+                    effectMode: 'ADD' as const,
                 })) ?? [];
 
             const profiles =
@@ -127,6 +148,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         name: e.effect.name,
                         kind: e.effect.kind as 'WEAPON' | 'CRITICAL',
                         valueInt: e.valueInt,
+                        valueText: (e as unknown as { valueText?: string | null }).valueText ?? null,
+                        effectMode: (e as unknown as { effectMode?: 'ADD' | 'REMOVE' }).effectMode ?? 'ADD',
                     })),
                     parts: ('parts' in p ? (p as unknown as { parts: number | null }).parts : null) ?? null,
                     rating: ('ratingDelta' in p ? (p as unknown as { ratingDelta: number | null }).ratingDelta : null) ?? null,
@@ -135,8 +158,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return {
                 name: t?.name ?? `#${w.templateId.slice(0, 6)}`,
                 selectedProfileIds,
-                baseType: t?.baseType ?? '—',
-                baseTest: t?.baseTest ?? '—',
+                baseType: t?.baseType ?? '-',
+                baseTest: t?.baseTest ?? '-',
                 baseEffects,
                 profiles,
             };
@@ -162,19 +185,26 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     });
 
     return (
-        <div className="min-h-dvh bg-zinc-950 text-zinc-100">
-            <AppHeader title={army.name} backHref="/" />
-            <ArmyDashboardClient
-                armyId={army.id}
-                armyName={army.name}
-                tier={army.tier}
-                factionId={army.faction.id}
-                factionName={army.faction.name}
-                resources={{ caps: army.caps, parts: army.parts, reach: army.reach, exp: army.exp }}
-                units={uiUnits}
-                rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
-                subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
-            />
-        </div>
+        <ArmyPageClient
+            backHref="/"
+            userName={userName}
+            userRole={userRole}
+            userPhotoEtag={userMeta?.photoEtag ?? null}
+            armyId={army.id}
+            armyName={army.name}
+            tier={army.tier}
+            factionId={army.faction.id}
+            factionName={army.faction.name}
+            factionLimits={army.faction.limits.map((l) => ({
+                tag: l.tag,
+                tier1: l.tier1 ?? null,
+                tier2: l.tier2 ?? null,
+                tier3: l.tier3 ?? null,
+            }))}
+            resources={{ caps: army.caps, parts: army.parts, scout: army.scout, reach: army.reach, exp: army.exp, ploys: army.ploys }}
+            units={uiUnits}
+            rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
+            subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
+        />
     );
 }

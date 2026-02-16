@@ -1,11 +1,13 @@
 'use client';
 
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Button } from 'antd';
 import { useRouter } from 'next/navigation';
 
 export function BackButton({
     fallbackHref,
-    label = 'Wróć',
-    className = 'text-sm text-zinc-300',
+    label = 'Back',
+    className,
 }: {
     fallbackHref: string;
     label?: string;
@@ -22,8 +24,8 @@ export function BackButton({
     }
 
     return (
-        <button type="button" onClick={goBack} className={className} aria-label={label} title={label}>
-            ← {label}
-        </button>
+        <Button type="default" size="small" onClick={goBack} className={className} aria-label={label} title={label}>
+            <ArrowLeftOutlined /> {label}
+        </Button>
     );
 }

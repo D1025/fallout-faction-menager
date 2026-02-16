@@ -14,7 +14,7 @@ const PayloadSchema = z.object({
     rules: z.array(RuleSchema).max(20),
 });
 
-// Uwaga: params jako Promise
+// Note: params are Promise-based in this setup
 type AsyncCtx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, ctx: AsyncCtx) {

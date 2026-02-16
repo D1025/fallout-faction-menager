@@ -15,7 +15,7 @@ const Payload = z.object({
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['denyIds'],
-            message: 'Ta sama jednostka nie może być jednocześnie w allow i deny: ' + overlap.slice(0, 5).join(', '),
+            message: 'The same unit cannot be in both allow and deny: ' + overlap.slice(0, 5).join(', '),
         });
     }
 });

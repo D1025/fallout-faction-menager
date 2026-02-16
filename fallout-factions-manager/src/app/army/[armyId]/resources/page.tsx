@@ -10,6 +10,6 @@ export default async function Page({
     params: Promise<{ armyId: string }>;
 }) {
     const { armyId } = await params;
-    // Ten widok został zastąpiony przez sekcję "Zasoby" na stronie armii.
+    // This view has been replaced by the "Resources" section on the army page.
     redirect(`/army/${armyId}`);
 }

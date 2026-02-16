@@ -1,8 +1,8 @@
-import { prisma } from "@/server/prisma";
+﻿import { prisma } from "@/server/prisma";
 import { auth } from "@/lib/authServer";
 import { PerkSchema } from "@/lib/validation/perk";
 
-// (opcjonalnie) wymuś node runtime
+// Optional but explicit: use Node runtime
 export const runtime = 'nodejs';
 
 export async function GET() {
