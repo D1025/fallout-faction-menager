@@ -349,3 +349,59 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 4. This project uses `node:20-alpine` in Dockerfile for better Prisma stability.
+
+### Prisma `P3009` (failed migration in target database)
+
+If you see:
+- `Error: P3009`
+- `migrate found failed migrations in the target database`
+
+it means one migration was recorded as failed in `_prisma_migrations`.
+
+Typical reason in this project: earlier startup used `prisma db push` and later switched to `prisma migrate deploy`.
+
+Recovery steps:
+
+1. Check if objects from the failed migration already exist:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec db \
+  psql -U root_admin -d fallout -c "SELECT typname FROM pg_type WHERE typname='PerkCategory';"
+
+docker compose --env-file .env.production -f docker-compose.prod.yml exec db \
+  psql -U root_admin -d fallout -c "SELECT column_name, udt_name FROM information_schema.columns WHERE table_name='Perk' AND column_name='category';"
+```
+
+2. If both exist, mark migration as applied:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm web \
+  npx prisma migrate resolve --applied 20260212_add_perk_category_automatron
+```
+
+3. If one of them is missing, apply SQL manually first, then resolve:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml exec db \
+  psql -U root_admin -d fallout -c "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname='PerkCategory') THEN CREATE TYPE \"PerkCategory\" AS ENUM ('REGULAR','AUTOMATRON'); END IF; END $$;"
+
+docker compose --env-file .env.production -f docker-compose.prod.yml exec db \
+  psql -U root_admin -d fallout -c "ALTER TABLE \"Perk\" ADD COLUMN IF NOT EXISTS \"category\" \"PerkCategory\" NOT NULL DEFAULT 'REGULAR';"
+
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm web \
+  npx prisma migrate resolve --applied 20260212_add_perk_category_automatron
+```
+
+4. Deploy migrations and start:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm web npx prisma migrate deploy
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
+
+If this is a fresh/non-production database with no important data, simplest reset is:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml down -v
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
