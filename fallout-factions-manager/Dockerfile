@@ -11,6 +11,10 @@ RUN apk add --no-cache openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
+
+ENV NODE_OPTIONS="--max-old-space-size=1024"
+ENV NEXT_TELEMETRY_DISABLED=1
+
 RUN npm run build
 
 # ---------- run ----------
