@@ -60,11 +60,14 @@ Build and start:
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
+This stack runs migrations in a separate one-shot `migrate` service before `web` starts.
+
 Check:
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.prod.yml ps
 docker compose --env-file .env.production -f docker-compose.prod.yml logs -f web
+docker compose --env-file .env.production -f docker-compose.prod.yml logs migrate
 ```
 
 ## 4. Run seed once (first deployment only)
