@@ -16,17 +16,6 @@ services:
       retries: 30
     restart: unless-stopped
 
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: "npm run prisma:migrate:deploy"
-    env_file: .env.production
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: "no"
-
   web:
     build:
       context: .
@@ -38,8 +27,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
