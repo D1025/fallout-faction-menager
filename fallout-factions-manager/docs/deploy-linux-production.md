@@ -57,14 +57,14 @@ Use a different value for:
 Build and start:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 Check:
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f web
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f web
 ```
 
 ## 4. Run seed once (first deployment only)
@@ -72,7 +72,7 @@ docker compose -f docker-compose.prod.yml logs -f web
 After first startup, seed base data once:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec web npm run seed:prod
+docker compose --env-file .env.production -f docker-compose.prod.yml exec web npm run seed:prod
 ```
 
 Do **not** run seed on every restart.
@@ -164,7 +164,7 @@ sudo lego \
   --accept-tos \
   --server https://acme-v02.api.letsencrypt.org/directory \
   --profile shortlived \
-  --domains "$PUBLIC_IP" \
+  --domains "64.226.81.96" \
   --http \
   --http.webroot /var/www/letsencrypt \
   --path /etc/lego \
@@ -245,7 +245,7 @@ NEXTAUTH_URL=http://your-domain.example
 Then restart app container:
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 For real production, keep `AUTH_COOKIE_SECURE=true` and use HTTPS.
@@ -256,7 +256,7 @@ When updating app:
 
 ```bash
 git pull
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
 ```
 
 ## 10. Useful operations
@@ -264,18 +264,88 @@ docker compose -f docker-compose.prod.yml up -d --build
 Restart stack:
 
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose --env-file .env.production -f docker-compose.prod.yml restart
 ```
 
 Stop stack:
 
 ```bash
-docker compose -f docker-compose.prod.yml down
+docker compose --env-file .env.production -f docker-compose.prod.yml down
 ```
 
 Tail logs:
 
 ```bash
-docker compose -f docker-compose.prod.yml logs -f web
-docker compose -f docker-compose.prod.yml logs -f db
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f web
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f db
 ```
+
+## 11. Troubleshooting
+
+### Warning: `PG_ROOT_PASSWORD variable is not set`
+
+Use `--env-file .env.production` with every compose command, for example:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+Alternative: export variables once in your shell:
+
+```bash
+set -a
+source .env.production
+set +a
+```
+
+### `failed to execute bake: signal: killed` during build
+
+Most often this means the kernel killed the build process due to low RAM.
+
+Check OOM events:
+
+```bash
+dmesg -T | egrep -i "killed process|out of memory|oom"
+free -h
+```
+
+Add swap (example 2G):
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Then retry build:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+### Prisma `SyntaxError` in `@prisma/get-platform` during Docker build
+
+If you see an error like:
+- `SyntaxError: Invalid or unexpected token`
+- stack trace in `node_modules/@prisma/get-platform/...`
+
+use these checks:
+
+1. Ensure build is run with correct env file:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+```
+
+2. Ensure Docker context does **not** include local `node_modules` (project has `.dockerignore` for that).
+
+3. Rebuild without stale cache:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache web
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
+
+4. This project uses `node:20-alpine` in Dockerfile for better Prisma stability.
