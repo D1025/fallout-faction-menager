@@ -36,8 +36,8 @@ export const AUTH_ACCESS_HEADER = 'x-ff-access-token';
 const ACCESS_TTL_SEC = parseDurationSec(process.env.AUTH_ACCESS_TTL_SEC, 15 * 60);
 const REFRESH_TTL_SEC = parseDurationSec(process.env.AUTH_REFRESH_TTL_SEC, 30 * 24 * 60 * 60);
 
-const ACCESS_SECRET = getSecret('AUTH_ACCESS_SECRET');
-const REFRESH_SECRET = getSecret('AUTH_REFRESH_SECRET');
+let accessSecretCache: string | null = null;
+let refreshSecretCache: string | null = null;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -57,6 +57,18 @@ function getSecret(key: string): string {
         throw new Error(`Missing auth secret: ${key}`);
     }
     return `${key}_dev_only_change_me_1234567890`;
+}
+
+function accessSecret(): string {
+    if (accessSecretCache) return accessSecretCache;
+    accessSecretCache = getSecret('AUTH_ACCESS_SECRET');
+    return accessSecretCache;
+}
+
+function refreshSecret(): string {
+    if (refreshSecretCache) return refreshSecretCache;
+    refreshSecretCache = getSecret('AUTH_REFRESH_SECRET');
+    return refreshSecretCache;
 }
 
 function nowSec(): number {
@@ -188,20 +200,20 @@ export async function issueTokenPair(user: AuthUser): Promise<TokenPair> {
         jti: randomId(),
     };
 
-    const accessToken = await createJwt(accessPayload, ACCESS_SECRET);
-    const refreshToken = await createJwt(refreshPayload, REFRESH_SECRET);
+    const accessToken = await createJwt(accessPayload, accessSecret());
+    const refreshToken = await createJwt(refreshPayload, refreshSecret());
 
     return { accessToken, refreshToken, accessExpiresAt, refreshExpiresAt };
 }
 
 export async function verifyAccessToken(token: string): Promise<AccessTokenPayload | null> {
-    const payload = await verifyJwtCore(token, ACCESS_SECRET);
+    const payload = await verifyJwtCore(token, accessSecret());
     if (!payload || payload.type !== 'access') return null;
     return payload as AccessTokenPayload;
 }
 
 export async function verifyRefreshToken(token: string): Promise<RefreshTokenPayload | null> {
-    const payload = await verifyJwtCore(token, REFRESH_SECRET);
+    const payload = await verifyJwtCore(token, refreshSecret());
     if (!payload || payload.type !== 'refresh') return null;
     return payload as RefreshTokenPayload;
 }
