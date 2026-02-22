@@ -360,7 +360,25 @@ docker compose --env-file .env.production -f docker-compose.prod.yml build --no-
 docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
-4. This project uses `node:20-alpine` in Dockerfile for better Prisma stability.
+4. This project uses `node:22-alpine` in Dockerfile.
+
+### Next.js lockfile patching / missing `lightningcss...musl.node` during Docker build
+
+If you see errors like:
+- `Found lockfile missing swc dependencies, patching...`
+- `Failed to patch lockfile`
+- `Cannot find module '../lightningcss.linux-x64-musl.node'`
+
+it means native optional packages for Alpine (`musl`) were not installed from the lockfile.
+
+Current Dockerfile handles this by explicitly installing Linux musl native packages after `npm ci`.
+
+If you still hit this, rebuild without cache:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml build --no-cache web
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
+```
 
 ### Prisma `P3009` (failed migration in target database)
 

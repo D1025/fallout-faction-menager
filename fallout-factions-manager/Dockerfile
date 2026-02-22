@@ -2,7 +2,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+ENV npm_config_include=optional
+RUN npm ci --include=optional \
+  && node -e "const fs=require('fs'); const cp=require('child_process'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); const arch=process.arch==='arm64'?'arm64':'x64'; const swc='@next/swc-linux-'+arch+'-musl'; const lcPkg='lightningcss-linux-'+arch+'-musl'; const swcVer=lock.packages&&lock.packages['node_modules/next']&&lock.packages['node_modules/next'].optionalDependencies&&lock.packages['node_modules/next'].optionalDependencies[swc]; const lcVer=lock.packages&&lock.packages['node_modules/lightningcss']&&lock.packages['node_modules/lightningcss'].optionalDependencies&&lock.packages['node_modules/lightningcss'].optionalDependencies[lcPkg]; if(!swcVer||!lcVer){ throw new Error('Missing optional dependency metadata for arch '+arch);} cp.execSync('npm install --no-save '+swc+'@'+swcVer+' '+lcPkg+'@'+lcVer,{stdio:'inherit'});"
 
 # ---------- build ----------
 FROM node:22-alpine AS build
