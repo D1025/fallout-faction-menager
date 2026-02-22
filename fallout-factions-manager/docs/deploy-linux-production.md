@@ -40,6 +40,7 @@ Edit `.env.production`:
 
 - set your real domain in `NEXTAUTH_URL` (recommended `https://...`)
 - set strong secrets and passwords.
+- keep `ALLOW_ADMIN_ENV_LOGIN=false` (enable only for one-time emergency recovery).
 
 Generate strong secrets quickly:
 
@@ -61,6 +62,14 @@ docker compose --env-file .env.production -f docker-compose.prod.yml up -d --bui
 ```
 
 This stack runs migrations in a separate one-shot `migrate` service before `web` starts.
+
+The `web` container runs as non-root user (`uid=1001`, `gid=1001`).
+If you use bind mounts, ensure upload directory is writable:
+
+```bash
+sudo mkdir -p public/uploads/weapons
+sudo chown -R 1001:1001 public/uploads
+```
 
 Check:
 

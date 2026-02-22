@@ -29,6 +29,8 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./public/uploads:/app/public/uploads
     restart: unless-stopped

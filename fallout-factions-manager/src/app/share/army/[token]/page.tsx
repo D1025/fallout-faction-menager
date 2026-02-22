@@ -33,7 +33,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
         })
         : null;
 
-    const snapshot = await getPublicArmySnapshotByToken({ token, viewerUserId: userId });
+    const snapshot = await getPublicArmySnapshotByToken({ token });
     if (!snapshot) {
         return (
             <MobilePageShell title="Shared army" backHref="/">

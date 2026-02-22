@@ -51,11 +51,11 @@ function parseDurationSec(raw: string | undefined, fallback: number): number {
 function getSecret(key: string): string {
     const fromKey = process.env[key];
     if (fromKey && fromKey.length >= 16) return fromKey;
-    const fallback = process.env.NEXTAUTH_SECRET;
-    if (fallback && fallback.length >= 16) return fallback;
     if (process.env.NODE_ENV === 'production') {
         throw new Error(`Missing auth secret: ${key}`);
     }
+    const fallback = process.env.NEXTAUTH_SECRET;
+    if (fallback && fallback.length >= 16) return fallback;
     return `${key}_dev_only_change_me_1234567890`;
 }
 

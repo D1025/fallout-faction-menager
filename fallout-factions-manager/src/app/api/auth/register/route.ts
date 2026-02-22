@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '@/server/prisma';
 import { hashPassword } from '@/lib/password';
 import { normalizePasswordTransportHash, PASSWORD_TRANSPORT_HEX_LENGTH } from '@/lib/auth/passwordTransport';
+import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,6 +18,14 @@ const RegisterSchema = z.object({
 });
 
 export async function POST(req: Request) {
+    const ip = getClientIp(req);
+    const limit = checkRateLimit({
+        key: `auth:register:${ip}`,
+        limit: 5,
+        windowMs: 60_000,
+    });
+    if (!limit.ok) return tooManyRequestsResponse(limit.retryAfterSec);
+
     const body = await req.json().catch(() => null);
     const parsed = RegisterSchema.safeParse(body);
     if (!parsed.success) {

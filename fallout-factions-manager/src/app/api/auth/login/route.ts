@@ -12,6 +12,7 @@ import {
 } from '@/lib/authTokens';
 import { normalizePasswordTransportHash } from '@/lib/auth/passwordTransport';
 import { prisma } from '@/server/prisma';
+import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -48,6 +49,14 @@ function safeHexEquals(a: string, b: string): boolean {
 }
 
 export async function POST(req: Request) {
+    const ip = getClientIp(req);
+    const limit = checkRateLimit({
+        key: `auth:login:${ip}`,
+        limit: 12,
+        windowMs: 60_000,
+    });
+    if (!limit.ok) return tooManyRequestsResponse(limit.retryAfterSec);
+
     const body = await req.json().catch(() => null);
     const parsed = LoginSchema.safeParse(body);
     if (!parsed.success) {
@@ -70,7 +79,11 @@ export async function POST(req: Request) {
     }
 
     let valid = await verifyPassword(passwordHash, existing.passwordHash).catch(() => false);
+    const allowEnvAdminLogin = (process.env.ALLOW_ADMIN_ENV_LOGIN ?? '').trim().toLowerCase() === 'true';
     if (!valid) {
+        if (!allowEnvAdminLogin) {
+            return new Response(JSON.stringify({ error: 'Invalid credentials.' }), { status: 401 });
+        }
         const adminName = (process.env.ADMIN_USERNAME ?? 'admin').trim().toLowerCase();
         const envAdminPassword = process.env.ADMIN_PASSWORD ?? '';
         const isAdminAccount = existing.role === 'ADMIN' && existing.name.trim().toLowerCase() === adminName;

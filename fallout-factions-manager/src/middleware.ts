@@ -6,7 +6,6 @@ import {
     ACCESS_COOKIE_NAME,
     AUTH_ACCESS_HEADER,
     AUTH_USER_HEADER,
-    encodeAuthUserHeader,
     isProduction,
     issueTokenPair,
     refreshTtlSec,
@@ -61,6 +60,13 @@ function setAuthCookies(resp: NextResponse, pair: Awaited<ReturnType<typeof issu
     });
 }
 
+function withoutInboundAuthHeaders(req: NextRequest): Headers {
+    const requestHeaders = new Headers(req.headers);
+    requestHeaders.delete(AUTH_USER_HEADER);
+    requestHeaders.delete(AUTH_ACCESS_HEADER);
+    return requestHeaders;
+}
+
 function clearAuthCookies(resp: NextResponse) {
     const secure = isProduction();
     resp.cookies.set(ACCESS_COOKIE_NAME, '', {
@@ -99,9 +105,8 @@ async function authenticate(req: NextRequest): Promise<AuthResult> {
     return { user, refreshedPair };
 }
 
-function withForwardedAuthHeaders(req: NextRequest, user: AuthUser, accessToken?: string): Headers {
-    const requestHeaders = new Headers(req.headers);
-    requestHeaders.set(AUTH_USER_HEADER, encodeAuthUserHeader(user));
+function withForwardedAuthHeaders(req: NextRequest, accessToken?: string): Headers {
+    const requestHeaders = withoutInboundAuthHeaders(req);
     if (accessToken) requestHeaders.set(AUTH_ACCESS_HEADER, accessToken);
     return requestHeaders;
 }
@@ -130,7 +135,9 @@ export async function middleware(req: NextRequest) {
 
     if (pathname === '/login') {
         const authResult = await authenticate(req);
-        if (!authResult.user) return NextResponse.next();
+        if (!authResult.user) {
+            return NextResponse.next({ request: { headers: withoutInboundAuthHeaders(req) } });
+        }
 
         const resp = NextResponse.redirect(new URL('/', req.url));
         if (authResult.refreshedPair) setAuthCookies(resp, authResult.refreshedPair);
@@ -139,11 +146,12 @@ export async function middleware(req: NextRequest) {
 
     if (pathname.startsWith('/share/') || pathname.startsWith('/api/share/')) {
         const authResult = await authenticate(req);
-        if (!authResult.user) return NextResponse.next();
+        if (!authResult.user) {
+            return NextResponse.next({ request: { headers: withoutInboundAuthHeaders(req) } });
+        }
 
         const requestHeaders = withForwardedAuthHeaders(
             req,
-            authResult.user,
             authResult.refreshedPair?.accessToken,
         );
         const resp = NextResponse.next({ request: { headers: requestHeaders } });
@@ -151,7 +159,9 @@ export async function middleware(req: NextRequest) {
         return resp;
     }
 
-    if (isPublicPath(pathname)) return NextResponse.next();
+    if (isPublicPath(pathname)) {
+        return NextResponse.next({ request: { headers: withoutInboundAuthHeaders(req) } });
+    }
 
     const authResult = await authenticate(req);
     if (!authResult.user) {
@@ -166,7 +176,6 @@ export async function middleware(req: NextRequest) {
 
     const requestHeaders = withForwardedAuthHeaders(
         req,
-        authResult.user,
         authResult.refreshedPair?.accessToken,
     );
     const resp = NextResponse.next({ request: { headers: requestHeaders } });

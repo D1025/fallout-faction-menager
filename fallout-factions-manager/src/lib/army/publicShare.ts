@@ -451,24 +451,12 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
     };
 }
 
-export async function getPublicArmySnapshotByToken(params: {
-    token: string;
-    viewerUserId?: string | null;
-}): Promise<PublicArmySnapshot | null> {
+export async function getPublicArmySnapshotByToken(params: { token: string }): Promise<PublicArmySnapshot | null> {
     const share = await prisma.armyPublicShare.findUnique({
         where: { token: params.token },
-        select: { token: true, enabled: true, armyId: true, army: { select: { ownerId: true } } },
+        select: { token: true, enabled: true, armyId: true },
     });
     if (!share || !share.enabled) return null;
-
-    const viewerUserId = params.viewerUserId ?? null;
-    if (viewerUserId && viewerUserId !== share.army.ownerId) {
-        await prisma.armyShare.upsert({
-            where: { armyId_userId: { armyId: share.armyId, userId: viewerUserId } },
-            create: { armyId: share.armyId, userId: viewerUserId, perm: 'READ' },
-            update: {},
-        });
-    }
 
     return buildSnapshotByArmyId(share.armyId, share.token);
 }

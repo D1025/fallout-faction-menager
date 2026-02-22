@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
+import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,9 +10,24 @@ const MAX_BYTES = 3 * 1024 * 1024;
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function POST(req: Request) {
+    const ip = getClientIp(req);
+    const ipLimit = checkRateLimit({
+        key: `upload:profile:ip:${ip}`,
+        limit: 40,
+        windowMs: 60_000,
+    });
+    if (!ipLimit.ok) return tooManyRequestsResponse(ipLimit.retryAfterSec);
+
     const session = await auth();
     const userId = session?.user?.id;
     if (!userId) return new Response('UNAUTHORIZED', { status: 401 });
+
+    const userLimit = checkRateLimit({
+        key: `upload:profile:user:${userId}`,
+        limit: 20,
+        windowMs: 60_000,
+    });
+    if (!userLimit.ok) return tooManyRequestsResponse(userLimit.retryAfterSec);
 
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.includes('multipart/form-data')) {

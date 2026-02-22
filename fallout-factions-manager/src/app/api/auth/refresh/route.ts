@@ -9,6 +9,7 @@ import {
     userFromPayload,
     verifyRefreshToken,
 } from '@/lib/authTokens';
+import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,7 +50,15 @@ function setAuthCookies(store: Awaited<ReturnType<typeof cookies>>, pair: Awaite
     });
 }
 
-export async function POST() {
+export async function POST(req: Request) {
+    const ip = getClientIp(req);
+    const limit = checkRateLimit({
+        key: `auth:refresh:${ip}`,
+        limit: 90,
+        windowMs: 60_000,
+    });
+    if (!limit.ok) return tooManyRequestsResponse(limit.retryAfterSec);
+
     const cookieStore = await cookies();
     const refreshToken = cookieStore.get(REFRESH_COOKIE_NAME)?.value ?? null;
     if (!refreshToken) {

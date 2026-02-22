@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${PG_ROOT_PASSWORD}
       POSTGRES_DB: fallout
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db-init:/docker-entrypoint-initdb.d
@@ -28,9 +28,11 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       NODE_ENV: production
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./public/uploads:/app/public/uploads
     restart: unless-stopped
