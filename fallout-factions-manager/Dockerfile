@@ -16,6 +16,7 @@ RUN npx prisma generate
 
 ENV NODE_OPTIONS="--max-old-space-size=1024"
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_IGNORE_INCORRECT_LOCKFILE=1
 
 RUN npm run build
 
@@ -24,6 +25,7 @@ FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_IGNORE_INCORRECT_LOCKFILE=1
 
 RUN apk add --no-cache openssl
 RUN addgroup -S nodejs -g 1001 && adduser -S nextjs -u 1001 -G nodejs
