@@ -44,6 +44,34 @@ export default async function Page({ params }: { params: Promise<{ token: string
         );
     }
 
+    if (userId) {
+        try {
+            const owner = await prisma.army.findUnique({
+                where: { id: snapshot.army.id },
+                select: { ownerId: true },
+            });
+
+            if (owner && owner.ownerId !== userId) {
+                await prisma.armyShare.upsert({
+                    where: {
+                        armyId_userId: {
+                            armyId: snapshot.army.id,
+                            userId,
+                        },
+                    },
+                    update: {},
+                    create: {
+                        armyId: snapshot.army.id,
+                        userId,
+                        perm: 'READ',
+                    },
+                });
+            }
+        } catch {
+            // Never block shared preview because of auto-save errors.
+        }
+    }
+
     const headerRight =
         userMeta != null ? (
             <UserAccountMenu

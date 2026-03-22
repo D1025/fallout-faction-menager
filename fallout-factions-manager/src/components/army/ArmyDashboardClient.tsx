@@ -1250,13 +1250,13 @@ function ArmyDashboardClientInner({
         );
     }
 
-    function ResourceValueCard({ kind }: { kind: Kind }) {
+    function renderResourceValueCard(kind: Kind) {
         const meta = RESOURCE_META[kind];
         const value = totals[kind];
         const saving = busy === kind;
 
         return (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+            <div key={kind} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
                         <span className="text-sm">{meta.icon}</span>
@@ -1545,9 +1545,7 @@ function ArmyDashboardClientInner({
                                 <div className="text-sm font-medium">Resource values</div>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
-                                {EDIT_RESOURCE_ORDER.map((k) => (
-                                    <ResourceValueCard key={k} kind={k} />
-                                ))}
+                                {EDIT_RESOURCE_ORDER.map((k) => renderResourceValueCard(k))}
                             </div>
                         </div>
                     )}
