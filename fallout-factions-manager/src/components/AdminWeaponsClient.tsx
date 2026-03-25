@@ -6,6 +6,7 @@ import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/fi
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui/antd/ScreenStates';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
+import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB, SUPPORTED_IMAGE_UPLOAD_MIME_TYPES } from '@/lib/images/uploadConfig';
 
 /* ===== Effect dictionary types ===== */
 export type EffectKind = 'WEAPON' | 'CRITICAL';
@@ -268,13 +269,13 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     // uploadWeaponImage(file): validate only and open cropper
     async function uploadWeaponImage(file: File): Promise<void> {
-        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!allowed.includes(file.type)) {
+        const allowed = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+        if (!allowed.has(file.type)) {
             notifyWarning('Supported formats: JPG/PNG/WebP');
             return;
         }
-        if (file.size > 10 * 1024 * 1024) {
-            notifyWarning('File too large. Select an image up to 10MB.');
+        if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+            notifyWarning(`File too large. Select an image up to ${MAX_IMAGE_UPLOAD_MB}MB.`);
             return;
         }
         setImgPick(file);
@@ -700,8 +701,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                 <PhotoCropperModal
                     file={imgPick}
                     targetSize={400}
-                    maxBytes={10 * 1024 * 1024}
-                    disableCompression
+                    maxBytes={MAX_IMAGE_UPLOAD_BYTES}
                     onCancel={() => setImgPick(null)}
                     onConfirm={(blob) => void uploadWeaponImageBlob(blob)}
                 />

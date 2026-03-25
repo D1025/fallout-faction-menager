@@ -5,8 +5,9 @@ import { mkdir, writeFile } from "fs/promises";
 import { createHash } from "crypto";
 import path from "path";
 import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
+import { MAX_IMAGE_UPLOAD_BYTES } from '@/lib/images/uploadConfig';
 
-const MAX_BYTES = 6 * 1024 * 1024;
+const MAX_BYTES = MAX_IMAGE_UPLOAD_BYTES;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml']);
 
 export async function POST(req: Request) {

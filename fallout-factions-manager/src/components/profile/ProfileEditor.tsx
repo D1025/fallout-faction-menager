@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 import { hashPasswordForTransport } from '@/lib/auth/passwordTransportClient';
 import { confirmAction, notifyApiError, notifyError, notifySuccess, notifyWarning } from '@/lib/ui/notify';
+import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB, SUPPORTED_IMAGE_UPLOAD_MIME_TYPES } from '@/lib/images/uploadConfig';
 
 function isPasswordPolicyValid(password: string): boolean {
     if (password.length < 8 || password.length > 128) return false;
@@ -198,13 +199,13 @@ export function ProfileEditor({
                                         e.currentTarget.value = '';
                                         if (!file) return;
 
-                                        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-                                        if (!allowed.includes(file.type)) {
+                                        const allowed = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+                                        if (!allowed.has(file.type)) {
                                             notifyWarning('Supported formats: JPG/PNG/WebP.');
                                             return;
                                         }
-                                        if (file.size > 10 * 1024 * 1024) {
-                                            notifyWarning('File is too large. Choose an image up to 10MB.');
+                                        if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+                                            notifyWarning(`File is too large. Choose an image up to ${MAX_IMAGE_UPLOAD_MB}MB.`);
                                             return;
                                         }
                                         setPick(file);
@@ -286,7 +287,7 @@ export function ProfileEditor({
                 <PhotoCropperModal
                     file={pick}
                     targetSize={400}
-                    maxBytes={3 * 1024 * 1024}
+                    maxBytes={MAX_IMAGE_UPLOAD_BYTES}
                     onCancel={() => setPick(null)}
                     onConfirm={(blob) => void uploadPhoto(blob)}
                 />

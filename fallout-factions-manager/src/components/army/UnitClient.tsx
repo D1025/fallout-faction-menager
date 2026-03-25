@@ -8,6 +8,7 @@ import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
 import { useRouter } from 'next/navigation';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
+import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB, SUPPORTED_IMAGE_UPLOAD_MIME_TYPES } from '@/lib/images/uploadConfig';
 
 type EffectKind = 'WEAPON' | 'CRITICAL';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
@@ -702,13 +703,13 @@ export function UnitClient({
                                         if (!file) return;
 
                                         // input validation (before opening crop modal)
-                                        const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-                                        if (!allowed.includes(file.type)) {
+                                        const allowed = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+                                        if (!allowed.has(file.type)) {
                                              notifyWarning('Supported formats: JPG/PNG/WebP');
                                             return;
                                         }
-                                        if (file.size > 2 * 1024 * 1024) {
-                                            notifyWarning('File too large. Select a photo up to 2MB.');
+                                        if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+                                            notifyWarning(`File too large. Select a photo up to ${MAX_IMAGE_UPLOAD_MB}MB.`);
                                             return;
                                         }
 
@@ -1063,7 +1064,7 @@ export function UnitClient({
                 <PhotoCropperModal
                     file={pick}
                     targetSize={400}
-                    maxBytes={3 * 1024 * 1024}
+                    maxBytes={MAX_IMAGE_UPLOAD_BYTES}
                     onCancel={() => setPick(null)}
                     onConfirm={(blob) => void uploadPhoto(blob)}
                 />

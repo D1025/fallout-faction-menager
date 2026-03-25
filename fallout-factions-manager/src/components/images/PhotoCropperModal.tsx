@@ -3,6 +3,7 @@
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { notifyWarning } from '@/lib/ui/notify';
+import { MAX_IMAGE_UPLOAD_BYTES } from '@/lib/images/uploadConfig';
 
 type Crop = { x: number; y: number; size: number };
 
@@ -19,7 +20,7 @@ function clamp(n: number, min: number, max: number) {
     return Math.max(min, Math.min(max, n));
 }
 
-export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400, maxBytes = 3 * 1024 * 1024, disableCompression = false }: Props) {
+export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400, maxBytes = MAX_IMAGE_UPLOAD_BYTES, disableCompression = false }: Props) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const [img, setImg] = useState<HTMLImageElement | null>(null);
     const [zoom, setZoom] = useState(1);

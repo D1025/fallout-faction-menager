@@ -2,12 +2,13 @@ import { createHash } from 'crypto';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { checkRateLimit, getClientIp, tooManyRequestsResponse } from '@/lib/security/rateLimit';
+import { MAX_IMAGE_UPLOAD_BYTES, SUPPORTED_IMAGE_UPLOAD_MIME_TYPES } from '@/lib/images/uploadConfig';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_BYTES = 3 * 1024 * 1024;
-const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_BYTES = MAX_IMAGE_UPLOAD_BYTES;
+const ALLOWED = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
 
 export async function POST(req: Request) {
     const ip = getClientIp(req);
