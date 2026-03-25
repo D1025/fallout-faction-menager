@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 type Ctx = { params: Promise<{ id: string }> };
 
 const MAX_BYTES = MAX_IMAGE_UPLOAD_BYTES;
-const ALLOWED = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+const ALLOWED = new Set<string>(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
 
 async function canWriteByUnitId(unitId: string, userId: string): Promise<boolean> {
     const row = await prisma.unitInstance.findUnique({

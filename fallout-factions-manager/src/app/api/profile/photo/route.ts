@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const MAX_BYTES = MAX_IMAGE_UPLOAD_BYTES;
-const ALLOWED = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+const ALLOWED = new Set<string>(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
 
 export async function POST(req: Request) {
     const ip = getClientIp(req);

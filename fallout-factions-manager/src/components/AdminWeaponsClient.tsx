@@ -269,7 +269,7 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
 
     // uploadWeaponImage(file): validate only and open cropper
     async function uploadWeaponImage(file: File): Promise<void> {
-        const allowed = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+        const allowed = new Set<string>(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
         if (!allowed.has(file.type)) {
             notifyWarning('Supported formats: JPG/PNG/WebP');
             return;

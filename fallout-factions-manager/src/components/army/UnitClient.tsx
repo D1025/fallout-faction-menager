@@ -703,7 +703,7 @@ export function UnitClient({
                                         if (!file) return;
 
                                         // input validation (before opening crop modal)
-                                        const allowed = new Set(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
+                                        const allowed = new Set<string>(SUPPORTED_IMAGE_UPLOAD_MIME_TYPES);
                                         if (!allowed.has(file.type)) {
                                              notifyWarning('Supported formats: JPG/PNG/WebP');
                                             return;
