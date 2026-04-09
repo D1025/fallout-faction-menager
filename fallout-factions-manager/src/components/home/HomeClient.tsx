@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from 'antd';
-import { FilterOutlined } from '@ant-design/icons';
+import { BookOutlined, FilterOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { UserAccountMenu } from '@/components/auth/UserAccountMenu';
@@ -51,6 +51,15 @@ export function HomeClient({
     const headerRight = useMemo(
         () => (
             <div className="flex items-center gap-2">
+                <Button
+                    href="/story-actions"
+                    icon={<BookOutlined />}
+                    aria-label="Story actions"
+                    title="Story actions"
+                    className="ff-ant-btn-icon-mobile"
+                >
+                    Story actions
+                </Button>
                 <Button
                     type={filtersActive ? 'primary' : 'default'}
                     icon={<FilterOutlined />}
