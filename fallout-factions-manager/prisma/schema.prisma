@@ -397,6 +397,7 @@ model UnitInstance {
   armyId     String
   unitId     String
   optionId   String?
+  displayOrder Int    @default(0)
 
   wounds     Int      @default(0)
   present    Boolean  @default(true)
@@ -419,6 +420,7 @@ model UnitInstance {
   temporaryLeader Boolean @default(false)
 
   @@index([armyId])
+  @@index([armyId, displayOrder])
   @@index([unitId])
   @@index([optionId])
 }

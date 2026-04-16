@@ -15,7 +15,7 @@ export default async function Page({
         where: { id: armyId },
         include: {
             faction: true,
-            units: { include: { weapons: true, upgrades: true }, orderBy: { id: 'asc' } },
+            units: { include: { weapons: true, upgrades: true }, orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }] },
         },
     });
 

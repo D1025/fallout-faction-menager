@@ -49,7 +49,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     weapons: true,
                     selectedOption: true,
                 },
-                orderBy: { createdAt: 'asc' },
+                orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
             },
         },
     });
@@ -203,7 +203,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             }))}
             resources={{ caps: army.caps, parts: army.parts, scout: army.scout, reach: army.reach, exp: army.exp, ploys: army.ploys }}
             units={uiUnits}
-            rating={uiUnits.reduce((acc, u) => acc + u.rating, 0)}
+            rating={uiUnits.reduce((acc, u) => acc + (u.present ? u.rating : 0), 0)}
             subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
         />
     );

@@ -5,6 +5,7 @@ import {
     CloseOutlined,
     DeploymentUnitOutlined,
     DownOutlined,
+    EllipsisOutlined,
     InfoCircleOutlined,
     MedicineBoxOutlined,
     SearchOutlined,
@@ -294,6 +295,9 @@ function ArmyDashboardClientInner({
 }) {
     const router = useRouter();
     const [totals, setTotals] = useState(resources);
+    const [orderedUnits, setOrderedUnits] = useState<UnitListItem[]>(units);
+    const [presentById, setPresentById] = useState<Record<string, boolean>>({});
+    const [reordering, setReordering] = useState(false);
     const [busy, setBusy] = useState<Kind | null>(null);
     const [adding, setAdding] = useState(false);
     const [filter, setFilter] = useState<RoleFilter>('ALL');
@@ -310,6 +314,14 @@ function ArmyDashboardClientInner({
     const [showOwnedChemsOnly, setShowOwnedChemsOnly] = useState(false);
 
     useEffect(() => setTotals(resources), [resources]);
+    useEffect(() => setOrderedUnits(units), [units]);
+    useEffect(() => {
+        setPresentById((prev) => {
+            const next: Record<string, boolean> = {};
+            for (const u of units) next[u.id] = prev[u.id] ?? u.present;
+            return next;
+        });
+    }, [units]);
 
     async function setValue(kind: Kind, value: number) {
         const v = Math.max(0, Math.floor(value));
@@ -398,17 +410,66 @@ function ArmyDashboardClientInner({
         });
     }
 
+    async function moveUnit(unitId: string, direction: 'up' | 'down') {
+        if (reordering) return;
+        const from = orderedUnits.findIndex((u) => u.id === unitId);
+        if (from < 0) return;
+        const to = direction === 'up' ? from - 1 : from + 1;
+        if (to < 0 || to >= orderedUnits.length) return;
+
+        const prev = orderedUnits;
+        const next = [...orderedUnits];
+        [next[from], next[to]] = [next[to], next[from]];
+        setOrderedUnits(next);
+        setReordering(true);
+
+        try {
+            const res = await fetch(`/api/armies/${armyId}/units/reorder`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unitIds: next.map((u) => u.id) }),
+            });
+            if (!res.ok) throw new Error();
+        } catch {
+            setOrderedUnits(prev);
+            notifyApiError('Failed to save unit order.');
+        } finally {
+            setReordering(false);
+        }
+    }
+
+    function onUnitPresenceChange(unitId: string, present: boolean) {
+        setPresentById((prev) => ({ ...prev, [unitId]: present }));
+    }
+
     function n(v: string, def = 0) {
         const x = Number(v);
         return Number.isFinite(x) ? x : def;
     }
+
+    const displayRating = useMemo(
+        () => {
+            if (orderedUnits.length === 0) return rating;
+            return orderedUnits.reduce((sum, u) => {
+                const present = presentById[u.id] ?? u.present;
+                return sum + (present ? u.rating : 0);
+            }, 0);
+        },
+        [orderedUnits, presentById, rating],
+    );
+
+    const unitIndexById = useMemo(() => {
+        const map = new Map<string, number>();
+        orderedUnits.forEach((u, idx) => map.set(u.id, idx));
+        return map;
+    }, [orderedUnits]);
 
     const groups = useMemo(() => {
         const champion: UnitListItem[] = [];
         const grunt: UnitListItem[] = [];
         const companion: UnitListItem[] = [];
         const legends: UnitListItem[] = [];
-        for (const u of units) {
+        for (const u of orderedUnits) {
             const tag = (u.roleTag ?? 'GRUNT').toUpperCase();
             if (tag === 'LEGENDS') legends.push(u);
             else if (tag === 'CHAMPION') champion.push(u);
@@ -416,7 +477,7 @@ function ArmyDashboardClientInner({
             else grunt.push(u);
         }
         return { champion, grunt, companion, legends };
-    }, [units]);
+    }, [orderedUnits]);
 
     const filtered = useMemo(() => {
         const key =
@@ -430,17 +491,18 @@ function ArmyDashboardClientInner({
                             ? 'legends'
                             : null;
 
-        const base = key ? groups[key] : units;
+        const base = key ? groups[key] : orderedUnits;
 
         return base.filter((u) => {
             if (!hideInactive) return true;
-            if (!u.present) return false;
+            const present = presentById[u.id] ?? u.present;
+            if (!present) return false;
             const maxHp = u.base.hp + u.bonus.HP;
             const dead = (u.wounds ?? 0) >= maxHp;
             if (dead) return false;
             return true;
         });
-    }, [filter, units, groups, hideInactive]);
+    }, [filter, orderedUnits, groups, hideInactive, presentById]);
 
     const limitForTier = (l: UIFactionLimit, t: number): number | null => {
         if (t <= 1) return l.tier1;
@@ -600,11 +662,23 @@ function ArmyDashboardClientInner({
                          armyId: aId,
                          onDelete,
                          deleting,
+                         onPresenceChange,
+                         canMoveUp,
+                         canMoveDown,
+                         onMoveUp,
+                         onMoveDown,
+                         reordering,
                      }: {
         u: UnitListItem;
         armyId: string;
         onDelete: () => void;
         deleting: boolean;
+        onPresenceChange: (unitId: string, present: boolean) => void;
+        canMoveUp: boolean;
+        canMoveDown: boolean;
+        onMoveUp: () => void;
+        onMoveDown: () => void;
+        reordering: boolean;
     }) {
         // preload effects for this unit (tooltips appear instantly)
         const effectIdsToPreload = useMemo(() => {
@@ -621,11 +695,16 @@ function ArmyDashboardClientInner({
         const [absent, setAbsent] = useState(!u.present);
         const [tmpLeader, setTmpLeader] = useState(Boolean(u.temporaryLeader));
         const [photoMissing, setPhotoMissing] = useState(false);
+        const [menuOpen, setMenuOpen] = useState(false);
+        const menuBtnRef = useRef<HTMLButtonElement | null>(null);
+        const menuRef = useRef<HTMLDivElement | null>(null);
         const profileSrc = `/api/units/${u.id}/photo/file`;
 
         async function savePresence(nextPresent: boolean) {
-            const prev = absent;
+            const prevAbsent = absent;
+            const prevPresent = !prevAbsent;
             setAbsent(!nextPresent);
+            onPresenceChange(u.id, nextPresent);
             const res = await fetch(`/api/units/${u.id}/presence`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -633,7 +712,8 @@ function ArmyDashboardClientInner({
             }).catch(() => null);
 
             if (!res || !res.ok) {
-                setAbsent(prev);
+                setAbsent(prevAbsent);
+                onPresenceChange(u.id, prevPresent);
                 notifyApiError('Failed to save presence.');
                 return;
             }
@@ -658,6 +738,28 @@ function ArmyDashboardClientInner({
 
             router.refresh();
         }
+
+        useEffect(() => setWounds(u.wounds), [u.wounds]);
+        useEffect(() => setAbsent(!u.present), [u.present]);
+        useEffect(() => setTmpLeader(Boolean(u.temporaryLeader)), [u.temporaryLeader]);
+        useEffect(() => {
+            if (!menuOpen) return;
+            const onDown = (e: MouseEvent) => {
+                const t = e.target as Node;
+                if (menuBtnRef.current?.contains(t)) return;
+                if (menuRef.current?.contains(t)) return;
+                setMenuOpen(false);
+            };
+            const onKey = (e: KeyboardEvent) => {
+                if (e.key === 'Escape') setMenuOpen(false);
+            };
+            window.addEventListener('mousedown', onDown);
+            window.addEventListener('keydown', onKey);
+            return () => {
+                window.removeEventListener('mousedown', onDown);
+                window.removeEventListener('keydown', onKey);
+            };
+        }, [menuOpen]);
 
         async function saveTemporaryLeader(next: boolean) {
             const prev = tmpLeader;
@@ -771,19 +873,74 @@ function ArmyDashboardClientInner({
                         <div className="text-xs text-zinc-400">
                             Rating <span className="font-semibold text-zinc-200">{u.rating}</span>
                         </div>
-                        <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onDelete();
-                            }}
-                            disabled={deleting}
-                            className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
-                            aria-label="Delete unit"
-                            title="Delete unit"
-                        >
-                            {deleting ? 'Deleting...' : 'Delete'}
-                        </button>
+                        <div className="relative">
+                            <button
+                                ref={menuBtnRef}
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMenuOpen((v) => !v);
+                                }}
+                                className="grid h-8 w-8 place-items-center rounded-md border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                                aria-label="Unit actions"
+                                title="Unit actions"
+                            >
+                                <EllipsisOutlined />
+                            </button>
+                            {menuOpen ? (
+                                <div
+                                    ref={menuRef}
+                                    className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                    }}
+                                >
+                                    <button
+                                        type="button"
+                                        disabled={!canMoveUp || reordering}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setMenuOpen(false);
+                                            onMoveUp();
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                    >
+                                        <UpOutlined />
+                                        <span>Move up</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={!canMoveDown || reordering}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setMenuOpen(false);
+                                            onMoveDown();
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                    >
+                                        <DownOutlined />
+                                        <span>Move down</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={deleting}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setMenuOpen(false);
+                                            onDelete();
+                                        }}
+                                        className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
+                                    >
+                                        <span>{deleting ? 'Deleting...' : 'Delete'}</span>
+                                    </button>
+                                </div>
+                            ) : null}
+                        </div>
                     </div>
                 </div>
 
@@ -1420,7 +1577,7 @@ function ArmyDashboardClientInner({
                     <span className="font-medium text-zinc-300">{armyName}</span> | {factionName} | Tier {tier}
                 </div>
                 <div className="shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px]">
-                    Rating: <span className="font-semibold text-zinc-200">{rating}</span>
+                    Rating: <span className="font-semibold text-zinc-200">{displayRating}</span>
                 </div>
             </div>
 
@@ -1505,9 +1662,26 @@ function ArmyDashboardClientInner({
                     <section className="mt-4">
                         <div className="text-sm font-medium">Units</div>
                         <div className="mt-2 grid gap-2">
-                            {filtered.map((u) => (
-                                <UnitRow key={u.id} u={u} armyId={armyId} deleting={deletingId === u.id} onDelete={() => void deleteUnit(u.id)} />
-                            ))}
+                            {filtered.map((u) => {
+                                const idx = unitIndexById.get(u.id) ?? -1;
+                                const canMoveUp = idx > 0;
+                                const canMoveDown = idx >= 0 && idx < orderedUnits.length - 1;
+                                return (
+                                    <UnitRow
+                                        key={u.id}
+                                        u={u}
+                                        armyId={armyId}
+                                        deleting={deletingId === u.id}
+                                        onDelete={() => void deleteUnit(u.id)}
+                                        onPresenceChange={onUnitPresenceChange}
+                                        canMoveUp={canMoveUp}
+                                        canMoveDown={canMoveDown}
+                                        onMoveUp={() => void moveUnit(u.id, 'up')}
+                                        onMoveDown={() => void moveUnit(u.id, 'down')}
+                                        reordering={reordering}
+                                    />
+                                );
+                            })}
                             {filtered.length === 0 && <div className="text-sm text-zinc-500">No units for active filter</div>}
                         </div>
                     </section>

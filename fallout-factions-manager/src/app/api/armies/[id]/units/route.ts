@@ -5,7 +5,22 @@ import { z } from 'zod';
 export const runtime = 'nodejs';
 
 type UnitInstanceTx = {
-    create(args: { data: { armyId: string; unitId: string; optionId: string | null; wounds: number; present: boolean }; select: { id: true } }): Promise<{ id: string }>;
+    create(args: {
+        data: {
+            armyId: string;
+            unitId: string;
+            optionId: string | null;
+            displayOrder: number;
+            wounds: number;
+            present: boolean;
+        };
+        select: { id: true };
+    }): Promise<{ id: string }>;
+    findFirst(args: {
+        where: { armyId: string };
+        orderBy: [{ displayOrder: 'asc' | 'desc' }, { createdAt: 'asc' | 'desc' }];
+        select: { displayOrder: true };
+    }): Promise<{ displayOrder: number } | null>;
     findUnique(args: { where: { id: string }; include: { weapons: true; upgrades: true } }): Promise<unknown>;
 };
 
@@ -96,11 +111,19 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     }
 
     const created = await p.$transaction(async (tx) => {
+        const last = await tx.unitInstance.findFirst({
+            where: { armyId },
+            orderBy: [{ displayOrder: 'desc' }, { createdAt: 'desc' }],
+            select: { displayOrder: true },
+        });
+        const nextDisplayOrder = (last?.displayOrder ?? -1) + 1;
+
         const unit = await tx.unitInstance.create({
             data: {
                 armyId,
                 unitId: unitTemplateId,
                 optionId: option.id,
+                displayOrder: nextDisplayOrder,
                 wounds: 0,
                 present: true,
             },

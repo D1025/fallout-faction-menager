@@ -156,6 +156,8 @@ export default async function Home() {
       const ruleByKey = ruleByFaction.get(army.factionId) ?? new Map<string, number>();
 
       return army.units.reduce((sum: number, u) => {
+        if (!u.present) return sum;
+
         const baseFromTemplate = u.unit.baseRating ?? 0;
         const optionRating = u.selectedOption?.rating ?? 0;
 

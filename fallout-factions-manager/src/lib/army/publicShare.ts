@@ -221,7 +221,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
                     weapons: true,
                     selectedOption: { select: { rating: true } },
                 },
-                orderBy: { createdAt: 'asc' },
+                orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
             },
         },
     });
@@ -403,7 +403,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
         };
     });
 
-    const rating = units.reduce((sum, u) => sum + u.rating, 0);
+    const rating = units.reduce((sum, u) => sum + (u.present ? u.rating : 0), 0);
     const homeTurf = army.HomeTurf;
     const facilities = (homeTurf?.facilities ?? [])
         .filter((f) => Boolean(f.facilityDef))
