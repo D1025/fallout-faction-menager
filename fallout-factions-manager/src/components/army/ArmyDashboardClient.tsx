@@ -208,7 +208,7 @@ function StickyInfoTooltip({ title, description }: { title: string; description:
         <>
             <span
                 ref={rootRef}
-                className="inline-flex h-7 w-7 shrink-0 cursor-help items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] text-zinc-400"
+                className="inline-flex h-7 w-7 shrink-0 cursor-help items-center justify-center rounded-full bg-zinc-900 text-[11px] text-zinc-400"
                 role="button"
                 tabIndex={0}
                 aria-label={`Description: ${title}`}
@@ -230,7 +230,7 @@ function StickyInfoTooltip({ title, description }: { title: string; description:
                 <Portal>
                     <div
                         style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.maxWidth, zIndex: 1000 }}
-                        className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-200 shadow-xl"
+                        className="rounded-2xl bg-zinc-950 p-3 text-xs text-zinc-200 shadow-xl"
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -494,6 +494,12 @@ function ArmyDashboardClientInner({
         setPresentById((prev) => ({ ...prev, [unitId]: present }));
     }
 
+    function onUnitWoundsChange(unitId: string, wounds: number) {
+        setOrderedUnits((prev) =>
+            prev.map((unit) => (unit.id === unitId ? { ...unit, wounds } : unit)),
+        );
+    }
+
     function n(v: string, def = 0) {
         const x = Number(v);
         return Number.isFinite(x) ? x : def;
@@ -577,7 +583,7 @@ function ArmyDashboardClientInner({
                     </thead>
                     <tbody>
                         {limits.map((l, idx) => (
-                            <tr key={`${l.tag}_${idx}`} className="border-t border-zinc-800/60">
+                            <tr key={`${l.tag}_${idx}`}>
                                 <td className="px-1.5 py-1.5 break-words text-zinc-200">{l.tag}</td>
                                 <td className={tdCls(1)}>{l.tier1 ?? '-'}</td>
                                 <td className={tdCls(2)}>{l.tier2 ?? '-'}</td>
@@ -760,6 +766,7 @@ function ArmyDashboardClientInner({
                          onDelete,
                          deleting,
                          onPresenceChange,
+                         onWoundsChange,
                          canMoveUp,
                          canMoveDown,
                          onMoveUp,
@@ -771,6 +778,7 @@ function ArmyDashboardClientInner({
         onDelete: () => void;
         deleting: boolean;
         onPresenceChange: (unitId: string, present: boolean) => void;
+        onWoundsChange: (unitId: string, wounds: number) => void;
         canMoveUp: boolean;
         canMoveDown: boolean;
         onMoveUp: () => void;
@@ -823,6 +831,7 @@ function ArmyDashboardClientInner({
         async function saveWounds(next: number) {
             const prev = wounds;
             setWounds(next);
+            onWoundsChange(u.id, next);
             const res = await fetch(`/api/units/${u.id}/wounds`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -831,11 +840,10 @@ function ArmyDashboardClientInner({
 
             if (!res || !res.ok) {
                 setWounds(prev);
+                onWoundsChange(u.id, prev);
                 notifyApiError('Failed to save wounds.');
                 return;
             }
-
-            router.refresh();
         }
 
         useEffect(() => setWounds(u.wounds), [u.wounds]);
@@ -935,8 +943,8 @@ function ArmyDashboardClientInner({
                                     void saveWounds(Math.max(0, Math.min(maxHp, nextDmg)));
                                 }}
                                 className={
-                                    'relative h-6 w-6 rounded-md border transition-colors ' +
-                                    (checked ? 'border-red-700/60 bg-red-950/40' : 'border-zinc-700 bg-zinc-950')
+                                    'relative h-6 w-6 rounded-md transition-colors ' +
+                                    (checked ? 'bg-red-950/40' : 'bg-zinc-950/90')
                                 }
                                 aria-label={checked ? `HP marker ${idx} (uncheck)` : `Set HP marker ${idx}`}
                                 title={checked ? `HP marker ${idx}` : `Set HP marker: ${idx}`}
@@ -964,11 +972,11 @@ function ArmyDashboardClientInner({
         return (
             <Link
                 href={`/army/${aId}/unit/${u.id}`}
-                className="block max-w-full overflow-hidden rounded-[22px] bg-zinc-900/60 p-3 ring-1 ring-zinc-700/45"
+                className="block max-w-full overflow-hidden rounded-[22px] bg-zinc-900/60 p-3"
             >
                 <div className="flex items-start gap-2">
                     <div
-                        className="shrink-0 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950/70"
+                        className="shrink-0 overflow-hidden rounded-xl bg-zinc-950/70"
                         style={{
                             width: headerSpecialSize,
                             minWidth: headerSpecialSize,
@@ -1018,7 +1026,7 @@ function ArmyDashboardClientInner({
                                 {menuOpen ? (
                                     <div
                                         ref={menuRef}
-                                        className="absolute right-0 top-6 z-20 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
+                                        className="absolute right-0 top-6 z-20 w-44 overflow-hidden rounded-xl bg-zinc-950 shadow-xl"
                                         onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -1059,7 +1067,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 onMoveUp();
                                             }}
-                                            className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
                                         >
                                             <UpOutlined />
                                             <span>Move up</span>
@@ -1087,7 +1095,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 onDelete();
                                             }}
-                                            className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
                                         >
                                             <span>{deleting ? 'Deleting...' : 'Delete'}</span>
                                         </button>
@@ -1117,9 +1125,9 @@ function ArmyDashboardClientInner({
                         const accent = getWeaponAccent(idx);
                         return (
                             <div key={idx} className="overflow-hidden rounded-xl bg-zinc-950/55">
-                                <div className="flex items-center gap-2 border-b border-zinc-800/70 px-2 py-1.5">
+                                <div className="flex items-center gap-2 px-2 py-1.5">
                                     <div className="text-sm font-medium text-zinc-100 sm:text-base">{w.name}</div>
-                                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">{typeParts.type}</div>
+                                    <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">{typeParts.type}</div>
                                 </div>
                                 <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
                                     <table className="w-full table-fixed text-xs leading-tight sm:text-sm">
@@ -1135,7 +1143,7 @@ function ArmyDashboardClientInner({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <tr className="border-t border-zinc-800/70 align-top bg-zinc-950/80">
+                                            <tr className="align-top bg-zinc-950/80">
                                                 {!isMeleeWeapon ? (
                                                     <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{typeParts.range || '-'}</td>
                                                 ) : null}
@@ -1164,26 +1172,26 @@ function ArmyDashboardClientInner({
 
                 <div className="mt-2 flex items-end gap-2">
                     <div className="min-w-0 flex flex-1 flex-wrap items-center gap-1">
-                        <span className="whitespace-nowrap rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                        <span className="whitespace-nowrap rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
                             RATING {u.rating}
                         </span>
                         {(u.roleTag ?? '').toUpperCase() === 'CHAMPION' ? (
-                            <span className="whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                            <span className="whitespace-nowrap rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
                                 CHAMPION
                             </span>
                         ) : null}
                         {u.isLeader ? (
-                            <span className="whitespace-nowrap rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+                            <span className="whitespace-nowrap rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
                                 LEADER
                             </span>
                         ) : null}
                         {tmpLeader ? (
-                            <span className="whitespace-nowrap rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                            <span className="whitespace-nowrap rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
                                 CREW LEADER
                             </span>
                         ) : null}
                         {absent ? (
-                            <span className="whitespace-nowrap rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-200">
+                            <span className="whitespace-nowrap rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-200">
                                 ABSENT
                             </span>
                         ) : null}
@@ -1547,7 +1555,7 @@ function ArmyDashboardClientInner({
     function PloysCheckboxCard() {
         const saving = busy === 'ploys';
         return (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+            <div className="rounded-2xl bg-zinc-950 p-3">
                 <div className="mb-2">
                     <div>
                         <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
@@ -1590,7 +1598,7 @@ function ArmyDashboardClientInner({
         const saving = busy === kind;
 
         return (
-            <div key={kind} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+            <div key={kind} className="rounded-xl bg-zinc-950 p-3">
                 <div className="flex items-center justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
                         <span className="text-sm">{meta.icon}</span>
@@ -1601,7 +1609,7 @@ function ArmyDashboardClientInner({
 
                 <div className="mt-2 grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
                     <button
-                        className="h-10 w-10 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
                         onClick={() => void setValue(kind, value - 1)}
                         disabled={saving}
                         aria-label={`Decrease ${meta.label}`}
@@ -1629,7 +1637,7 @@ function ArmyDashboardClientInner({
                         className="h-10 min-w-0 vault-input px-3 text-center text-lg font-semibold tabular-nums"
                     />
                     <button
-                        className="h-10 w-10 shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
+                        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
                         onClick={() => void setValue(kind, value + 1)}
                         disabled={saving}
                         aria-label={`Increase ${meta.label}`}
@@ -1642,7 +1650,7 @@ function ArmyDashboardClientInner({
                     {meta.quick.map((d) => (
                         <button
                             key={`${kind}_${d}`}
-                            className="h-7 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
+                            className="h-7 min-w-[3.25rem] rounded-lg bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
                             onClick={() => void setValue(kind, Math.max(0, value + d))}
                             disabled={saving}
                         >
@@ -1650,7 +1658,7 @@ function ArmyDashboardClientInner({
                         </button>
                     ))}
                     <button
-                        className="h-7 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
+                        className="h-7 rounded-lg bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
                         onClick={() => void setValue(kind, 0)}
                         disabled={saving || value === 0}
                         title={`Reset ${meta.label}`}
@@ -1692,7 +1700,7 @@ function ArmyDashboardClientInner({
                                 className={
                                     'flex items-center gap-2 rounded-xl px-2.5 py-2 transition-colors ' +
                                     (qty > 0
-                                        ? 'bg-emerald-500/10 ring-1 ring-emerald-500/35'
+                                        ? 'bg-emerald-500/10'
                                         : 'bg-zinc-900/70')
                                 }
                             >
@@ -1753,7 +1761,7 @@ function ArmyDashboardClientInner({
                 <div className="min-w-0 truncate">
                     <span className="font-medium text-zinc-300">{armyName}</span> | {factionName} | Tier {tier}
                 </div>
-                <div className="shrink-0 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px]">
+                <div className="shrink-0 rounded-full bg-zinc-900 px-2 py-0.5 text-[10px]">
                     Rating: <span className="font-semibold text-zinc-200">{displayRating}</span>
                 </div>
             </div>
@@ -1770,8 +1778,8 @@ function ArmyDashboardClientInner({
                         key={k}
                         onClick={() => setTab(k)}
                         className={
-                            'h-10 rounded-2xl border text-xs font-medium tracking-wide ' +
-                            (tab === k ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                            'h-10 rounded-2xl text-xs font-medium tracking-wide ' +
+                            (tab === k ? 'bg-emerald-500/15 text-emerald-200' : 'bg-zinc-900 text-zinc-300')
                         }
                     >
                         {label}
@@ -1792,7 +1800,7 @@ function ArmyDashboardClientInner({
                                 <button
                                     type="button"
                                     key={k}
-                                    className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center ring-1 ring-zinc-700/45 transition-colors hover:bg-zinc-800/70"
+                                    className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center transition-colors hover:bg-zinc-800/70"
                                     title={`${RESOURCE_META[k].label} (tap to edit)`}
                                     onClick={() => openResourceEditor(k)}
                                 >
@@ -1836,7 +1844,7 @@ function ArmyDashboardClientInner({
                     <section className="mt-4">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <div className="text-base font-medium">Units</div>
-                            <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
+                            <button onClick={() => setAdding(true)} className="rounded-xl bg-zinc-900 px-3 py-1 text-xs">
                                 Add unit
                             </button>
                         </div>
@@ -1853,6 +1861,7 @@ function ArmyDashboardClientInner({
                                         deleting={deletingId === u.id}
                                         onDelete={() => void deleteUnit(u.id)}
                                         onPresenceChange={onUnitPresenceChange}
+                                        onWoundsChange={onUnitWoundsChange}
                                         canMoveUp={canMoveUp}
                                         canMoveDown={canMoveDown}
                                         onMoveUp={() => void moveUnit(u.id, 'up')}
@@ -1880,7 +1889,7 @@ function ArmyDashboardClientInner({
                         </div>
                         <button
                             onClick={() => void loadChems(true)}
-                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
+                            className="rounded-xl bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
                             disabled={loadingChems}
                         >
                             {loadingChems ? 'Refreshing...' : 'Refresh'}
@@ -1892,9 +1901,9 @@ function ArmyDashboardClientInner({
                             value={chemQuery}
                             onChange={(e) => setChemQuery(e.target.value)}
                             placeholder="Search chems..."
-                            className="h-10 min-w-[11rem] flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm"
+                            className="h-10 min-w-[11rem] flex-1 rounded-xl bg-zinc-950 px-3 text-sm"
                         />
-                        <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-300">
+                        <label className="inline-flex h-10 items-center gap-2 rounded-xl bg-zinc-900 px-3 text-xs text-zinc-300">
                             <input
                                 type="checkbox"
                                 checked={showOwnedChemsOnly}
@@ -1926,7 +1935,7 @@ function ArmyDashboardClientInner({
                         <div className="text-sm font-medium">Tasks</div>
                         <button
                             onClick={() => void loadGoals()}
-                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs"
+                            className="rounded-xl bg-zinc-900 px-3 py-1 text-xs"
                             aria-label="Refresh goals"
                             title="Refresh"
                         >
@@ -2004,8 +2013,8 @@ function ArmyDashboardClientInner({
                                                                                 onClick={() => void setGoalTicks(g.id, active && filled === val ? val - 1 : val)}
                                                                                 disabled={updatingGoalId === g.id}
                                                                                 className={
-                                                                                    'h-6 w-6 rounded-full border text-xs tabular-nums ' +
-                                                                                    (active ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200' : 'border-zinc-700 bg-zinc-900 text-zinc-400')
+                                                                                    'h-6 w-6 rounded-full text-xs tabular-nums ' +
+                                                                                    (active ? 'bg-emerald-500/20 text-emerald-200' : 'bg-zinc-900 text-zinc-400')
                                                                                 }
                                                                                 title={active ? `Revert to ${val - 1}` : `Set to ${val}`}
                                                                                 aria-label={active ? `Revert to ${val - 1}` : `Set to ${val}`}
@@ -2092,7 +2101,7 @@ function ArmyDashboardClientInner({
                                 return (
                                     <div
                                         key={f.id}
-                                        className="rounded-xl bg-emerald-500/10 p-3 transition-colors ring-1 ring-emerald-500/35"
+                                        className="rounded-xl bg-emerald-500/10 p-3 transition-colors"
                                     >
                                         <div className="mb-2 flex items-start justify-between gap-2">
                                             <div className="text-sm font-medium text-zinc-100">{f.name}</div>
@@ -2101,7 +2110,7 @@ function ArmyDashboardClientInner({
                                                 type="button"
                                                 onClick={() => void toggleFacility(f.id, false)}
                                                 disabled={rowBusy}
-                                                className="shrink-0 rounded-lg border border-red-700/70 bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30 disabled:opacity-50"
+                                                className="shrink-0 rounded-lg bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30 disabled:opacity-50"
                                             >
                                                 Remove
                                             </button>
@@ -2130,7 +2139,7 @@ function ArmyDashboardClientInner({
                                             <button
                                                 onClick={() => void deleteLegacyFacility(f.id)}
                                                 disabled={deletingLegacyFacilityId === f.id}
-                                                className="rounded-md border border-red-600/50 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
+                                                className="rounded-md bg-zinc-900 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
                                             >
                                                 {deletingLegacyFacilityId === f.id ? 'Deleting...' : 'Delete'}
                                             </button>
@@ -2146,7 +2155,7 @@ function ArmyDashboardClientInner({
             {resourceEditorKind && (
                 <div className="fixed inset-0 z-30 overflow-x-hidden">
                     <button aria-label="Close" onClick={closeResourceEditor} className="absolute inset-0 bg-black/60" />
-                    <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
+                    <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl bg-zinc-900 p-4 shadow-xl">
                         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <div>
@@ -2155,7 +2164,7 @@ function ArmyDashboardClientInner({
                             </div>
                             <button
                                 onClick={closeResourceEditor}
-                                className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                                className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
                             >
                                 Close
                             </button>
@@ -2164,7 +2173,7 @@ function ArmyDashboardClientInner({
                         <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
                             <button
                                 type="button"
-                                className="h-11 w-11 rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-bold"
+                                className="h-11 w-11 rounded-xl bg-zinc-900 text-xl font-bold"
                                 onClick={() => shiftResourceDraft(-1)}
                                 aria-label={`Decrease ${RESOURCE_META[resourceEditorKind].label}`}
                             >
@@ -2181,11 +2190,11 @@ function ArmyDashboardClientInner({
                                         void saveResourceEditor();
                                     }
                                 }}
-                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-xl font-semibold tabular-nums"
+                                className="h-11 rounded-xl bg-zinc-950 px-3 text-center text-xl font-semibold tabular-nums"
                             />
                             <button
                                 type="button"
-                                className="h-11 w-11 rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-bold"
+                                className="h-11 w-11 rounded-xl bg-zinc-900 text-xl font-bold"
                                 onClick={() => shiftResourceDraft(1)}
                                 aria-label={`Increase ${RESOURCE_META[resourceEditorKind].label}`}
                             >
@@ -2198,7 +2207,7 @@ function ArmyDashboardClientInner({
                                 <button
                                     key={`${resourceEditorKind}_${d}`}
                                     type="button"
-                                    className="h-7 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium"
+                                    className="h-7 min-w-[3.25rem] rounded-lg bg-zinc-900 px-2 text-[11px] font-medium"
                                     onClick={() => shiftResourceDraft(d)}
                                 >
                                     {d > 0 ? `+${d}` : d}
@@ -2210,7 +2219,7 @@ function ArmyDashboardClientInner({
                             <button
                                 type="button"
                                 onClick={closeResourceEditor}
-                                className="h-11 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300"
+                                className="h-11 rounded-2xl bg-zinc-900 text-sm text-zinc-300"
                             >
                                 Cancel
                             </button>
@@ -2235,7 +2244,7 @@ function ArmyDashboardClientInner({
                         className="absolute inset-0 bg-black/60"
                     />
 
-                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl bg-zinc-900 shadow-xl">
                         <div className="p-4 pb-3">
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                             <div className="flex items-start justify-between gap-2">
@@ -2245,14 +2254,14 @@ function ArmyDashboardClientInner({
                                 </div>
                                 <button
                                     onClick={() => setFacilityPickerOpen(false)}
-                                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                                    className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
                                 >
                                     Close
                                 </button>
                             </div>
 
                             <div className="mt-3">
-                                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                                <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
                                     <SearchOutlined className="text-zinc-400" />
                                     <input
                                         value={facilitySearch}
@@ -2284,7 +2293,7 @@ function ArmyDashboardClientInner({
                                     const rowBusy = updatingFacilityId === f.id;
                                     const canAdd = !selected && !rowBusy;
                                     return (
-                                        <div key={f.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                        <div key={f.id} className="rounded-xl bg-zinc-950 p-3">
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0">
                                                     <div className="font-medium">{f.name}</div>
@@ -2297,7 +2306,7 @@ function ArmyDashboardClientInner({
                                                         'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
                                                         (canAdd
                                                             ? 'bg-emerald-500 text-emerald-950'
-                                                            : 'border border-zinc-700 bg-zinc-900 text-zinc-500')
+                                                            : 'bg-zinc-900 text-zinc-500')
                                                     }
                                                 >
                                                     {selected ? 'Added' : rowBusy ? 'Adding...' : 'Add'}
@@ -2310,7 +2319,7 @@ function ArmyDashboardClientInner({
                                     );
                                 })}
                                 {filteredFacilityCatalog.length === 0 ? (
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
+                                    <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">
                                         No facilities for current search.
                                     </div>
                                 ) : null}
@@ -2518,8 +2527,8 @@ function AddUnitSheet({
             type="button"
             onClick={() => setRoleTag(k)}
             className={
-                'h-9 rounded-full border px-3 text-xs font-medium ' +
-                (roleTag === k ? 'border-emerald-400 bg-emerald-500/10 text-emerald-200' : 'border-zinc-700 bg-zinc-950 text-zinc-300')
+                'h-9 rounded-full px-3 text-xs font-medium ' +
+                (roleTag === k ? 'bg-emerald-500/10 text-emerald-200' : 'bg-zinc-950 text-zinc-300')
             }
         >
             {label}
@@ -2625,10 +2634,10 @@ function AddUnitSheet({
         };
 
         return (
-            <div className="mt-1 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                <div className="flex items-center gap-2 border-b border-zinc-800 px-2 py-1.5">
+            <div className="mt-1 overflow-hidden rounded-xl bg-zinc-950">
+                <div className="flex items-center gap-2 px-2 py-1.5">
                     <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
-                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
+                    <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
                 <div className="vault-scrollbar max-w-full overflow-x-auto">
                     <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
@@ -2649,7 +2658,7 @@ function AddUnitSheet({
                             {rows.map((r) => {
                                 const { woundsge } = splitTypeAndRange(r.type);
                                 return (
-                                    <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
+                                    <tr key={r.key} className="align-top bg-zinc-950">
                                         {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{woundsge || '-'}</td> : null}
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test || '-'}</td>
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
@@ -2668,7 +2677,7 @@ function AddUnitSheet({
     function SpecialRow({ t }: { t: UITemplate }) {
         const s = t.stats;
         return (
-            <div className="mt-2 rounded-xl border border-zinc-800 overflow-hidden">
+            <div className="mt-2 overflow-hidden rounded-xl bg-zinc-950">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {['S','P','E','C','I','A','L','HP'].map((h) => (
                         <div key={h} className="px-2 py-1 text-center">{h}</div>
@@ -2692,7 +2701,7 @@ function AddUnitSheet({
         <div className="fixed inset-0 z-20 overflow-x-hidden">
             <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
 
-            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[92dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl bg-zinc-900 shadow-xl">
                 <div className="p-4 pb-3">
                     <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                     <div className="flex items-start justify-between gap-2">
@@ -2700,13 +2709,13 @@ function AddUnitSheet({
                             <div className="text-sm font-semibold">Add unit</div>
                             <div className="mt-0.5 text-[11px] text-zinc-400">Select a unit and loadout package.</div>
                         </div>
-                        <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                        <button onClick={onClose} className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
                             Close
                         </button>
                     </div>
 
                     <div className="mt-3">
-                        <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                        <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
                             <SearchOutlined className="text-zinc-400" />
                             <input
                                 value={q}
@@ -2743,7 +2752,7 @@ function AddUnitSheet({
                                 .join('');
 
                             return (
-                                <div key={t.id} className={'rounded-2xl border ' + (isSel ? 'border-emerald-400 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-900')}>
+                                <div key={t.id} className={'rounded-2xl ' + (isSel ? 'bg-emerald-500/5' : 'bg-zinc-900')}>
                                     <button
                                         onClick={() => {
                                             setSelT(t.id);
@@ -2751,7 +2760,7 @@ function AddUnitSheet({
                                         }}
                                         className="flex w-full items-center gap-3 p-3 text-left"
                                     >
-                                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-zinc-800 bg-zinc-950 text-sm font-semibold text-zinc-200">
+                                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-zinc-950 text-sm font-semibold text-zinc-200">
                                             {initials || 'U'}
                                         </div>
                                         <div className="min-w-0 flex-1">
@@ -2760,7 +2769,7 @@ function AddUnitSheet({
                                                 <span className="inline-flex flex-wrap items-center gap-1.5">
                                                     <span>{t.roleTag ? t.roleTag : '-'}</span>
                                                     {t.isLeader ? (
-                                                        <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
+                                                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
                                                             LEADER
                                                         </span>
                                                     ) : null}
@@ -2773,15 +2782,15 @@ function AddUnitSheet({
                                     </button>
 
                                     {isSel && (
-                                        <div className="border-t border-zinc-800 bg-zinc-950 p-2">
+                                        <div className="bg-zinc-950 p-2">
                                             {t.options.map((o) => {
                                                 const checked = selO === o.id;
                                                 return (
                                                     <label
                                                         key={o.id}
                                                         className={
-                                                            'mb-2 block rounded-xl border p-2 ' +
-                                                            (checked ? 'border-emerald-400 bg-emerald-500/10' : 'border-zinc-800 bg-zinc-900')
+                                                            'mb-2 block rounded-xl p-2 ' +
+                                                            (checked ? 'bg-emerald-500/10' : 'bg-zinc-900')
                                                         }
                                                     >
                                                         <div className="flex items-start gap-2">
@@ -2836,11 +2845,11 @@ function AddUnitSheet({
                     {!hasMore && list.length > 0 && <div className="py-3 text-center text-xs text-zinc-500">To wszystko.</div>}
                 </div>
 
-                <div className="border-t border-zinc-800 bg-zinc-900 p-4">
+                <div className="bg-zinc-900 p-4">
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}
-                            className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300"
+                            className="h-11 flex-1 rounded-2xl bg-zinc-800 text-sm text-zinc-300"
                         >
                             Cancel
                         </button>
