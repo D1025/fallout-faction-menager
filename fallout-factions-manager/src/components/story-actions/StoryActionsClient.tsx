@@ -31,7 +31,7 @@ export function StoryActionsClient() {
 
     return (
         <div className="grid gap-3">
-            <SectionCard title="Story Actions">
+            <SectionCard title="Story Actions" className="!border-none !shadow-none">
                 <p className="text-xs leading-relaxed text-zinc-300">{STORY_ACTIONS_INTRO}</p>
                 <p className="mt-2 text-xs leading-relaxed text-zinc-400">{CAPTIVE_STORY_ACTIONS_INTRO}</p>
                 <div className="mt-3">
@@ -40,6 +40,7 @@ export function StoryActionsClient() {
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         prefix={<SearchOutlined className="text-zinc-500" />}
+                        className="!border-none !bg-zinc-950/80 !shadow-none"
                         placeholder="Search by title (e.g. Recruit, Barter, Judge Captive)"
                         aria-label="Search story actions by title"
                     />
@@ -50,7 +51,7 @@ export function StoryActionsClient() {
             </SectionCard>
 
             {filteredActions.length === 0 ? (
-                <SectionCard>
+                <SectionCard className="!border-none !shadow-none">
                     <div className="text-sm text-zinc-400">No Story Action title matches your search.</div>
                 </SectionCard>
             ) : null}

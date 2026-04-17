@@ -130,14 +130,14 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
     return (
         <div className="fixed inset-0 z-20 flex items-end justify-center">
             <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
-            <div className="relative mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl sm:h-[90dvh]">
+            <div className="relative mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col rounded-t-3xl bg-zinc-900 shadow-xl sm:h-[90dvh]">
                 <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-zinc-700" />
 
                 {/* header */}
-                <header className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 px-4 pt-2 pb-2">
+                <header className="sticky top-0 z-10 bg-zinc-900/95 px-4 pt-2 pb-2 backdrop-blur">
                     <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold">New crew</div>
-                        <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                        <button onClick={onClose} className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
                             Close
                         </button>
                     </div>
@@ -147,7 +147,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                 <div className="vault-scrollbar flex-1 overflow-y-auto px-4 pb-24 pt-3">
                     <InfoStep name={name} tier={tier} onName={setName} onTier={(t) => setTier(t)} />
 
-                    <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                    <section className="mt-4 rounded-2xl bg-zinc-950 p-3">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-xs font-semibold text-zinc-200">Faction</div>
@@ -157,7 +157,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                             </div>
                             <button
                                 onClick={() => setFactionPickerOpen(true)}
-                                className="h-9 rounded-xl border border-emerald-400/70 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-300"
+                                className="h-9 rounded-xl bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-300"
                             >
                                 {selectedFaction ? 'Change faction' : 'Choose faction'}
                             </button>
@@ -189,7 +189,7 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                 setExpandedGoalSetId={setExpandedGoalSetId}
                             />
 
-                            <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                            <div className="mt-4 rounded-2xl bg-zinc-950 p-3">
                                 <div className="text-xs font-semibold text-zinc-200">Subfaction (optional)</div>
                                 <div className="mt-1 text-[11px] text-zinc-400">
                                     No selection means pure faction profile.
@@ -199,10 +199,10 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                     <button
                                         onClick={() => setSelectedSubfactionId(null)}
                                         className={
-                                            'h-9 rounded-xl border px-3 text-xs font-medium ' +
+                                            'h-9 rounded-xl px-3 text-xs font-medium ' +
                                             (selectedSubfactionId == null
-                                                ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                                : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                                ? 'bg-emerald-500/10 text-emerald-300'
+                                                : 'bg-zinc-900 text-zinc-300')
                                         }
                                     >
                                         No subfaction
@@ -212,10 +212,10 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                                             key={s.id}
                                             onClick={() => setSelectedSubfactionId(s.id)}
                                             className={
-                                                'h-9 rounded-xl border px-3 text-xs font-medium ' +
+                                                'h-9 rounded-xl px-3 text-xs font-medium ' +
                                                 (selectedSubfactionId === s.id
-                                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                                    ? 'bg-emerald-500/10 text-emerald-300'
+                                                    : 'bg-zinc-900 text-zinc-300')
                                             }
                                         >
                                             {s.name}
@@ -235,11 +235,11 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                 </div>
 
                 {/* footer */}
-                <footer className="sticky bottom-0 z-10 border-t border-zinc-800 bg-zinc-900/95 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur">
+                <footer className="sticky bottom-0 z-10 bg-zinc-900/95 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur">
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}
-                            className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300 active:scale-[0.99]"
+                            className="h-11 flex-1 rounded-2xl bg-zinc-800 text-sm text-zinc-300 active:scale-[0.99]"
                         >
                             Cancel
                         </button>
@@ -301,7 +301,7 @@ function InfoStep({
                     value={name}
                     onChange={(e) => onName(e.target.value)}
                     placeholder="e.g. Alpha Squad"
-                    className="vault-input px-3 py-2 text-sm outline-none focus:border-zinc-500"
+                    className="vault-input px-3 py-2 text-sm outline-none"
                 />
             </label>
 
@@ -313,10 +313,10 @@ function InfoStep({
                             key={t}
                             onClick={() => onTier(t as 1 | 2 | 3)}
                             className={
-                                'h-10 min-w-[88px] rounded-xl border px-3 text-sm font-medium shrink-0 ' +
+                                'h-10 min-w-[88px] shrink-0 rounded-xl px-3 text-sm font-medium ' +
                                 (tier === t
-                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                    ? 'bg-emerald-500/10 text-emerald-300'
+                                    : 'bg-zinc-900 text-zinc-300')
                             }
                         >
                             Tier {t}
@@ -325,7 +325,7 @@ function InfoStep({
                 </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400">
+            <div className="rounded-xl bg-zinc-950 p-3 text-xs text-zinc-400">
                 Choose a faction below. Quest line and subfaction modules unlock after selecting faction.
             </div>
         </div>
@@ -358,8 +358,8 @@ function LimitGrid({
             : 'text-zinc-300');
 
     return (
-        <div className="vault-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[320px] text-[11px]">
+        <div>
+            <table className="w-full table-fixed text-[10px] leading-tight">
                 <thead className="bg-zinc-950">
                     <tr className="uppercase tracking-wide">
                         <th className="px-2 py-1 text-left text-zinc-500">Limit</th>
@@ -370,7 +370,7 @@ function LimitGrid({
                 </thead>
                 <tbody>
                     {limits.map((l) => (
-                        <tr key={l.tag} className="border-t border-zinc-800/70 bg-zinc-950/70">
+                        <tr key={l.tag} className="bg-zinc-950/70">
                             <td className="px-2 py-1.5 text-zinc-200">{formatLimitTag(l.tag)}</td>
                             <td className={tdClass(1)}>{l.tier1 ?? '-'}</td>
                             <td className={tdClass(2)}>{l.tier2 ?? '-'}</td>
@@ -404,7 +404,7 @@ function GoalSetStep({
     setExpandedGoalSetId: (id: string | null) => void;
 }) {
     return (
-        <section className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+        <section className="mt-4 rounded-2xl bg-zinc-950 p-3">
             <div className="text-xs font-semibold text-zinc-200">Quest line</div>
             <div className="mt-1 text-[11px] text-zinc-400">Select one goal set for this crew.</div>
 
@@ -418,8 +418,8 @@ function GoalSetStep({
                         <div
                             key={gs.id}
                             className={
-                                'rounded-lg border ' +
-                                (checked ? 'border-emerald-400 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-950')
+                                'rounded-lg ' +
+                                (checked ? 'bg-emerald-500/10' : 'bg-zinc-900')
                             }
                         >
                             <div className="flex items-center justify-between p-2">
@@ -439,7 +439,7 @@ function GoalSetStep({
                                     </span>
                                     <button
                                         onClick={() => setExpandedGoalSetId(expanded ? null : gs.id)}
-                                        className="rounded-md border border-zinc-700 px-2 py-0.5 text-[11px] text-zinc-200"
+                                        className="rounded-md bg-zinc-800 px-2 py-0.5 text-[11px] text-zinc-200"
                                     >
                                         {expanded ? 'Hide goals' : 'Show goals'}
                                     </button>
@@ -447,7 +447,7 @@ function GoalSetStep({
                             </div>
 
                             {expanded && (
-                                <div className="border-t border-zinc-800 p-2">
+                                <div className="p-2">
                                     {[1, 2, 3].map((t) => {
                                         const tierGoals = gs.goals
                                             .filter((g) => g.tier === (t as 1 | 2 | 3))
@@ -475,7 +475,7 @@ function GoalSetStep({
                     );
                 })}
                 {faction.goalSets.length === 0 && (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
+                    <div className="rounded-lg bg-zinc-900 p-3 text-sm text-zinc-500">
                         No quest lines defined for this faction.
                     </div>
                 )}
@@ -502,11 +502,11 @@ function FactionPickerOverlay({
     onClose: () => void;
 }) {
     return (
-        <div className="absolute inset-0 z-20 rounded-t-3xl bg-zinc-900/95 backdrop-blur flex flex-col border border-zinc-800">
-            <header className="sticky top-0 z-10 border-b border-zinc-800 px-4 py-3 bg-zinc-900/95">
+        <div className="absolute inset-0 z-20 flex flex-col rounded-t-3xl bg-zinc-900/95 backdrop-blur">
+            <header className="sticky top-0 z-10 bg-zinc-900/95 px-4 py-3">
                 <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold">Choose faction</div>
-                    <button onClick={onClose} className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300">
+                    <button onClick={onClose} className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
                         Close
                     </button>
                 </div>
@@ -530,18 +530,18 @@ function FactionPickerOverlay({
                                 key={f.id}
                                 onClick={() => onSelectFaction(f.id)}
                                 className={
-                                    'rounded-xl border p-3 text-left transition ' +
+                                    'rounded-xl p-3 text-left transition ' +
                                     (isSelected
-                                        ? 'border-emerald-400 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(16,185,129,0.35)]'
-                                        : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700')
+                                        ? 'bg-emerald-500/10'
+                                        : 'bg-zinc-950 hover:bg-zinc-900')
                                 }
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                         <span
                                             className={
-                                                'inline-block h-2.5 w-2.5 rounded-full ring-2 ' +
-                                                (isSelected ? 'bg-emerald-400 ring-emerald-300' : 'bg-zinc-600 ring-zinc-500')
+                                                'inline-block h-2.5 w-2.5 rounded-full ' +
+                                                (isSelected ? 'bg-emerald-400' : 'bg-zinc-600')
                                             }
                                             aria-hidden
                                         />
@@ -558,11 +558,7 @@ function FactionPickerOverlay({
                             </button>
                         );
                     })}
-                    {factions.length === 0 && (
-                        <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
-                            No factions found.
-                        </div>
-                    )}
+                    {factions.length === 0 && <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">No factions found.</div>}
                 </div>
             </div>
         </div>

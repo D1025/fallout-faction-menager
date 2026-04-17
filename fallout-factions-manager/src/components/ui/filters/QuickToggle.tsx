@@ -14,10 +14,10 @@ export function QuickToggle({
             type="button"
             onClick={() => onChangeAction(!checked)}
             className={
-                'h-10 min-w-0 rounded-xl border px-3 text-xs font-medium whitespace-nowrap overflow-hidden text-ellipsis ' +
+                'h-10 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-xl px-3 text-xs font-medium ' +
                 (checked
-                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                    ? 'bg-emerald-500/10 text-emerald-300'
+                    : 'bg-zinc-900 text-zinc-300')
             }
             title={label}
         >

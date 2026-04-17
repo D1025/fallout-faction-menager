@@ -1124,7 +1124,7 @@ function ArmyDashboardClientInner({
                         const testStat = parseTestSpecialStat(d.test);
                         const accent = getWeaponAccent(idx);
                         return (
-                            <div key={idx} className="overflow-hidden rounded-xl bg-zinc-950/55">
+                            <div key={idx} className="overflow-hidden bg-zinc-950/55">
                                 <div className="flex items-center gap-2 px-2 py-1.5">
                                     <div className="text-sm font-medium text-zinc-100 sm:text-base">{w.name}</div>
                                     <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">{typeParts.type}</div>

@@ -1,4 +1,4 @@
-// src/components/army/UnitClient.tsx
+﻿// src/components/army/UnitClient.tsx
 'use client';
 
 import { CheckOutlined, CloseOutlined, PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
@@ -89,15 +89,15 @@ function TagChip({ tag }: { tag: UnitTemplateTag | null }) {
 
     const cls =
         tag === 'CHAMPION'
-            ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+            ? 'bg-amber-500/10 text-amber-200'
             : tag === 'COMPANION'
-                ? 'border-sky-500/40 bg-sky-500/10 text-sky-200'
+                ? 'bg-sky-500/10 text-sky-200'
                 : tag === 'LEGENDS'
-                    ? 'border-purple-500/40 bg-purple-500/10 text-purple-200'
-                    : 'border-zinc-700 bg-zinc-900 text-zinc-200';
+                    ? 'bg-purple-500/10 text-purple-200'
+                    : 'bg-zinc-900 text-zinc-200';
 
     return (
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
     );
 }
 
@@ -596,13 +596,13 @@ export function UnitClient({
         };
 
         return (
-            <div className="rounded-2xl bg-zinc-900/35 p-3">
+            <div className="bg-zinc-900/35">
                 <div className="mb-1 flex items-center gap-2">
                     <div className="font-medium">{w.name}</div>
-                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
+                    <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-                <div className="mt-1 rounded-xl bg-zinc-950/75 overflow-hidden ring-1 ring-zinc-800/70">
-                    <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
+                <div className="mt-1 overflow-hidden bg-zinc-950/75">
+                    <div className="max-w-full overflow-x-hidden">
                         <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                             <thead>
                                 <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
@@ -624,7 +624,7 @@ export function UnitClient({
                                     const { range } = splitTypeAndRange(r.type);
                                     const testStat = parseTestSpecialStat(r.test);
                                     return (
-                                        <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
+                                        <tr key={r.key} className="align-top bg-zinc-950">
                                             {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range}</td> : null}
                                             <td
                                                 className={
@@ -638,25 +638,33 @@ export function UnitClient({
                                             <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
                                             <td className="px-1 py-1 text-center tabular-nums">{r.parts != null ? r.parts : '-'}</td>
                                             <td className="px-1 py-1 text-center tabular-nums">{r.rating != null ? r.rating : '-'}</td>
-                                            <td className="px-0.5 py-1 text-center">
+                                            <td className="px-0.5 py-1 text-center align-middle">
                                                 {(() => {
                                                     if (r.kind !== 'PROFILE' || !r.profileId) {
-                                                        return <span className="text-zinc-500">-</span>;
+                                                        return (
+                                                            <span className="inline-flex h-6 w-6 items-center justify-center text-zinc-500">
+                                                                -
+                                                            </span>
+                                                        );
                                                     }
                                                     const profileId = r.profileId;
                                                     return (
                                                         <button
                                                             onClick={() => void toggle(profileId, !isSel)}
                                                             className={
-                                                                'h-6 w-6 rounded-md border text-xs font-semibold leading-none ' +
+                                                                'inline-flex h-6 w-6 items-center justify-center rounded-md text-[11px] font-semibold leading-none ' +
                                                                 (isSel
-                                                                    ? 'border-emerald-500/50 bg-emerald-700/40 text-emerald-100'
-                                                                    : 'border-emerald-500/50 bg-emerald-500 text-emerald-950')
+                                                                    ? 'bg-emerald-700/40 text-emerald-100'
+                                                                    : 'bg-emerald-500 text-emerald-950')
                                                             }
                                                             title={isSel ? 'Revert upgrade' : 'Apply upgrade'}
                                                             aria-label={isSel ? 'Revert upgrade' : 'Apply upgrade'}
                                                         >
-                                                            {isSel ? <CheckOutlined /> : <PlusOutlined />}
+                                                            {isSel ? (
+                                                                <CheckOutlined className="text-[10px] leading-none" />
+                                                            ) : (
+                                                                <PlusOutlined className="text-[10px] leading-none" />
+                                                            )}
                                                         </button>
                                                     );
                                                 })()}
@@ -725,7 +733,7 @@ export function UnitClient({
         <div className="space-y-3">
             <section className="rounded-2xl bg-zinc-900/35 p-3">
                 <div className="flex items-start gap-3">
-                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-zinc-950">
                         {!photoMissing ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -750,12 +758,12 @@ export function UnitClient({
                             <div className="text-base font-semibold truncate">{name}</div>
                             <TagChip tag={normalizedTag} />
                             {isLeader ? (
-                                <span className="inline-flex items-center rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+                                <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
                                     LEADER
                                 </span>
                             ) : null}
                             {tmpLeader ? (
-                                <span className="inline-flex items-center rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
                                     CREW LEADER
                                 </span>
                             ) : null}
@@ -771,7 +779,7 @@ export function UnitClient({
                         <div className="mt-1 text-[11px] text-zinc-400">This photo is assigned to this unit instance in the army.</div>
 
                         <div className="mt-2 flex flex-wrap gap-2">
-                            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
+                            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
                                 {uploadingPhoto ? 'Uploading...' : (photoMissing ? 'Take / add photo' : 'Change photo')}
                                 <input
                                     type="file"
@@ -805,7 +813,7 @@ export function UnitClient({
                                     type="button"
                                     onClick={() => void deletePhoto()}
                                     disabled={uploadingPhoto}
-                                    className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
+                                    className="h-9 rounded-xl bg-red-900/30 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
                                 >
                                     Delete
                                 </button>
@@ -815,20 +823,10 @@ export function UnitClient({
                 </div>
             </section>
 
-            {/* Header + SPECIAL */}
+            {/* SPECIAL */}
             <section className="mt-3 rounded-2xl bg-zinc-900/35 p-3">
-                <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0 font-semibold truncate">{name}</div>
-                    <div className="shrink-0 flex items-center gap-2">
-                        <TagChip tag={normalizedTag} />
-                        {!normalizedTag && roleTag ? (
-                            <span className="text-[11px] text-zinc-500" title={roleTag}>
-                                {roleTag}
-                            </span>
-                        ) : null}
-                    </div>
-                </div>
-                <div className="mt-3">{renderSpecialCompact()}</div>
+                <div className="text-sm font-medium">SPECIAL</div>
+                <div className="mt-2">{renderSpecialCompact()}</div>
             </section>
 
             {/* Weapon */}
@@ -874,8 +872,8 @@ export function UnitClient({
                                 key={d}
                                 onClick={() => setUpDelta(d)}
                                 className={
-                                    'rounded-lg border px-2 py-1 text-xs ' +
-                                    (d < 0 ? 'border-red-700/60 bg-red-900/20 text-red-300' : 'border-emerald-700/60 bg-emerald-900/20 text-emerald-300')
+                                    'rounded-lg px-2 py-1 text-xs ' +
+                                    (d < 0 ? 'bg-red-900/20 text-red-300' : 'bg-emerald-900/20 text-emerald-300')
                                 }
                                 title={d < 0 ? 'Wound (negative modifier)' : 'Upgrade (positive)'}
                             >
@@ -897,7 +895,7 @@ export function UnitClient({
                     {upgrades.filter((u) => u.delta >= 0).map((u) => (
                         <div
                             key={u.id}
-                            className="flex items-center justify-between rounded-lg bg-zinc-950/65 px-2 py-1 ring-1 ring-zinc-800/60"
+                            className="flex items-center justify-between rounded-lg bg-zinc-950/65 px-2 py-1"
                         >
                             <div>
                                 <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
@@ -906,7 +904,7 @@ export function UnitClient({
                             </div>
                             <button
                                 onClick={() => void deleteUpgrade(u.id)}
-                                className="rounded-md border border-zinc-700 px-2 py-0.5 text-zinc-200 hover:bg-zinc-800"
+                                className="rounded-md bg-zinc-800 px-2 py-0.5 text-zinc-200 hover:bg-zinc-700"
                                 aria-label="Revert upgrade"
                                 title="Revert"
                             >
@@ -926,7 +924,7 @@ export function UnitClient({
                         {upgrades.filter((u) => u.delta < 0).map((u) => (
                             <div
                                 key={u.id}
-                                className="flex items-center justify-between rounded-lg border border-red-800 bg-red-950/40 px-2 py-1 text-red-200"
+                                className="flex items-center justify-between rounded-lg bg-red-950/40 px-2 py-1 text-red-200"
                             >
                                 <div>
                                     <span className="font-semibold">{u.statKey.toUpperCase()}</span> {u.delta}
@@ -934,7 +932,7 @@ export function UnitClient({
                                 </div>
                                 <button
                                     onClick={() => void deleteUpgrade(u.id)}
-                                    className="rounded-md border border-red-700/70 px-2 py-0.5 hover:bg-red-900/30"
+                                    className="rounded-md bg-red-900/40 px-2 py-0.5 hover:bg-red-900/50"
                                     aria-label="Delete wound"
                                     title="Revert"
                                 >
@@ -959,7 +957,7 @@ export function UnitClient({
                 {/* Owned perks list */}
                 <div className="mt-2 grid gap-2">
                     {(ownedPerks ?? []).map((p) => (
-                        <div key={p.id} className="rounded-xl bg-zinc-950/65 p-3 ring-1 ring-zinc-800/60">
+                        <div key={p.id} className="rounded-xl bg-zinc-950/65 p-3">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <div className="font-medium">{p.name}</div>
@@ -968,13 +966,13 @@ export function UnitClient({
                                     <button
                                         type="button"
                                         onClick={() => void removePerk(p.id)}
-                                        className="shrink-0 rounded-lg border border-red-700/70 bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30"
+                                        className="shrink-0 rounded-lg bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30"
                                         title="Delete perk"
                                     >
                                         Delete
                                     </button>
                                 ) : (
-                                    <span className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+                                    <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
                                         INNATE
                                     </span>
                                 )}
@@ -1008,7 +1006,7 @@ export function UnitClient({
                         className="absolute inset-0 bg-black/60"
                     />
 
-                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl border border-zinc-800 bg-zinc-900 shadow-xl">
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[88dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl bg-zinc-900 shadow-xl">
                         <div className="p-4 pb-3">
                             <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
                             <div className="flex items-start justify-between gap-2">
@@ -1018,14 +1016,14 @@ export function UnitClient({
                                 </div>
                                 <button
                                     onClick={() => setPerkPickerOpen(false)}
-                                    className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                                    className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
                                 >
                                     Close
                                 </button>
                             </div>
 
                             <div className="mt-3">
-                                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                                <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
                                     <SearchOutlined className="text-zinc-400" />
                                     <input
                                         value={perkSearch}
@@ -1054,10 +1052,10 @@ export function UnitClient({
                                             type="button"
                                             onClick={() => setPerkCategory(k)}
                                             className={
-                                                'rounded-full border px-2.5 py-1 text-xs font-medium ' +
+                                                'rounded-full px-2.5 py-1 text-xs font-medium ' +
                                                 (active
-                                                    ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                                    : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                                                    ? 'bg-emerald-500/10 text-emerald-300'
+                                                    : 'bg-zinc-900 text-zinc-300')
                                             }
                                         >
                                             {k === 'ALL' ? 'All' : k}
@@ -1079,7 +1077,7 @@ export function UnitClient({
                                     <option value="REQ_DESC">Sort: requirement descending</option>
                                     <option value="NAME">Sort: name A-Z</option>
                                 </select>
-                                <label className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300">
+                                <label className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-2 py-1 text-xs text-zinc-300">
                                     <input
                                         type="checkbox"
                                         checked={perkOnlyMeetingReq}
@@ -1099,7 +1097,7 @@ export function UnitClient({
                                 {filteredPerks.map((p) => {
                                     const canAdd = p.meetsRequirement && !p.requiresValue && addingPerkId == null;
                                     return (
-                                        <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                                        <div key={p.id} className="rounded-xl bg-zinc-950 p-3">
                                             <div className="flex items-start justify-between gap-2">
                                                 <div className="min-w-0">
                                                     <div className="font-medium">{p.name}</div>
@@ -1115,7 +1113,7 @@ export function UnitClient({
                                                         'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
                                                         (canAdd
                                                             ? 'bg-emerald-500 text-emerald-950'
-                                                            : 'border border-zinc-700 bg-zinc-900 text-zinc-500')
+                                                            : 'bg-zinc-900 text-zinc-500')
                                                     }
                                                 >
                                                     {addingPerkId === p.id ? 'Adding...' : 'Add'}
@@ -1131,11 +1129,7 @@ export function UnitClient({
                                         </div>
                                     );
                                 })}
-                                {filteredPerks.length === 0 ? (
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-500">
-                                        No perks for current filters.
-                                    </div>
-                                ) : null}
+                                {filteredPerks.length === 0 ? <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">No perks for current filters.</div> : null}
                             </div>
                         </div>
                     </div>
@@ -1156,4 +1150,5 @@ export function UnitClient({
 }
 
 // (intentionally no re-export alias here)
+
 

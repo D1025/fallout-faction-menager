@@ -51,7 +51,7 @@ export function FilterBar({
     const drawerBody = (
         <div className="grid gap-3">
             {onSearchAction ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
                     <SearchOutlined className="text-zinc-400" />
                     <input
                         value={search}
@@ -71,6 +71,7 @@ export function FilterBar({
                 <Button
                     block
                     type={hasActive ? 'primary' : 'default'}
+                    className="!border-none"
                     icon={<ClearOutlined />}
                     disabled={!hasActive}
                     onClick={onClearAllAction}
@@ -92,6 +93,7 @@ export function FilterBar({
                     <Tooltip title={hasActive ? 'Filters (active)' : 'Filters'}>
                         <Button
                             type={hasActive ? 'primary' : 'default'}
+                            className="!border-none"
                             size="middle"
                             icon={<FilterOutlined />}
                             onClick={() => setOpen(true)}
@@ -111,6 +113,9 @@ export function FilterBar({
                 styles={{
                     section: {
                         maxWidth: '100vw',
+                    },
+                    header: {
+                        borderBottom: 'none',
                     },
                     body: {
                         maxHeight: isDesktop ? 'calc(100dvh - 112px)' : mobileMaxHeight,

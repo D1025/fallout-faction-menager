@@ -226,8 +226,8 @@ function ShareArmyModal({
                     }}
                     className="absolute inset-0 bg-black/70"
                 />
-                <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-[560px] rounded-t-3xl border border-zinc-800 bg-zinc-950 shadow-[0_-10px_40px_rgba(0,0,0,.55)]">
-                    <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-[560px] rounded-t-3xl bg-zinc-950 shadow-[0_-10px_40px_rgba(0,0,0,.55)]">
+                    <div className="flex items-center justify-between px-4 py-3">
                         <div>
                             <div className="text-sm font-semibold text-zinc-100">Share Army</div>
                             <div className="text-[11px] text-zinc-500">Public read-only link</div>
@@ -239,7 +239,7 @@ function ShareArmyModal({
                                 e.stopPropagation();
                                 onClose();
                             }}
-                            className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                            className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
                         >
                             Close
                         </button>
@@ -250,24 +250,24 @@ function ShareArmyModal({
                             <div className="text-sm text-zinc-400">Loading share settings...</div>
                         ) : (
                             <>
-                                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 text-xs text-zinc-300">
+                                <div className="rounded-xl bg-zinc-900/70 p-3 text-xs text-zinc-300">
                                     Anyone with this link can view the army in read-only mode without logging in.
                                 </div>
 
                                 {errorText ? (
-                                    <div className="mt-2 rounded-xl border border-red-900/80 bg-red-950/30 p-2 text-xs text-red-200">
+                                    <div className="mt-2 rounded-xl bg-red-950/30 p-2 text-xs text-red-200">
                                         {errorText}
                                     </div>
                                 ) : null}
 
                                 {!share.enabled && (
-                                    <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                    <div className="mt-3 rounded-xl bg-zinc-900 p-3">
                                         <div className="text-xs text-zinc-400">Sharing is currently disabled.</div>
                                         <button
                                             type="button"
                                             onClick={() => void enableOrRegenerate('ENABLE')}
                                             disabled={busy}
-                                            className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-500/70 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-200 disabled:opacity-50"
+                                            className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-200 disabled:opacity-50"
                                         >
                                             <LinkOutlined /> Enable public link
                                         </button>
@@ -276,7 +276,7 @@ function ShareArmyModal({
 
                                 {share.enabled && (
                                     <div className="mt-3 space-y-3">
-                                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                        <div className="rounded-xl bg-zinc-900 p-3">
                                             <label className="mb-1 block text-[11px] uppercase tracking-wide text-zinc-500">
                                                 Share Link
                                             </label>
@@ -284,27 +284,27 @@ function ShareArmyModal({
                                                 <input
                                                     readOnly
                                                     value={shareUrl || share.path || ''}
-                                                    className="vault-input h-10 flex-1 px-3 text-xs"
+                                                    className="h-10 flex-1 rounded-xl bg-zinc-950 px-3 text-xs text-zinc-200 outline-none"
                                                     aria-label="Share link"
                                                 />
                                                 <button
                                                     type="button"
                                                     onClick={() => void copyLink()}
                                                     disabled={busy || !shareUrl}
-                                                    className="inline-flex h-10 items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-xs text-zinc-200 disabled:opacity-50"
+                                                    className="inline-flex h-10 items-center gap-1 rounded-xl bg-zinc-950 px-3 text-xs text-zinc-200 disabled:opacity-50"
                                                 >
                                                     <CopyOutlined /> Copy
                                                 </button>
                                             </div>
                                         </div>
 
-                                        <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+                                        <div className="rounded-xl bg-zinc-900 p-3">
                                             <div className="mb-2 inline-flex items-center gap-2 text-xs text-zinc-300">
                                                 <QrcodeOutlined className="text-zinc-200" />
                                                 QR Code
                                             </div>
                                             {qrUrl ? (
-                                                <div className="flex justify-center rounded-xl border border-zinc-800 bg-white p-2">
+                                                <div className="flex justify-center rounded-xl bg-white p-2">
                                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                                     <img src={qrUrl} alt="QR code for shared army link" className="h-56 w-56" />
                                                 </div>
@@ -318,7 +318,7 @@ function ShareArmyModal({
                                                 type="button"
                                                 onClick={() => void enableOrRegenerate('REGENERATE')}
                                                 disabled={busy}
-                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-50"
+                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-zinc-800 px-3 text-xs text-zinc-200 disabled:opacity-50"
                                             >
                                                 <ReloadOutlined /> Regenerate link
                                             </button>
@@ -326,7 +326,7 @@ function ShareArmyModal({
                                                 type="button"
                                                 onClick={() => void disableSharing()}
                                                 disabled={busy}
-                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-700/70 bg-red-950/30 px-3 text-xs text-red-200 disabled:opacity-50"
+                                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-red-950/30 px-3 text-xs text-red-200 disabled:opacity-50"
                                             >
                                                 <StopOutlined /> Disable sharing
                                             </button>
@@ -435,7 +435,7 @@ function DotsMenu({
                     e.stopPropagation();
                     setOpen((v) => !v);
                 }}
-                className="grid h-9 w-9 place-items-center rounded-xl border border-zinc-800 bg-zinc-950 text-zinc-200 active:scale-95"
+                className="grid h-9 w-9 place-items-center rounded-xl bg-zinc-950 text-zinc-200 active:scale-95"
                 aria-label="Options"
                 title="Options"
             >
@@ -445,7 +445,7 @@ function DotsMenu({
             {open && (
                 <div
                     ref={menuRef}
-                    className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-xl"
+                    className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-2xl bg-zinc-950 shadow-xl"
                     onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -508,7 +508,7 @@ function ArmyCard({
     onDeleted?: () => void;
 }) {
     return (
-        <div className="vault-panel p-3">
+        <div className="rounded-2xl bg-zinc-900/85 p-3">
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                     <div className="truncate font-medium">{a.name}</div>
@@ -518,10 +518,10 @@ function ArmyCard({
 
                         <span className="mx-0.5 h-3 w-px bg-zinc-700" aria-hidden="true" />
 
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
                             T{a.tier}
                         </span>
-                        <span className="inline-flex shrink-0 items-center rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
+                        <span className="inline-flex shrink-0 items-center rounded-full bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
                             Rating {a.rating}
                         </span>
                     </div>
@@ -801,10 +801,10 @@ export function HomeArmiesTabs({
                     type="button"
                     onClick={() => setState((s) => ({ ...s, tab: 'MINE' }))}
                     className={
-                        'h-10 rounded-xl border text-xs font-medium ' +
+                        'h-10 rounded-xl text-xs font-medium ' +
                         (state.tab === 'MINE'
-                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                            : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                            ? 'bg-emerald-500/10 text-emerald-300'
+                            : 'bg-zinc-900 text-zinc-300')
                     }
                 >
                     My armies ({myArmies.length})
@@ -813,10 +813,10 @@ export function HomeArmiesTabs({
                     type="button"
                     onClick={() => setState((s) => ({ ...s, tab: 'SHARED' }))}
                     className={
-                        'h-10 rounded-xl border text-xs font-medium ' +
+                        'h-10 rounded-xl text-xs font-medium ' +
                         (state.tab === 'SHARED'
-                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                            : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                            ? 'bg-emerald-500/10 text-emerald-300'
+                            : 'bg-zinc-900 text-zinc-300')
                     }
                 >
                     Shared ({shared.length})
@@ -849,7 +849,7 @@ export function HomeArmiesTabs({
                                         const v = e.target.value;
                                         setState((s) => ({ ...s, tierFilter: v === 'ALL' ? 'ALL' : (Number(v) as 1 | 2 | 3) }));
                                     }}
-                                    className="h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                                    className="h-10 w-full rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200"
                                     aria-label="Tier filter"
                                 >
                                     <option value="ALL">All tiers</option>
@@ -877,7 +877,7 @@ export function HomeArmiesTabs({
                         <select
                             value={state.factionFilter}
                             onChange={(e) => setState((s) => ({ ...s, factionFilter: e.target.value }))}
-                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200"
                             aria-label="Faction filter"
                         >
                             <option value="ALL">All factions</option>
@@ -889,7 +889,7 @@ export function HomeArmiesTabs({
                         <select
                             value={state.subfactionMode}
                             onChange={(e) => setState((s) => ({ ...s, subfactionMode: e.target.value as SubfactionMode }))}
-                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200"
                         >
                             <option value="ANY">Subfaction: any</option>
                             <option value="ONLY_WITH">Only with subfaction</option>
@@ -900,7 +900,7 @@ export function HomeArmiesTabs({
                             value={state.subfactionFilter}
                             onChange={(e) => setState((s) => ({ ...s, subfactionFilter: e.target.value }))}
                             disabled={state.subfactionMode === 'ONLY_NONE'}
-                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                         >
                             <option value="ALL">All subfactions</option>
                             {subfactions.map((sf) => (
@@ -912,7 +912,7 @@ export function HomeArmiesTabs({
                             value={state.permFilter}
                             onChange={(e) => setState((s) => ({ ...s, permFilter: e.target.value as UiState['permFilter'] }))}
                             disabled={state.tab !== 'SHARED'}
-                            className="h-10 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200 disabled:opacity-40"
                         >
                             <option value="ALL">Perm: all</option>
                             <option value="READ">Perm: read-only</option>
@@ -955,7 +955,7 @@ export function HomeArmiesTabs({
                                     shareId={s.id}
                                     onDeleted={() => router.refresh()}
                                     right={
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px]">
+                                        <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px]">
                                             {s.perm === 'READ' ? 'read-only' : 'collaboration'}
                                         </span>
                                     }

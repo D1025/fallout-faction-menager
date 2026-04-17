@@ -19,7 +19,7 @@ export function SortSelect({
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                className="h-10 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-200"
+                className="h-10 w-full rounded-xl bg-zinc-900 px-3 text-xs text-zinc-200"
             >
                 {options.map((option) => (
                     <option key={option.value} value={option.value}>

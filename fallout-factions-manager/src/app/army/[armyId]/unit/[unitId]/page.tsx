@@ -126,7 +126,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
 
     return (
         <MobilePageShell
-            title={unit.unit?.name ?? unit.id.slice(0, 6)}
+            title="Unit"
             backHref={`/army/${unit.armyId}`}
             headerRight={<UserAccountMenu name={userName} role={userRole} photoEtag={userMeta?.photoEtag ?? null} />}
         >

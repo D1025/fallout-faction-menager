@@ -18,7 +18,7 @@ export function FilterChips({ chips }: { chips: ActiveFilterChip[] }) {
                     key={chip.key}
                     type="button"
                     onClick={chip.onRemove}
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-200"
+                    className="inline-flex items-center gap-1 rounded-full bg-zinc-900 px-2.5 py-1 text-xs text-zinc-200"
                 >
                     <span>{chip.label}</span>
                     <CloseOutlined className="text-[10px] text-zinc-400" />

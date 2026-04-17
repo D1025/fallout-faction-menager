@@ -66,6 +66,7 @@ export function HomeClient({
                     onClick={() => setFiltersOpen(true)}
                     aria-label="Filters"
                     title="Filters"
+                    className="!border-none"
                 />
                 <UserAccountMenu name={userName} role={userRole} photoEtag={userPhotoEtag} />
             </div>
