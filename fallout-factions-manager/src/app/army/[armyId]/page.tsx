@@ -16,6 +16,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const { armyId } = await params;
     const session = await auth();
     const userId = session?.user?.id;
+    if (!userId) return <div className="p-4 text-red-300">Unauthorized.</div>;
     const userMeta = userId
         ? await prisma.user.findUnique({
             where: { id: userId },
@@ -42,12 +43,16 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 include: {
                     unit: {
                         include: {
-                            startPerks: { include: { perk: { select: { name: true } } } },
+                            startPerks: { include: { perk: { select: { id: true, name: true, description: true } } } },
                         },
                     },
                     upgrades: true,
                     weapons: true,
                     selectedOption: true,
+                    chosenPerks: {
+                        select: { perk: { select: { id: true, name: true, description: true } } },
+                        orderBy: { perkId: 'asc' },
+                    },
                 },
                 orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
             },
@@ -55,6 +60,21 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     });
 
     if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
+
+    const isOwner = army.ownerId === userId;
+    const hasSharedAccess = isOwner
+        ? true
+        : Boolean(
+            await prisma.armyShare.findFirst({
+                where: { armyId, userId },
+                select: { id: true },
+            }),
+        );
+
+    if (!hasSharedAccess) {
+        return <div className="p-4 text-red-300">You do not have access to this army.</div>;
+    }
+    const readOnly = !isOwner;
 
     const rules = await prisma.factionUpgradeRule.findMany({
         where: { factionId: army.factionId },
@@ -174,6 +194,23 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             };
         });
 
+        const perkMap = new Map<string, { id: string; name: string; description: string }>();
+        for (const sp of u.unit.startPerks) {
+            perkMap.set(sp.perk.id, {
+                id: sp.perk.id,
+                name: sp.perk.name,
+                description: sp.perk.description ?? '',
+            });
+        }
+        for (const cp of u.chosenPerks) {
+            perkMap.set(cp.perk.id, {
+                id: cp.perk.id,
+                name: cp.perk.name,
+                description: cp.perk.description ?? '',
+            });
+        }
+        const perks = [...perkMap.values()];
+
         return {
             id: u.id,
             templateName: u.unit.name,
@@ -187,9 +224,11 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             wounds: u.wounds,
             present: u.present,
             upgradesCount: u.upgrades.length,
-            perkNames: [],
+            perkNames: perks.map((p) => p.name),
             startPerkNames: u.unit.startPerks.map((sp) => sp.perk.name),
+            perks,
             photoPath: u.photoPath ?? null,
+            hasPhoto: Boolean((u as unknown as { photoEtag?: string | null }).photoEtag || u.photoPath),
             rating: unitRating(u),
             weapons,
         };
@@ -201,6 +240,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             userName={userName}
             userRole={userRole}
             userPhotoEtag={userMeta?.photoEtag ?? null}
+            readOnly={readOnly}
             armyId={army.id}
             armyName={army.name}
             tier={army.tier}

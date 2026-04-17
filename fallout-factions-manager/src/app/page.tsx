@@ -3,7 +3,7 @@ export const revalidate = 0;
 
 import Link from 'next/link';
 import { Button } from 'antd';
-import { BookOutlined, LoginOutlined, UserOutlined } from '@ant-design/icons';
+import { LoginOutlined, UserOutlined } from '@ant-design/icons';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { SectionCard } from '@/components/ui/antd/SectionCard';
 import { auth } from '@/lib/authServer';
@@ -25,14 +25,7 @@ export default async function Home() {
 
   if (!userId) {
     return (
-      <MobilePageShell
-        title="Fallout Army Tracker"
-        headerRight={(
-          <Button href="/story-actions" icon={<BookOutlined />} className="ff-ant-btn-icon-mobile">
-            Story actions
-          </Button>
-        )}
-      >
+      <MobilePageShell title="Fallout Army Tracker">
         <SectionCard>
           <div className="text-center">
             <div className="text-3xl text-amber-300"><UserOutlined /></div>

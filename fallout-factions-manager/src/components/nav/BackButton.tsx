@@ -24,8 +24,15 @@ export function BackButton({
     }
 
     return (
-        <Button type="default" size="small" onClick={goBack} className={className} aria-label={label} title={label}>
-            <ArrowLeftOutlined /> {label}
+        <Button
+            type="default"
+            onClick={goBack}
+            icon={<ArrowLeftOutlined />}
+            className={`ff-ant-btn-icon-mobile ff-header-action-btn ff-back-btn ${className ?? ''}`.trim()}
+            aria-label={label}
+            title={label}
+        >
+            {label}
         </Button>
     );
 }

@@ -141,6 +141,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     present={unit.present}
                     wounds={unit.wounds}
                     photoPath={unit.photoPath ?? null}
+                    hasPhoto={Boolean((unit as unknown as { photoEtag?: string | null }).photoEtag || unit.photoPath)}
                     special={special}
                     upgrades={unit.upgrades.map((u) => ({
                         id: u.id,

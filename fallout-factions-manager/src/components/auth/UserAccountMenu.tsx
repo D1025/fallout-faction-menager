@@ -72,7 +72,7 @@ export function UserAccountMenu({
                 type="default"
                 aria-label="Account menu"
                 title="Account menu"
-                className="ff-ant-btn-icon-mobile ff-account-trigger"
+                className="ff-ant-btn-icon-mobile ff-header-action-btn ff-account-trigger"
                 icon={
                     <Avatar
                         size={28}

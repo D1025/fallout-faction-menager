@@ -3,9 +3,8 @@ import { StoryActionsClient } from '@/components/story-actions/StoryActionsClien
 
 export default function StoryActionsPage() {
     return (
-        <MobilePageShell title="Story Actions" backHref="/">
+        <MobilePageShell title="Story Actions" backHref="/" showStoryActionsShortcut={false}>
             <StoryActionsClient />
         </MobilePageShell>
     );
 }
-

@@ -12,6 +12,7 @@ export function ArmyPageClient(
         userName: string;
         userRole: 'USER' | 'ADMIN';
         userPhotoEtag?: string | null;
+        readOnly?: boolean;
     },
 ) {
     const [actions, setActions] = useState<ArmyDashboardActions | null>(null);
@@ -38,6 +39,7 @@ export function ArmyPageClient(
         <MobilePageShell title={props.armyName} backHref={props.backHref} headerRight={headerRight}>
             <ArmyDashboardClient
                 {...props}
+                readOnly={Boolean(props.readOnly)}
                 onActionsReadyAction={(a) => setActions(a)}
                 onFiltersActiveChangeAction={setFiltersActive}
             />

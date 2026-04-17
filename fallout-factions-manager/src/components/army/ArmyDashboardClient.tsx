@@ -17,8 +17,9 @@ import {
 import { FilterBar, QuickToggle, type ActiveFilterChip } from '@/components/ui/filters';
 import { Portal } from '@/components/ui/Portal';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
 import { EffectTooltip, usePreloadEffects } from '@/components/effects/EffectTooltip';
 import { RuleDescription } from '@/components/rules/RuleDescription';
 import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
@@ -60,7 +61,9 @@ type UnitListItem = {
     upgradesCount: number;
     perkNames: string[];
     startPerkNames?: string[];
+    perks?: Array<{ id: string; name: string; description: string }>;
     photoPath: string | null;
+    hasPhoto?: boolean;
     rating: number;
 
     weapons: {
@@ -80,6 +83,11 @@ type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
 type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
 type SpecialStatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type WeaponTestHint = { weaponIndex: 0 | 1; stat: SpecialStatKey };
+type PersistedArmyFilters = {
+    v: 1;
+    role: RoleFilter;
+    hideInactive: boolean;
+};
 
 /* ====== Goals API ====== */
 type Goal = {
@@ -128,6 +136,8 @@ type HomeTurfResponse = {
 type PopPos = { top: number; left: number; maxWidth: number };
 
 const SPECIAL_STAT_KEYS: readonly SpecialStatKey[] = ['S', 'P', 'E', 'C', 'I', 'A', 'L'] as const;
+const ROLE_FILTER_VALUES: readonly RoleFilter[] = ['ALL', 'CHAMPION', 'GRUNT', 'COMPANION', 'LEGENDS'] as const;
+const FILTER_STORAGE_KEY_PREFIX = 'ffm:army-dashboard:filters';
 
 const WEAPON_TEST_ACCENTS = [
     {
@@ -152,6 +162,11 @@ function parseTestSpecialStat(test: string | null | undefined): SpecialStatKey |
 
 function getWeaponAccent(index: number) {
     return WEAPON_TEST_ACCENTS[index] ?? WEAPON_TEST_ACCENTS[0];
+}
+
+async function readResponseError(res: Response, fallback: string): Promise<string> {
+    const txt = await res.text().catch(() => '');
+    return txt?.trim() || fallback;
 }
 
 function StickyInfoTooltip({ title, description }: { title: string; description: string }) {
@@ -261,6 +276,7 @@ export function ArmyDashboardClient({
     units,
     rating,
     subfactionId,
+    readOnly,
     // zamiast refa
     onActionsReadyAction,
     onFiltersActiveChangeAction,
@@ -275,6 +291,7 @@ export function ArmyDashboardClient({
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    readOnly?: boolean;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
     onFiltersActiveChangeAction?: (active: boolean) => void;
 }) {
@@ -290,6 +307,7 @@ export function ArmyDashboardClient({
             units={units}
             rating={rating}
             subfactionId={subfactionId}
+            readOnly={Boolean(readOnly)}
             onActionsReadyAction={onActionsReadyAction}
             onFiltersActiveChangeAction={onFiltersActiveChangeAction}
         />
@@ -307,6 +325,7 @@ function ArmyDashboardClientInner({
     units,
     rating,
     subfactionId,
+    readOnly,
     onActionsReadyAction,
     onFiltersActiveChangeAction,
 }: {
@@ -320,6 +339,7 @@ function ArmyDashboardClientInner({
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    readOnly: boolean;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
     onFiltersActiveChangeAction?: (active: boolean) => void;
 }) {
@@ -334,7 +354,9 @@ function ArmyDashboardClientInner({
     const [hideInactive, setHideInactive] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [tab, setTab] = useState<TabKey>('OVERVIEW');
+    const [currentTier, setCurrentTier] = useState<number>(tier);
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [filtersHydrated, setFiltersHydrated] = useState(false);
     const [chems, setChems] = useState<UIChem[]>([]);
     const [loadingChems, setLoadingChems] = useState(false);
     const [updatingChemId, setUpdatingChemId] = useState<string | null>(null);
@@ -346,6 +368,7 @@ function ArmyDashboardClientInner({
 
     useEffect(() => setTotals(resources), [resources]);
     useEffect(() => setOrderedUnits(units), [units]);
+    useEffect(() => setCurrentTier(tier), [tier]);
     useEffect(() => {
         setPresentById((prev) => {
             const next: Record<string, boolean> = {};
@@ -354,16 +377,149 @@ function ArmyDashboardClientInner({
         });
     }, [units]);
 
+    useEffect(() => {
+        if (!readOnly) return;
+        setTab('OVERVIEW');
+        setAdding(false);
+        setResourceEditorKind(null);
+    }, [readOnly]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const dirtyKey = `ffm:army:dirty:${armyId}`;
+        const dirtyAt = window.localStorage.getItem(dirtyKey);
+        if (!dirtyAt) return;
+        window.localStorage.removeItem(dirtyKey);
+        router.refresh();
+    }, [armyId, router]);
+
+    const filtersStorageKey = useMemo(() => `${FILTER_STORAGE_KEY_PREFIX}:${armyId}`, [armyId]);
+
+    useEffect(() => {
+        setFiltersHydrated(false);
+        if (typeof window === 'undefined') {
+            setFiltersHydrated(true);
+            return;
+        }
+
+        try {
+            const raw = window.localStorage.getItem(filtersStorageKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw) as Partial<PersistedArmyFilters> | null;
+            const parsedRole = parsed?.role;
+            if (parsedRole && (ROLE_FILTER_VALUES as readonly string[]).includes(parsedRole)) {
+                setFilter(parsedRole as RoleFilter);
+            }
+            if (typeof parsed?.hideInactive === 'boolean') {
+                setHideInactive(parsed.hideInactive);
+            }
+        } catch {
+            // noop
+        } finally {
+            setFiltersHydrated(true);
+        }
+    }, [filtersStorageKey]);
+
+    useEffect(() => {
+        if (!filtersHydrated) return;
+        if (typeof window === 'undefined') return;
+        const payload: PersistedArmyFilters = {
+            v: 1,
+            role: filter,
+            hideInactive,
+        };
+        try {
+            window.localStorage.setItem(filtersStorageKey, JSON.stringify(payload));
+        } catch {
+            // noop
+        }
+    }, [filtersStorageKey, filter, hideInactive, filtersHydrated]);
+
+    const saveResourceMutation = useMutation({
+        mutationFn: async ({ kind, value }: { kind: Kind; value: number }) => {
+            const res = await fetch(`/api/armies/${armyId}/resources`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [kind]: value }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save resources'));
+            return { kind, value };
+        },
+    });
+
+    const saveChemQuantityMutation = useMutation({
+        mutationFn: async ({ chemId, quantity }: { chemId: string; quantity: number }) => {
+            const res = await fetch(`/api/armies/${armyId}/chems`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chemId, quantity }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save chem quantity'));
+            return { chemId, quantity };
+        },
+    });
+
+    const deleteUnitMutation = useMutation({
+        mutationFn: async ({ unitId }: { unitId: string }) => {
+            const res = await fetch(`/api/armies/${armyId}/units/${unitId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to delete unit'));
+            return unitId;
+        },
+    });
+
+    const reorderUnitsMutation = useMutation({
+        mutationFn: async ({ unitIds }: { unitIds: string[] }) => {
+            const res = await fetch(`/api/armies/${armyId}/units/reorder`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unitIds }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save unit order'));
+            return unitIds;
+        },
+    });
+
+    const savePresenceMutation = useMutation({
+        mutationFn: async ({ unitId, present }: { unitId: string; present: boolean }) => {
+            const res = await fetch(`/api/units/${unitId}/presence`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ present }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save presence'));
+            return { unitId, present };
+        },
+    });
+
+    const saveWoundsMutation = useMutation({
+        mutationFn: async ({ unitId, wounds }: { unitId: string; wounds: number }) => {
+            const res = await fetch(`/api/units/${unitId}/wounds`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wounds }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save wounds'));
+            return { unitId, wounds };
+        },
+    });
+
+    const saveTemporaryLeaderMutation = useMutation({
+        mutationFn: async ({ unitId, temporaryLeader }: { unitId: string; temporaryLeader: boolean }) => {
+            const res = await fetch(`/api/units/${unitId}/temporary-leader`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ temporaryLeader }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save Crew Leader'));
+            return { unitId, temporaryLeader };
+        },
+    });
+
     async function setValue(kind: Kind, value: number) {
         const v = Math.max(0, Math.floor(value));
         setBusy(kind);
         try {
-            const res = await fetch(`/api/armies/${armyId}/resources`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [kind]: v }),
-            });
-            if (!res.ok) throw new Error(await res.text());
+            await saveResourceMutation.mutateAsync({ kind, value: v });
             setTotals((t) => ({ ...t, [kind]: v }));
         } catch {
             notifyApiError('Failed to save resources');
@@ -423,12 +579,7 @@ function ArmyDashboardClientInner({
         setUpdatingChemId(chemId);
         setChems((arr) => arr.map((c) => (c.id === chemId ? { ...c, quantity: next } : c)));
         try {
-            const res = await fetch(`/api/armies/${armyId}/chems`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chemId, quantity: next }),
-            });
-            if (!res.ok) throw new Error();
+            await saveChemQuantityMutation.mutateAsync({ chemId, quantity: next });
         } catch {
             setChems((arr) => arr.map((c) => (c.id === chemId ? { ...c, quantity: prev } : c)));
             notifyApiError('Failed to save chem quantity');
@@ -444,15 +595,20 @@ function ArmyDashboardClientInner({
             cancelText: 'Cancel',
             danger: true,
             onOk: async () => {
+                const prevOrdered = orderedUnits;
+                const prevPresent = presentById;
                 setDeletingId(unitId);
+                setOrderedUnits((prev) => prev.filter((u) => u.id !== unitId));
+                setPresentById((prev) => {
+                    const next = { ...prev };
+                    delete next[unitId];
+                    return next;
+                });
                 try {
-                    const res = await fetch(`/api/armies/${armyId}/units/${unitId}`, { method: 'DELETE' });
-                    if (!res.ok) {
-                        const txt = await res.text().catch(() => '');
-                        throw new Error(txt || 'Request failed');
-                    }
-                    router.refresh();
+                    await deleteUnitMutation.mutateAsync({ unitId });
                 } catch {
+                    setOrderedUnits(prevOrdered);
+                    setPresentById(prevPresent);
                     notifyApiError('Failed to delete unit');
                     throw new Error('delete failed');
                 } finally {
@@ -476,12 +632,7 @@ function ArmyDashboardClientInner({
         setReordering(true);
 
         try {
-            const res = await fetch(`/api/armies/${armyId}/units/reorder`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ unitIds: next.map((u) => u.id) }),
-            });
-            if (!res.ok) throw new Error();
+            await reorderUnitsMutation.mutateAsync({ unitIds: next.map((u) => u.id) });
         } catch {
             setOrderedUnits(prev);
             notifyApiError('Failed to save unit order.');
@@ -492,12 +643,47 @@ function ArmyDashboardClientInner({
 
     function onUnitPresenceChange(unitId: string, present: boolean) {
         setPresentById((prev) => ({ ...prev, [unitId]: present }));
+        setOrderedUnits((prev) =>
+            prev.map((unit) => (unit.id === unitId ? { ...unit, present } : unit)),
+        );
     }
 
     function onUnitWoundsChange(unitId: string, wounds: number) {
         setOrderedUnits((prev) =>
             prev.map((unit) => (unit.id === unitId ? { ...unit, wounds } : unit)),
         );
+    }
+
+    function onUnitTemporaryLeaderChange(unitId: string, temporaryLeader: boolean) {
+        setOrderedUnits((prev) =>
+            prev.map((unit) => (unit.id === unitId ? { ...unit, temporaryLeader } : unit)),
+        );
+    }
+
+    const persistPresence = useCallback(
+        async (unitId: string, present: boolean) => {
+            await savePresenceMutation.mutateAsync({ unitId, present });
+        },
+        [savePresenceMutation],
+    );
+
+    const persistWounds = useCallback(
+        async (unitId: string, wounds: number) => {
+            await saveWoundsMutation.mutateAsync({ unitId, wounds });
+        },
+        [saveWoundsMutation],
+    );
+
+    const persistTemporaryLeader = useCallback(
+        async (unitId: string, temporaryLeader: boolean) => {
+            await saveTemporaryLeaderMutation.mutateAsync({ unitId, temporaryLeader });
+        },
+        [saveTemporaryLeaderMutation],
+    );
+
+    function appendUnit(nextUnit: UnitListItem) {
+        setOrderedUnits((prev) => [...prev, nextUnit]);
+        setPresentById((prev) => ({ ...prev, [nextUnit.id]: nextUnit.present }));
     }
 
     function n(v: string, def = 0) {
@@ -760,13 +946,18 @@ function ArmyDashboardClientInner({
     }
 
     /* ---------- Wiersz units ---------- */
-    function UnitRow({
+    const UnitRow = useCallback(function UnitRow({
                          u,
                          armyId: aId,
                          onDelete,
                          deleting,
                          onPresenceChange,
                          onWoundsChange,
+                         onTemporaryLeaderChange,
+                         persistPresence,
+                         persistWounds,
+                         persistTemporaryLeader,
+                         readOnly,
                          canMoveUp,
                          canMoveDown,
                          onMoveUp,
@@ -779,6 +970,11 @@ function ArmyDashboardClientInner({
         deleting: boolean;
         onPresenceChange: (unitId: string, present: boolean) => void;
         onWoundsChange: (unitId: string, wounds: number) => void;
+        onTemporaryLeaderChange: (unitId: string, temporaryLeader: boolean) => void;
+        persistPresence: (unitId: string, present: boolean) => Promise<void>;
+        persistWounds: (unitId: string, wounds: number) => Promise<void>;
+        persistTemporaryLeader: (unitId: string, temporaryLeader: boolean) => Promise<void>;
+        readOnly: boolean;
         canMoveUp: boolean;
         canMoveDown: boolean;
         onMoveUp: () => void;
@@ -805,40 +1001,33 @@ function ArmyDashboardClientInner({
         const menuRef = useRef<HTMLDivElement | null>(null);
         const headerSpecialRef = useRef<HTMLDivElement | null>(null);
         const [headerSpecialSize, setHeaderSpecialSize] = useState(64);
-        const profileSrc = `/api/units/${u.id}/photo/file`;
+        const hasPhoto = Boolean(u.hasPhoto ?? u.photoPath);
+        const profileSrc = hasPhoto ? `/api/units/${u.id}/photo/file` : null;
 
         async function savePresence(nextPresent: boolean) {
+            if (readOnly) return;
             const prevAbsent = absent;
             const prevPresent = !prevAbsent;
             setAbsent(!nextPresent);
             onPresenceChange(u.id, nextPresent);
-            const res = await fetch(`/api/units/${u.id}/presence`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ present: nextPresent }),
-            }).catch(() => null);
-
-            if (!res || !res.ok) {
+            try {
+                await persistPresence(u.id, nextPresent);
+            } catch {
                 setAbsent(prevAbsent);
                 onPresenceChange(u.id, prevPresent);
                 notifyApiError('Failed to save presence.');
                 return;
             }
-
-            router.refresh();
         }
 
         async function saveWounds(next: number) {
+            if (readOnly) return;
             const prev = wounds;
             setWounds(next);
             onWoundsChange(u.id, next);
-            const res = await fetch(`/api/units/${u.id}/wounds`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ wounds: next }),
-            }).catch(() => null);
-
-            if (!res || !res.ok) {
+            try {
+                await persistWounds(u.id, next);
+            } catch {
                 setWounds(prev);
                 onWoundsChange(u.id, prev);
                 notifyApiError('Failed to save wounds.');
@@ -849,6 +1038,7 @@ function ArmyDashboardClientInner({
         useEffect(() => setWounds(u.wounds), [u.wounds]);
         useEffect(() => setAbsent(!u.present), [u.present]);
         useEffect(() => setTmpLeader(Boolean(u.temporaryLeader)), [u.temporaryLeader]);
+        useEffect(() => setPhotoMissing(false), [u.id, u.photoPath, u.hasPhoto]);
         useEffect(() => {
             const el = headerSpecialRef.current;
             if (!el) return;
@@ -889,22 +1079,18 @@ function ArmyDashboardClientInner({
         }, [menuOpen]);
 
         async function saveTemporaryLeader(next: boolean) {
+            if (readOnly) return;
             const prev = tmpLeader;
             setTmpLeader(next);
-
-            const res = await fetch(`/api/units/${u.id}/temporary-leader`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ temporaryLeader: next }),
-            }).catch(() => null);
-
-            if (!res || !res.ok) {
+            onTemporaryLeaderChange(u.id, next);
+            try {
+                await persistTemporaryLeader(u.id, next);
+            } catch {
                 setTmpLeader(prev);
+                onTemporaryLeaderChange(u.id, prev);
                 notifyApiError('Failed to save Crew Leader.');
                 return;
             }
-
-            router.refresh();
         }
 
         const maxHp = u.base.hp + u.bonus.HP;
@@ -912,6 +1098,7 @@ function ArmyDashboardClientInner({
         const hpPlus = u.bonusPositive?.HP ?? Math.max(0, u.bonus.HP);
         const hpMinus = u.bonusNegative?.HP ?? Math.max(0, -u.bonus.HP);
         const weaponDisplays = useMemo(() => u.weapons.map((w) => computeWeaponDisplay(w)), [u.weapons]);
+        const unitPerks = u.perks ?? [];
         const weaponTestHints = useMemo(
             () =>
                 weaponDisplays.slice(0, 2).flatMap((d, idx) => {
@@ -922,6 +1109,32 @@ function ArmyDashboardClientInner({
         );
 
         function DmgBoxes() {
+            if (readOnly) {
+                return (
+                    <div className="flex flex-wrap items-center gap-1">
+                        {Array.from({ length: maxHp }, (_, i) => {
+                            const idx = i + 1;
+                            const checked = idx <= dmg;
+                            return (
+                                <span
+                                    key={idx}
+                                    className={
+                                        'relative grid h-6 w-6 place-items-center rounded-md text-xs font-bold ' +
+                                        (checked ? 'bg-red-950/40 text-red-200' : 'bg-zinc-950/90 text-zinc-400')
+                                    }
+                                >
+                                    {checked ? 'x' : 'o'}
+                                    {checked ? (
+                                        <span className="pointer-events-none absolute inset-0" aria-hidden="true">
+                                            <span className="absolute left-1/2 top-1/2 h-[2px] w-[140%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-300/70" />
+                                        </span>
+                                    ) : null}
+                                </span>
+                            );
+                        })}
+                    </div>
+                );
+            }
             return (
                 <div
                     className="flex flex-wrap items-center gap-1"
@@ -971,7 +1184,15 @@ function ArmyDashboardClientInner({
 
         return (
             <Link
-                href={`/army/${aId}/unit/${u.id}`}
+                href={readOnly ? '#' : `/army/${aId}/unit/${u.id}`}
+                onClick={
+                    readOnly
+                        ? (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                        : undefined
+                }
                 className="block max-w-full overflow-hidden rounded-[22px] bg-zinc-900/60 p-3"
             >
                 <div className="flex items-start gap-2">
@@ -986,10 +1207,10 @@ function ArmyDashboardClientInner({
                             maxHeight: headerSpecialSize,
                         }}
                     >
-                        {!photoMissing ? (
+                        {hasPhoto && !photoMissing ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                                src={profileSrc}
+                                src={profileSrc ?? undefined}
                                 alt=""
                                 className="h-full w-full object-cover"
                                 loading="lazy"
@@ -1008,6 +1229,7 @@ function ArmyDashboardClientInner({
                                 <div className="truncate text-base font-semibold leading-tight">{u.templateName}</div>
                             </div>
 
+                            {!readOnly ? (
                             <div className="relative shrink-0">
                                 <button
                                     ref={menuBtnRef}
@@ -1102,6 +1324,7 @@ function ArmyDashboardClientInner({
                                     </div>
                                 ) : null}
                             </div>
+                            ) : null}
                         </div>
 
                         <div className="mt-1.5">
@@ -1115,6 +1338,27 @@ function ArmyDashboardClientInner({
                         </div>
                     </div>
                 </div>
+
+                {unitPerks.length > 0 ? (
+                    <div
+                        className="mt-1 text-[11px] leading-[1.05rem] text-zinc-300"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                    >
+                        {unitPerks.map((perk, idx) => (
+                            <span key={perk.id}>
+                                <StickyTextTooltip
+                                    label={perk.name}
+                                    title={perk.name}
+                                    description={perk.description}
+                                />
+                                {idx < unitPerks.length - 1 ? <span className="text-zinc-600">, </span> : null}
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
 
                 <div className="mt-2 grid gap-2">
                     {u.weapons.map((w, idx) => {
@@ -1219,7 +1463,8 @@ function ArmyDashboardClientInner({
                 </div>
             </Link>
         );
-    }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- keep component identity stable to avoid remounting every row
+    }, []);
 
     /* ====== Resource metadata ====== */
     const RESOURCE_META: Record<Kind, { label: string; hint: string; icon: React.ReactNode; quick: number[] }> = {
@@ -1302,7 +1547,7 @@ function ArmyDashboardClientInner({
             }),
         [uncommonChems, showOwnedChemsOnly, chemSearch],
     );
-    const ploysMax = Math.max(0, Math.floor(tier));
+    const ploysMax = Math.max(0, Math.floor(currentTier));
     const ploysChecked = Math.max(0, Math.min(ploysMax, totals.ploys ?? 0));
 
     // Lazy load chems only when Chems tab is opened.
@@ -1440,7 +1685,6 @@ function ArmyDashboardClientInner({
 
     /* ====== TASKS (Goals) - state and methods ====== */
     const [goalsSet, setGoalsSet] = useState<{ id: string; name: string } | null>(null);
-    const [currentTier, setCurrentTier] = useState<number>(tier);
     const [goals, setGoals] = useState<Goal[]>([]);
     const [loadingGoals, setLoadingGoals] = useState(false);
     const [updatingGoalId, setUpdatingGoalId] = useState<string | null>(null);
@@ -1490,7 +1734,6 @@ function ArmyDashboardClientInner({
                     const updated = (await res.json().catch(() => null)) as { tier?: number } | null;
                     if (updated?.tier) setCurrentTier(updated.tier);
                     await loadGoals();
-                    router.refresh();
                 } catch {
                     throw new Error('tier failed');
                 }
@@ -1562,7 +1805,7 @@ function ArmyDashboardClientInner({
                             <span className="text-sm">{RESOURCE_META.ploys.icon}</span>
                             <span>{RESOURCE_META.ploys.label}</span>
                         </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">Tier {tier}</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">Tier {currentTier}</div>
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
@@ -1741,10 +1984,19 @@ function ArmyDashboardClientInner({
     }
 
     const hasActiveFilters = filter !== 'ALL' || hideInactive;
+    const availableTabs: [TabKey, string][] = readOnly
+        ? [['OVERVIEW', 'Overview']]
+        : [
+            ['OVERVIEW', 'Overview'],
+            ['EDIT', 'Chems'],
+            ['TASKS', 'Tasks'],
+            ['TURF', 'Home Turf'],
+        ];
 
     useEffect(() => {
+        if (!filtersHydrated) return;
         onFiltersActiveChangeAction?.(hasActiveFilters);
-    }, [hasActiveFilters, onFiltersActiveChangeAction]);
+    }, [hasActiveFilters, onFiltersActiveChangeAction, filtersHydrated]);
 
     useEffect(() => {
         onActionsReadyAction?.({
@@ -1759,21 +2011,21 @@ function ArmyDashboardClientInner({
             {/* META */}
             <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
                 <div className="min-w-0 truncate">
-                    <span className="font-medium text-zinc-300">{armyName}</span> | {factionName} | Tier {tier}
+                    <span className="font-medium text-zinc-300">{armyName}</span> | {factionName} | Tier {currentTier}
                 </div>
-                <div className="shrink-0 rounded-full bg-zinc-900 px-2 py-0.5 text-[10px]">
-                    Rating: <span className="font-semibold text-zinc-200">{displayRating}</span>
+                <div className="shrink-0 flex items-center gap-1.5">
+                    {readOnly ? (
+                        <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">Read-only</span>
+                    ) : null}
+                    <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px]">
+                        Rating: <span className="font-semibold text-zinc-200">{displayRating}</span>
+                    </div>
                 </div>
             </div>
 
             {/* TABS */}
-            <div className="mt-3 grid grid-cols-4 gap-2">
-                {([
-                    ['OVERVIEW', 'Overview'],
-                    ['EDIT', 'Chems'],
-                    ['TASKS', 'Tasks'],
-                    ['TURF', 'Home Turf'],
-                ] as [TabKey, string][]).map(([k, label]) => (
+            <div className={'mt-3 grid gap-2 ' + (availableTabs.length === 1 ? 'grid-cols-1' : 'grid-cols-4')}>
+                {availableTabs.map(([k, label]) => (
                     <button
                         key={k}
                         onClick={() => setTab(k)}
@@ -1797,18 +2049,30 @@ function ArmyDashboardClientInner({
                         </div>
                         <div className="grid grid-cols-5 gap-3">
                             {STASH_RESOURCE_ORDER.map((k) => (
-                                <button
-                                    type="button"
-                                    key={k}
-                                    className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center transition-colors hover:bg-zinc-800/70"
-                                    title={`${RESOURCE_META[k].label} (tap to edit)`}
-                                    onClick={() => openResourceEditor(k)}
-                                >
-                                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
-                                        {RESOURCE_META[k].label}
+                                readOnly ? (
+                                    <div
+                                        key={k}
+                                        className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center"
+                                    >
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                                            {RESOURCE_META[k].label}
+                                        </div>
+                                        <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
                                     </div>
-                                    <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
-                                </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        key={k}
+                                        className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center transition-colors hover:bg-zinc-800/70"
+                                        title={`${RESOURCE_META[k].label} (tap to edit)`}
+                                        onClick={() => openResourceEditor(k)}
+                                    >
+                                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                                            {RESOURCE_META[k].label}
+                                        </div>
+                                        <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
+                                    </button>
+                                )
                             ))}
                         </div>
                     </section>
@@ -1844,9 +2108,11 @@ function ArmyDashboardClientInner({
                     <section className="mt-4">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <div className="text-base font-medium">Units</div>
-                            <button onClick={() => setAdding(true)} className="rounded-xl bg-zinc-900 px-3 py-1 text-xs">
-                                Add unit
-                            </button>
+                            {!readOnly ? (
+                                <button onClick={() => setAdding(true)} className="rounded-xl bg-zinc-900 px-3 py-1 text-xs">
+                                    Add unit
+                                </button>
+                            ) : null}
                         </div>
                         <div className="mt-2 grid gap-2">
                             {filtered.map((u) => {
@@ -1862,6 +2128,11 @@ function ArmyDashboardClientInner({
                                         onDelete={() => void deleteUnit(u.id)}
                                         onPresenceChange={onUnitPresenceChange}
                                         onWoundsChange={onUnitWoundsChange}
+                                        onTemporaryLeaderChange={onUnitTemporaryLeaderChange}
+                                        persistPresence={persistPresence}
+                                        persistWounds={persistWounds}
+                                        persistTemporaryLeader={persistTemporaryLeader}
+                                        readOnly={readOnly}
                                         canMoveUp={canMoveUp}
                                         canMoveDown={canMoveDown}
                                         onMoveUp={() => void moveUnit(u.id, 'up')}
@@ -1958,8 +2229,8 @@ function ArmyDashboardClientInner({
                     </div>
 
                     <div className="mb-3 rounded-xl bg-zinc-950/35 p-2.5">
-                        <div className="text-sm font-medium">Faction limits (active tier: T{tier})</div>
-                        <FactionLimitsTable limits={factionLimits} activeTier={tier} />
+                        <div className="text-sm font-medium">Faction limits (active tier: T{currentTier})</div>
+                        <FactionLimitsTable limits={factionLimits} activeTier={currentTier} />
                     </div>
 
                     {loadingGoals && <div className="text-xs text-zinc-400">Loading...</div>}
@@ -2152,85 +2423,90 @@ function ArmyDashboardClientInner({
                 </section>
             )}
 
-            {resourceEditorKind && (
+            {resourceEditorKind && !readOnly && (
                 <div className="fixed inset-0 z-30 overflow-x-hidden">
                     <button aria-label="Close" onClick={closeResourceEditor} className="absolute inset-0 bg-black/60" />
-                    <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl bg-zinc-900 p-4 shadow-xl">
+                    <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-[28px] bg-zinc-900 px-4 pb-5 pt-3 shadow-xl">
                         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
-                        <div className="mb-2 flex items-center justify-between gap-2">
-                            <div>
-                                <div className="text-sm font-semibold">{RESOURCE_META[resourceEditorKind].label}</div>
-                                <div className="text-[11px] text-zinc-500">{RESOURCE_META[resourceEditorKind].hint}</div>
+
+                        <div className="relative mb-3">
+                            <button
+                                type="button"
+                                onClick={closeResourceEditor}
+                                aria-label="Close resource editor"
+                                className="absolute right-0 top-0 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-950/70 text-zinc-300"
+                            >
+                                <CloseOutlined className="text-xs" />
+                            </button>
+                            <div className="px-10 text-center">
+                                <div className="text-base font-semibold tracking-wide">{RESOURCE_META[resourceEditorKind].label}</div>
+                                <div className="mt-1 text-xs text-zinc-400">{RESOURCE_META[resourceEditorKind].hint}</div>
                             </div>
-                            <button
-                                onClick={closeResourceEditor}
-                                className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
-                            >
-                                Close
-                            </button>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
-                            <button
-                                type="button"
-                                className="h-11 w-11 rounded-xl bg-zinc-900 text-xl font-bold"
-                                onClick={() => shiftResourceDraft(-1)}
-                                aria-label={`Decrease ${RESOURCE_META[resourceEditorKind].label}`}
-                            >
-                                -
-                            </button>
-                            <input
-                                inputMode="numeric"
-                                min={0}
-                                value={resourceDraft}
-                                onChange={(e) => setResourceDraft(String(Math.max(0, n(e.target.value, totals[resourceEditorKind]))))}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        void saveResourceEditor();
-                                    }
-                                }}
-                                className="h-11 rounded-xl bg-zinc-950 px-3 text-center text-xl font-semibold tabular-nums"
-                            />
-                            <button
-                                type="button"
-                                className="h-11 w-11 rounded-xl bg-zinc-900 text-xl font-bold"
-                                onClick={() => shiftResourceDraft(1)}
-                                aria-label={`Increase ${RESOURCE_META[resourceEditorKind].label}`}
-                            >
-                                +
-                            </button>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                            {RESOURCE_META[resourceEditorKind].quick.map((d) => (
+                        <div className="mx-auto w-full max-w-[420px]">
+                            <div className="grid grid-cols-[52px_minmax(0,1fr)_52px] items-center gap-2">
                                 <button
-                                    key={`${resourceEditorKind}_${d}`}
                                     type="button"
-                                    className="h-7 min-w-[3.25rem] rounded-lg bg-zinc-900 px-2 text-[11px] font-medium"
-                                    onClick={() => shiftResourceDraft(d)}
+                                    className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-950/80 text-2xl font-semibold leading-none text-zinc-100"
+                                    onClick={() => shiftResourceDraft(-1)}
+                                    aria-label={`Decrease ${RESOURCE_META[resourceEditorKind].label}`}
                                 >
-                                    {d > 0 ? `+${d}` : d}
+                                    -
                                 </button>
-                            ))}
-                        </div>
+                                <input
+                                    inputMode="numeric"
+                                    min={0}
+                                    value={resourceDraft}
+                                    onChange={(e) => setResourceDraft(String(Math.max(0, n(e.target.value, totals[resourceEditorKind]))))}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            void saveResourceEditor();
+                                        }
+                                    }}
+                                    className="h-12 w-full rounded-xl bg-zinc-950 px-3 text-center text-2xl font-semibold tabular-nums text-zinc-100"
+                                />
+                                <button
+                                    type="button"
+                                    className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-950/80 text-2xl font-semibold leading-none text-zinc-100"
+                                    onClick={() => shiftResourceDraft(1)}
+                                    aria-label={`Increase ${RESOURCE_META[resourceEditorKind].label}`}
+                                >
+                                    +
+                                </button>
+                            </div>
 
-                        <div className="mt-4 grid grid-cols-2 gap-2">
-                            <button
-                                type="button"
-                                onClick={closeResourceEditor}
-                                className="h-11 rounded-2xl bg-zinc-900 text-sm text-zinc-300"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void saveResourceEditor()}
-                                disabled={busy === resourceEditorKind}
-                                className="h-11 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-40"
-                            >
-                                {busy === resourceEditorKind ? 'Saving...' : 'Save'}
-                            </button>
+                            <div className="mt-3 flex flex-wrap justify-center gap-2">
+                                {RESOURCE_META[resourceEditorKind].quick.map((d) => (
+                                    <button
+                                        key={`${resourceEditorKind}_${d}`}
+                                        type="button"
+                                        className="h-8 min-w-[3.5rem] rounded-lg bg-zinc-950/80 px-2.5 text-xs font-semibold text-zinc-200"
+                                        onClick={() => shiftResourceDraft(d)}
+                                    >
+                                        {d > 0 ? `+${d}` : d}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-2 gap-2.5">
+                                <button
+                                    type="button"
+                                    onClick={closeResourceEditor}
+                                    className="h-11 rounded-xl bg-zinc-950 text-sm font-medium text-zinc-300"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void saveResourceEditor()}
+                                    disabled={busy === resourceEditorKind}
+                                    className="h-11 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-40"
+                                >
+                                    {busy === resourceEditorKind ? 'Saving...' : 'Save'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2329,18 +2605,114 @@ function ArmyDashboardClientInner({
                 </div>
             )}
 
-            {adding && (
+            {adding && !readOnly && (
                 <AddUnitSheet
                     armyId={armyId}
                     factionId={factionId}
                     subfactionId={subfactionId ?? null}
-                    onClose={() => {
+                    onClose={() => setAdding(false)}
+                    onAdded={(unit) => {
+                        appendUnit(unit);
                         setAdding(false);
-                        router.refresh();
                     }}
                 />
             )}
         </main>
+    );
+}
+
+function StickyTextTooltip({
+    label,
+    title,
+    description,
+}: {
+    label: string;
+    title: string;
+    description: string;
+}) {
+    const [open, setOpen] = useState(false);
+    const [pos, setPos] = useState<PopPos | null>(null);
+    const rootRef = useRef<HTMLButtonElement | null>(null);
+
+    function computePos() {
+        const el = rootRef.current;
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const margin = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const maxWidth = Math.min(360, Math.max(220, Math.floor(vw * 0.88)));
+        let left = r.left + r.width / 2 - maxWidth / 2;
+        left = Math.max(margin, Math.min(left, vw - maxWidth - margin));
+        const desiredHeight = 170;
+        const belowTop = r.bottom + 8;
+        const aboveTop = r.top - desiredHeight - 8;
+        const hasRoomBelow = belowTop + desiredHeight + margin <= vh;
+        const top = hasRoomBelow ? belowTop : Math.max(margin, aboveTop);
+        setPos({ top, left, maxWidth });
+    }
+
+    useEffect(() => {
+        if (!open) return;
+        computePos();
+        const onScroll = () => computePos();
+        const onResize = () => computePos();
+        const onDown = (e: MouseEvent | TouchEvent) => {
+            const t = e.target as Node;
+            if (rootRef.current?.contains(t)) return;
+            setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setOpen(false);
+        };
+
+        window.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', onResize);
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('touchstart', onDown, { passive: true });
+        window.addEventListener('keydown', onKey);
+
+        return () => {
+            window.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('touchstart', onDown);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    return (
+        <>
+            <button
+                ref={rootRef}
+                type="button"
+                className="inline m-0 border-0 bg-transparent p-0 align-baseline text-left text-[11px] leading-[1.05rem] text-zinc-300 underline decoration-dotted underline-offset-2"
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOpen((v) => !v);
+                }}
+                aria-label={`Perk: ${label}`}
+                title={label}
+            >
+                {label}
+            </button>
+            {open && pos ? (
+                <Portal>
+                    <div
+                        style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.maxWidth, zIndex: 1000 }}
+                        className="rounded-2xl bg-zinc-950 p-3 text-xs text-zinc-200 shadow-xl"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                    >
+                        <div className="font-semibold">{title}</div>
+                        <div className="mt-1 whitespace-pre-wrap text-zinc-300">{description.trim() || 'No description.'}</div>
+                    </div>
+                </Portal>
+            ) : null}
+        </>
     );
 }
 
@@ -2351,6 +2723,7 @@ type UITemplate = {
     name: string;
     roleTag: 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS' | null;
     isLeader?: boolean;
+    baseRating?: number | null;
     factionId: string | null;
     stats: { hp: number; s: number; p: number; e: number; c: number; i: number; a: number; l: number };
     options: {
@@ -2404,11 +2777,13 @@ function AddUnitSheet({
     factionId,
     subfactionId,
     onClose,
+    onAdded,
 }: {
     armyId: string;
     factionId: string;
     subfactionId: string | null;
     onClose: () => void;
+    onAdded: (unit: UnitListItem) => void;
 }) {
     const pageSize = 25;
 
@@ -2423,6 +2798,18 @@ function AddUnitSheet({
     const [selT, setSelT] = useState<string | null>(null);
     const [selO, setSelO] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+
+    const addUnitMutation = useMutation({
+        mutationFn: async ({ unitTemplateId, optionId }: { unitTemplateId: string; optionId: string }) => {
+            const res = await fetch(`/api/armies/${armyId}/units`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unitTemplateId, optionId }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to add unit'));
+            return (await res.json().catch(() => null)) as { id?: string; computedRating?: number | null; rating?: number | null } | null;
+        },
+    });
 
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const inFlightRef = useRef(false);
@@ -2502,21 +2889,103 @@ function AddUnitSheet({
     const selected = list.find((t) => t.id === selT) ?? null;
     const can = Boolean(selT && selO);
 
+    function toUnitEffects(effects: UIWeaponTemplateEffect[]): UIEffect[] {
+        return (effects ?? []).map((e, idx) => ({
+            id: `${e.effectId}_${idx}`,
+            effectId: e.effectId,
+            name: e.effect.name,
+            kind: e.effect.kind,
+            valueInt: e.valueInt ?? null,
+            valueText: e.valueText ?? null,
+            effectMode: e.effectMode ?? 'ADD',
+        }));
+    }
+
+    function toUnitWeapon(templateWeapon: UIWeaponTemplate | null, fallbackName: string): UnitListItem['weapons'][number] {
+        return {
+            name: templateWeapon?.name ?? fallbackName,
+            selectedProfileIds: [],
+            baseType: templateWeapon?.baseType ?? '-',
+            baseTest: templateWeapon?.baseTest ?? '-',
+            baseEffects: toUnitEffects(templateWeapon?.baseEffects ?? []),
+            profiles: (templateWeapon?.profiles ?? []).map((p) => ({
+                id: p.id,
+                typeOverride: p.typeOverride ?? null,
+                testOverride: p.testOverride ?? null,
+                effects: toUnitEffects(p.effects ?? []),
+                parts: p.partsOverride ?? null,
+                rating: p.ratingDelta ?? null,
+            })),
+        };
+    }
+
     async function add() {
         if (!selected || !selO) return;
+        const selectedOption = selected.options.find((o) => o.id === selO);
+        if (!selectedOption) return;
+
         setBusy(true);
         try {
-            const res = await fetch(`/api/armies/${armyId}/units`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ unitTemplateId: selected.id, optionId: selO }),
-            });
-            if (!res.ok) {
-                const txt = await res.text().catch(() => '');
-                notifyApiError(txt, 'Failed to add unit');
+            const payload = await addUnitMutation.mutateAsync({ unitTemplateId: selected.id, optionId: selO });
+            const createdId = payload?.id;
+            if (!createdId) {
+                notifyApiError('Could not read created unit id.');
                 return;
             }
+
+            const zeroBonus: Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number> = {
+                HP: 0,
+                S: 0,
+                P: 0,
+                E: 0,
+                C: 0,
+                I: 0,
+                A: 0,
+                L: 0,
+            };
+
+            const createdUnit: UnitListItem = {
+                id: createdId,
+                templateName: selected.name,
+                roleTag: selected.roleTag,
+                isLeader: Boolean(selected.isLeader),
+                temporaryLeader: false,
+                base: {
+                    hp: selected.stats.hp,
+                    S: selected.stats.s,
+                    P: selected.stats.p,
+                    E: selected.stats.e,
+                    C: selected.stats.c,
+                    I: selected.stats.i,
+                    A: selected.stats.a,
+                    L: selected.stats.l,
+                },
+                bonus: { ...zeroBonus },
+                bonusPositive: { ...zeroBonus },
+                bonusNegative: { ...zeroBonus },
+                wounds: 0,
+                present: true,
+                upgradesCount: 0,
+                perkNames: [],
+                startPerkNames: [],
+                perks: [],
+                photoPath: null,
+                hasPhoto: false,
+                rating:
+                    payload?.computedRating ??
+                    payload?.rating ??
+                    ((selected.baseRating ?? 0) + (selectedOption.rating ?? 0)),
+                weapons: [
+                    toUnitWeapon(selectedOption.weapon1, selectedOption.weapon1Name),
+                    ...(selectedOption.weapon2Name
+                        ? [toUnitWeapon(selectedOption.weapon2, selectedOption.weapon2Name)]
+                        : []),
+                ],
+            };
+            onAdded(createdUnit);
             onClose();
+        } catch {
+            notifyApiError('Failed to add unit');
         } finally {
             setBusy(false);
         }

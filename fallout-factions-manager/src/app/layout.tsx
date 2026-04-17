@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { App, ConfigProvider } from 'antd';
 import { AntdNotifyBridge } from '@/components/providers/AntdNotifyBridge';
+import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
 import { Auth401Guard } from '@/components/auth/Auth401Guard';
 import { falloutTheme } from '@/lib/ui/theme';
 import './globals.css';
@@ -19,11 +20,13 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <ConfigProvider theme={falloutTheme}>
-          <App>
-            <AntdNotifyBridge />
-            <Auth401Guard />
-            {children}
-          </App>
+          <ReactQueryProvider>
+            <App>
+              <AntdNotifyBridge />
+              <Auth401Guard />
+              {children}
+            </App>
+          </ReactQueryProvider>
         </ConfigProvider>
       </body>
     </html>

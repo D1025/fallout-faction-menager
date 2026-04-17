@@ -103,6 +103,7 @@ function TagChip({ tag }: { tag: UnitTemplateTag | null }) {
 
 export function UnitClient({
     unitId,
+    armyId,
     name,
     roleTag,
     isLeader,
@@ -111,6 +112,7 @@ export function UnitClient({
     upgrades,
     weapons,
     photoPath,
+    hasPhoto,
     startPerkNames,
     ownedPerks,
 }: {
@@ -126,10 +128,12 @@ export function UnitClient({
     upgrades: UpgradeUI[];
     weapons: WeaponUI[];
     photoPath?: string | null;
+    hasPhoto?: boolean;
     startPerkNames?: string[];
     ownedPerks?: Array<{ id: string; name: string; description: string; isInnate: boolean; statKey?: SpecialStatKey | null; minValue?: number | null }>;
 }) {
     const router = useRouter();
+    const armyDirtyStorageKey = `ffm:army:dirty:${armyId}`;
     const [tmpLeader, setTmpLeader] = useState(Boolean(temporaryLeader));
 
     useEffect(() => {
@@ -154,46 +158,78 @@ export function UnitClient({
 
     // cache-busting: after photo updates, the browser may keep an old image from cache
     const [photoBuster, setPhotoBuster] = useState<number>(0);
+    const [hasPhotoState, setHasPhotoState] = useState(Boolean(hasPhoto));
     useEffect(() => {
         setPhotoBuster(Date.now());
     }, [photoPath]);
+    useEffect(() => {
+        setHasPhotoState(Boolean(hasPhoto));
+    }, [hasPhoto]);
 
     const photoSrcBase = `/api/units/${unitId}/photo/file`;
-    const photoSrc = `${photoSrcBase}?v=${photoBuster}`;
+    const photoSrc = hasPhotoState ? `${photoSrcBase}?v=${photoBuster}` : null;
     const [photoMissing, setPhotoMissing] = useState(false);
+    const [activeUpgrades, setActiveUpgrades] = useState<UpgradeUI[]>(upgrades);
     useEffect(() => {
         setPhotoMissing(false);
-    }, [photoBuster, unitId]);
+    }, [photoBuster, unitId, hasPhotoState]);
+    useEffect(() => {
+        setActiveUpgrades(upgrades);
+    }, [upgrades]);
+
+    useEffect(() => {
+        if (hasPhotoState) return;
+
+        const ctrl = new AbortController();
+        void fetch(`/api/units/${unitId}/photo`, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: ctrl.signal,
+        })
+            .then(async (res) => {
+                if (!res.ok) return;
+                const payload = (await res.json().catch(() => null)) as { hasPhoto?: boolean } | null;
+                if (!payload?.hasPhoto) return;
+                setHasPhotoState(true);
+                setPhotoMissing(false);
+                setPhotoBuster(Date.now());
+            })
+            .catch(() => {
+                // noop
+            });
+
+        return () => ctrl.abort();
+    }, [unitId, hasPhotoState]);
 
     // ===== Combined upgrade bonuses (including negative wounds) =====
     const bonus = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
-        for (const u of upgrades) {
+        for (const u of activeUpgrades) {
             if (u.statKey === 'hp') b.HP += u.delta;
             else b[u.statKey as Exclude<StatKey, 'hp'>] += u.delta;
         }
         return b;
-    }, [upgrades]);
+    }, [activeUpgrades]);
 
     const bonusPositive = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
-        for (const u of upgrades) {
+        for (const u of activeUpgrades) {
             if (u.delta <= 0) continue;
             if (u.statKey === 'hp') b.HP += u.delta;
             else b[u.statKey as Exclude<StatKey, 'hp'>] += u.delta;
         }
         return b;
-    }, [upgrades]);
+    }, [activeUpgrades]);
 
     const bonusNegative = useMemo(() => {
         const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
-        for (const u of upgrades) {
+        for (const u of activeUpgrades) {
             if (u.delta >= 0) continue;
             if (u.statKey === 'hp') b.HP += Math.abs(u.delta);
             else b[u.statKey as Exclude<StatKey, 'hp'>] += Math.abs(u.delta);
         }
         return b;
-    }, [upgrades]);
+    }, [activeUpgrades]);
 
     const finalStats = useMemo(
         () => ({
@@ -322,27 +358,65 @@ export function UnitClient({
 
     const [upStat, setUpStat] = useState<StatKey>('S');
     const [upDelta, setUpDelta] = useState<number>(1);
+    const [addingUpgrade, setAddingUpgrade] = useState(false);
+    const [revertingUpgradeId, setRevertingUpgradeId] = useState<string | null>(null);
 
     async function addUpgrade() {
-        const res = await fetch(`/api/units/${unitId}/upgrades`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ statKey: upStat, delta: upDelta }), // can be negative
-        });
-        if (!res.ok) {
-            notifyApiError('Failed to add ulepszenia');
+        if (upDelta === 0) {
+            notifyWarning('Delta cannot be 0.');
             return;
         }
-        location.reload();
+        setAddingUpgrade(true);
+        try {
+            const res = await fetch(`/api/units/${unitId}/upgrades`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ statKey: upStat, delta: upDelta }), // can be negative
+            });
+            if (!res.ok) {
+                notifyApiError('Failed to add ulepszenia');
+                return;
+            }
+            const payload = (await res.json().catch(() => null)) as
+                | { id?: string; statKey?: StatKey; delta?: number; at?: string }
+                | null;
+            if (!payload?.id) {
+                notifyApiError('Saved, but failed to read new upgrade data.');
+                return;
+            }
+            const createdId = payload.id;
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(armyDirtyStorageKey, String(Date.now()));
+            }
+            setActiveUpgrades((prev) => [
+                ...prev,
+                {
+                    id: createdId,
+                    statKey: payload.statKey ?? upStat,
+                    delta: Number.isFinite(payload.delta) ? Number(payload.delta) : upDelta,
+                    at: payload.at ?? new Date().toISOString(),
+                },
+            ]);
+        } finally {
+            setAddingUpgrade(false);
+        }
     }
 
     async function deleteUpgrade(upgradeId: string) {
-        const res = await fetch(`/api/units/${unitId}/upgrades/${upgradeId}`, { method: 'DELETE' });
-        if (!res.ok) {
-            notifyApiError('Failed to revert ulepszenia');
-            return;
+        setRevertingUpgradeId(upgradeId);
+        try {
+            const res = await fetch(`/api/units/${unitId}/upgrades/${upgradeId}`, { method: 'DELETE' });
+            if (!res.ok) {
+                notifyApiError('Failed to revert ulepszenia');
+                return;
+            }
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(armyDirtyStorageKey, String(Date.now()));
+            }
+            setActiveUpgrades((prev) => prev.filter((u) => u.id !== upgradeId));
+        } finally {
+            setRevertingUpgradeId(null);
         }
-        location.reload();
     }
 
     async function addPerk(nextPerkId: string) {
@@ -697,8 +771,9 @@ export function UnitClient({
                 const t = await res.text().catch(() => '');
                 throw new Error(t || 'Upload failed');
             }
+            setHasPhotoState(true);
+            setPhotoMissing(false);
             setPhotoBuster(Date.now());
-            router.refresh();
         } finally {
             setUploadingPhoto(false);
             setPick(null);
@@ -716,7 +791,9 @@ export function UnitClient({
                 try {
                     const res = await fetch(`/api/units/${unitId}/photo`, { method: 'DELETE' });
                     if (!res.ok) throw new Error(await res.text());
-                    router.refresh();
+                    setHasPhotoState(false);
+                    setPhotoMissing(false);
+                    setPhotoBuster(Date.now());
                 } catch {
                     notifyApiError('Failed to delete unit photo.');
                     throw new Error('delete photo failed');
@@ -728,20 +805,25 @@ export function UnitClient({
     }
 
     const normalizedTag = useMemo(() => normalizeRoleTag(roleTag), [roleTag]);
+    const positiveUpgrades = useMemo(() => activeUpgrades.filter((u) => u.delta >= 0), [activeUpgrades]);
+    const woundUpgrades = useMemo(() => activeUpgrades.filter((u) => u.delta < 0), [activeUpgrades]);
 
     return (
         <div className="space-y-3">
             <section className="rounded-2xl bg-zinc-900/35 p-3">
                 <div className="flex items-start gap-3">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-zinc-950">
-                        {!photoMissing ? (
+                        {hasPhotoState && !photoMissing ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                                src={photoSrc}
+                                src={photoSrc ?? undefined}
                                 alt=""
                                 className="h-full w-full object-cover"
                                 loading="lazy"
-                                onError={() => setPhotoMissing(true)}
+                                onError={() => {
+                                    setPhotoMissing(true);
+                                    setHasPhotoState(false);
+                                }}
                             />
                         ) : (
                             <div className="grid h-full w-full place-items-center text-zinc-500">
@@ -780,7 +862,7 @@ export function UnitClient({
 
                         <div className="mt-2 flex flex-wrap gap-2">
                             <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
-                                {uploadingPhoto ? 'Uploading...' : (photoMissing ? 'Take / add photo' : 'Change photo')}
+                                {uploadingPhoto ? 'Uploading...' : hasPhotoState && !photoMissing ? 'Change photo' : 'Take / add photo'}
                                 <input
                                     type="file"
                                     accept="image/*"
@@ -808,7 +890,7 @@ export function UnitClient({
                                 />
                             </label>
 
-                            {!photoMissing && (
+                            {hasPhotoState && !photoMissing && (
                                 <button
                                     type="button"
                                     onClick={() => void deletePhoto()}
@@ -842,37 +924,44 @@ export function UnitClient({
 
             {/* Upgrades (+ Wounds) */}
             <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
-                <div className="text-sm font-medium">Upgrades</div>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium">Upgrades</div>
+                    <div className="text-[11px] text-zinc-500">
+                        Positive: {positiveUpgrades.length} | Wounds: {woundUpgrades.length}
+                    </div>
+                </div>
 
-                {/* Add panel - supports negative values */}
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <select
-                        value={upStat}
-                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setUpStat(e.target.value as StatKey)}
-                        className="vault-input px-2 py-1"
-                    >
-                        {(['S', 'P', 'E', 'C', 'I', 'A', 'L', 'hp'] as StatKey[]).map((k) => (
-                            <option key={k} value={k}>
-                                {k.toUpperCase()}
-                            </option>
-                        ))}
-                    </select>
-                    <input
-                        inputMode="numeric"
-                        value={upDelta}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                            setUpDelta(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)
-                        }
-                        className="w-24 vault-input px-2 py-1 text-right"
-                        placeholder="e.g. -1, 2"
-                    />
-                    <div className="flex gap-1">
+                <div className="mt-3 rounded-xl bg-zinc-950/55 p-2.5">
+                    <div className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-2">
+                        <select
+                            value={upStat}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setUpStat(e.target.value as StatKey)}
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-base"
+                        >
+                            {(['S', 'P', 'E', 'C', 'I', 'A', 'L', 'hp'] as StatKey[]).map((k) => (
+                                <option key={k} value={k}>
+                                    {k.toUpperCase()}
+                                </option>
+                            ))}
+                        </select>
+                        <input
+                            inputMode="numeric"
+                            value={upDelta}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                setUpDelta(Number.isFinite(Number(e.target.value)) ? Number(e.target.value) : 0)
+                            }
+                            className="h-10 rounded-xl bg-zinc-900 px-3 text-right text-xl font-semibold tabular-nums"
+                            placeholder="0"
+                        />
+                    </div>
+
+                    <div className="mt-2 grid grid-cols-6 gap-1.5">
                         {[-3, -2, -1, +1, +2, +3].map((d) => (
                             <button
                                 key={d}
                                 onClick={() => setUpDelta(d)}
                                 className={
-                                    'rounded-lg px-2 py-1 text-xs ' +
+                                    'h-9 rounded-lg text-sm font-semibold ' +
                                     (d < 0 ? 'bg-red-900/20 text-red-300' : 'bg-emerald-900/20 text-emerald-300')
                                 }
                                 title={d < 0 ? 'Wound (negative modifier)' : 'Upgrade (positive)'}
@@ -881,68 +970,66 @@ export function UnitClient({
                             </button>
                         ))}
                     </div>
-                    <button onClick={() => void addUpgrade()} className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950">
-                        Add
+
+                    <button
+                        onClick={() => void addUpgrade()}
+                        disabled={addingUpgrade || upDelta === 0}
+                        className="mt-2 h-10 w-full rounded-xl bg-emerald-500 text-base font-semibold text-emerald-950 disabled:opacity-50"
+                    >
+                        {addingUpgrade ? 'Adding...' : 'Add Upgrade / Wound'}
                     </button>
+
+                    <div className="mt-2 text-[11px] text-zinc-500">
+                        Negative modifiers (wounds) <span className="font-medium text-red-400">are not counted toward rating</span>.
+                    </div>
                 </div>
 
-                <div className="mt-2 text-[11px] text-zinc-500">
-                    * Negative modifiers (wounds) <span className="text-red-400 font-medium">are not counted toward rating</span>.
-                </div>
-
-                {/* Positive/zero list */}
-                <div className="mt-3 grid gap-1 text-xs text-zinc-300">
-                    {upgrades.filter((u) => u.delta >= 0).map((u) => (
-                        <div
-                            key={u.id}
-                            className="flex items-center justify-between rounded-lg bg-zinc-950/65 px-2 py-1"
-                        >
-                            <div>
+                <div className="mt-3 grid gap-2 text-xs text-zinc-300">
+                    {positiveUpgrades.map((u) => (
+                        <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 rounded-lg bg-zinc-950/65 px-2.5 py-1.5">
+                            <div className="min-w-0 truncate">
                                 <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
                                 {u.delta > 0 ? `+${u.delta}` : u.delta}
                                 <span className="text-zinc-500"> | {new Date(u.at).toLocaleString()}</span>
                             </div>
                             <button
                                 onClick={() => void deleteUpgrade(u.id)}
-                                className="rounded-md bg-zinc-800 px-2 py-0.5 text-zinc-200 hover:bg-zinc-700"
+                                disabled={revertingUpgradeId === u.id}
+                                className="h-9 rounded-xl bg-zinc-800 px-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
                                 aria-label="Revert upgrade"
                                 title="Revert"
                             >
-                                Revert
+                                {revertingUpgradeId === u.id ? '...' : 'Revert'}
                             </button>
                         </div>
                     ))}
-                    {upgrades.filter((u) => u.delta >= 0).length === 0 && (
-                        <div className="text-zinc-500">No positive upgrades</div>
-                    )}
+                    {positiveUpgrades.length === 0 && <div className="text-zinc-500">No positive upgrades</div>}
                 </div>
 
-                {/* Wounds (negative) */}
                 <div className="mt-4">
-                    <div className="text-sm font-medium text-red-300">Wounds (negative)</div>
-                    <div className="mt-2 grid gap-1 text-xs">
-                        {upgrades.filter((u) => u.delta < 0).map((u) => (
-                            <div
-                                key={u.id}
-                                className="flex items-center justify-between rounded-lg bg-red-950/40 px-2 py-1 text-red-200"
-                            >
-                                <div>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-red-300">Wounds (negative)</div>
+                        <div className="text-[11px] text-red-300/70">{woundUpgrades.length}</div>
+                    </div>
+                    <div className="grid gap-2 text-xs">
+                        {woundUpgrades.map((u) => (
+                            <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 rounded-lg bg-red-950/40 px-2.5 py-1.5 text-red-200">
+                                <div className="min-w-0 truncate">
                                     <span className="font-semibold">{u.statKey.toUpperCase()}</span> {u.delta}
                                     <span className="ml-1 text-red-300/70">| {new Date(u.at).toLocaleString()}</span>
                                 </div>
                                 <button
                                     onClick={() => void deleteUpgrade(u.id)}
-                                    className="rounded-md bg-red-900/40 px-2 py-0.5 hover:bg-red-900/50"
+                                    disabled={revertingUpgradeId === u.id}
+                                    className="h-9 rounded-xl bg-red-900/40 px-2 text-sm font-medium hover:bg-red-900/50 disabled:opacity-50"
                                     aria-label="Delete wound"
                                     title="Revert"
                                 >
-                                    Revert
+                                    {revertingUpgradeId === u.id ? '...' : 'Revert'}
                                 </button>
                             </div>
                         ))}
-                        {upgrades.filter((u) => u.delta < 0).length === 0 && (
-                            <div className="text-zinc-500">No wounds</div>
-                        )}
+                        {woundUpgrades.length === 0 && <div className="text-zinc-500">No wounds</div>}
                     </div>
                 </div>
             </section>

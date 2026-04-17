@@ -1,5 +1,6 @@
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
+import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -46,6 +47,22 @@ export async function POST(req: Request, ctx: Ctx) {
     const created = await prisma.statUpgrade.create({
         data: { unitId, statKey: parsed.data.statKey, delta: parsed.data.delta },
     });
+    const unit = await prisma.unitInstance.findUnique({
+        where: { id: unitId },
+        select: { armyId: true },
+    });
+    if (unit?.armyId) {
+        revalidatePath(`/army/${unit.armyId}`);
+        revalidatePath(`/army/${unit.armyId}/unit/${unitId}`);
+    }
 
-    return new Response(JSON.stringify({ id: created.id }), { status: 201 });
+    return new Response(
+        JSON.stringify({
+            id: created.id,
+            statKey: created.statKey,
+            delta: created.delta,
+            at: created.at,
+        }),
+        { status: 201 },
+    );
 }

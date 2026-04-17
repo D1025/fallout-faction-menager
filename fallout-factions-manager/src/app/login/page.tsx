@@ -143,7 +143,7 @@ function LoginForm() {
     }
 
     return (
-        <MobilePageShell title="Login">
+        <MobilePageShell title="Login" showStoryActionsShortcut={false}>
             <div className="grid place-items-center pt-10">
                 <Card style={{ width: '100%', maxWidth: 400 }}>
                     <Typography.Text type="secondary">Fallout Factions</Typography.Text>

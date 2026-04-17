@@ -30,6 +30,55 @@ async function canWriteByUnitId(unitId: string, userId: string): Promise<boolean
     return row.army.shares.some((s) => s.perm === 'WRITE');
 }
 
+async function canReadByUnitId(unitId: string, userId: string): Promise<boolean> {
+    const row = await prisma.unitInstance.findUnique({
+        where: { id: unitId },
+        select: {
+            army: {
+                select: {
+                    ownerId: true,
+                    shares: { where: { userId }, select: { perm: true } },
+                },
+            },
+        },
+    });
+
+    if (!row?.army) return false;
+    if (row.army.ownerId === userId) return true;
+    return row.army.shares.some((s) => s.perm === 'READ' || s.perm === 'WRITE');
+}
+
+export async function GET(_req: Request, ctx: Ctx) {
+    const { id: unitId } = await ctx.params;
+
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) return new Response('UNAUTHORIZED', { status: 401 });
+
+    const ok = await canReadByUnitId(unitId, userId);
+    if (!ok) return new Response('FORBIDDEN', { status: 403 });
+
+    const row = await prisma.unitInstance.findUnique({
+        where: { id: unitId },
+        select: { photoEtag: true, photoBytes: true },
+    });
+    if (!row) return new Response('NOT_FOUND', { status: 404 });
+
+    return new Response(
+        JSON.stringify({
+            hasPhoto: Boolean(row.photoBytes),
+            etag: row.photoEtag ?? null,
+        }),
+        {
+            status: 200,
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'private, no-store',
+            },
+        },
+    );
+}
+
 export async function POST(req: Request, ctx: Ctx) {
     const ip = getClientIp(req);
     const ipLimit = checkRateLimit({

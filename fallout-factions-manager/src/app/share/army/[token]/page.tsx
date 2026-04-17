@@ -7,6 +7,7 @@ import { RuleHintList } from '@/components/share/RuleHintList';
 import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { getPublicArmySnapshotByToken } from '@/lib/army/publicShare';
+import { redirect } from 'next/navigation';
 
 function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
     const text = (raw ?? '').trim();
@@ -44,6 +45,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
         );
     }
 
+    let canRedirectToArmyPath = false;
     if (userId) {
         try {
             const owner = await prisma.army.findUnique({
@@ -67,9 +69,14 @@ export default async function Page({ params }: { params: Promise<{ token: string
                     },
                 });
             }
+            canRedirectToArmyPath = Boolean(owner);
         } catch {
             // Never block shared preview because of auto-save errors.
         }
+    }
+
+    if (canRedirectToArmyPath) {
+        redirect(`/army/${snapshot.army.id}`);
     }
 
     const headerRight =

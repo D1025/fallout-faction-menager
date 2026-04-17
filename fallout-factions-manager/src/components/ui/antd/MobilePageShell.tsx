@@ -1,7 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Grid, Layout } from 'antd';
+import { BookOutlined } from '@ant-design/icons';
+import { Button, Grid, Layout } from 'antd';
 import Content from 'antd/es/layout/layout';
 import { AppHeader } from '@/components/nav/AppHeader';
 
@@ -15,6 +16,7 @@ export function MobilePageShell({
   children,
   stickyActions,
   desktopSidebar,
+  showStoryActionsShortcut = true,
 }: {
   title: string;
   backHref?: string;
@@ -22,10 +24,28 @@ export function MobilePageShell({
   children: ReactNode;
   stickyActions?: ReactNode;
   desktopSidebar?: ReactNode;
+  showStoryActionsShortcut?: boolean;
 }) {
   const screens = Grid.useBreakpoint();
   const isDesktop = Boolean(screens.lg);
   const contentMaxWidth = isDesktop ? 1200 : 560;
+  const hasHeaderActions = showStoryActionsShortcut || Boolean(headerRight);
+  const resolvedHeaderRight = hasHeaderActions ? (
+    <div className="ff-app-header__actions">
+      {showStoryActionsShortcut ? (
+        <Button
+          href="/story-actions"
+          icon={<BookOutlined />}
+          aria-label="Story actions"
+          title="Story actions"
+          className="ff-ant-btn-icon-mobile ff-header-action-btn"
+        >
+          Story actions
+        </Button>
+      ) : null}
+      {headerRight}
+    </div>
+  ) : undefined;
 
   return (
     <Layout
@@ -37,7 +57,7 @@ export function MobilePageShell({
         ['--safe-area-inset-top-legacy']: 'constant(safe-area-inset-top, 0px)',
       } as React.CSSProperties}
     >
-      <AppHeader title={title} backHref={backHref} right={headerRight} maxWidth={contentMaxWidth} />
+      <AppHeader title={title} backHref={backHref} right={resolvedHeaderRight} maxWidth={contentMaxWidth} />
       <Content
         className="ff-shell-content"
         style={{

@@ -18,6 +18,7 @@ export function ArmyHeaderControls({
                 onClick={onOpenFiltersAction}
                 aria-label="Filtry"
                 title="Filtry"
+                className="ff-ant-btn-icon-mobile ff-header-action-btn"
             />
         </div>
     );

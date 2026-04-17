@@ -1,5 +1,6 @@
 ﻿import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
+import { revalidatePath } from 'next/cache';
 
 export const runtime = 'nodejs';
 
@@ -35,5 +36,14 @@ export async function DELETE(_req: Request, ctx: Ctx) {
     if (!ok) return new Response('FORBIDDEN', { status: 403 });
 
     await prisma.statUpgrade.delete({ where: { id: upgradeId } });
+    const unit = await prisma.unitInstance.findUnique({
+        where: { id: unitId },
+        select: { armyId: true },
+    });
+    if (unit?.armyId) {
+        revalidatePath(`/army/${unit.armyId}`);
+        revalidatePath(`/army/${unit.armyId}/unit/${unitId}`);
+    }
+
     return new Response(null, { status: 204 });
 }
