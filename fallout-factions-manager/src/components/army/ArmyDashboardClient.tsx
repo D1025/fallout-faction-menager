@@ -1600,6 +1600,7 @@ function ArmyDashboardClientInner({
     }, [tab]);
 
     async function saveHazard(nextHazardId: string | null) {
+        if (readOnly) return;
         const prev = hazardId;
         setHazardId(nextHazardId);
         setSavingHazard(true);
@@ -1624,6 +1625,7 @@ function ArmyDashboardClientInner({
     }
 
     async function toggleFacility(facilityId: string, selected: boolean) {
+        if (readOnly) return;
         const prev = selectedFacilityIds;
         setUpdatingFacilityId(facilityId);
         setSelectedFacilityIds((arr) =>
@@ -1647,6 +1649,7 @@ function ArmyDashboardClientInner({
     }
 
     async function deleteLegacyFacility(id: string) {
+        if (readOnly) return;
         confirmAction({
             title: 'Delete this legacy facility?',
             okText: 'Delete',
@@ -1706,6 +1709,7 @@ function ArmyDashboardClientInner({
     }
 
     async function advanceTier() {
+        if (readOnly) return;
         confirmAction({
             title: 'Increase army tier?',
             content: 'Requires completing all tasks at the current tier.',
@@ -1748,6 +1752,7 @@ function ArmyDashboardClientInner({
     }, [tab]);
 
     async function setGoalTicks(goalId: string, next: number) {
+        if (readOnly) return;
         const g = goals.find((x) => x.id === goalId);
         if (!g) return;
         const clamped = Math.max(0, Math.min(g.target, next));
@@ -1985,7 +1990,11 @@ function ArmyDashboardClientInner({
 
     const hasActiveFilters = filter !== 'ALL' || hideInactive;
     const availableTabs: [TabKey, string][] = readOnly
-        ? [['OVERVIEW', 'Overview']]
+        ? [
+            ['OVERVIEW', 'Overview'],
+            ['TASKS', 'Tasks'],
+            ['TURF', 'Home Turf'],
+        ]
         : [
             ['OVERVIEW', 'Overview'],
             ['EDIT', 'Chems'],
@@ -2024,7 +2033,12 @@ function ArmyDashboardClientInner({
             </div>
 
             {/* TABS */}
-            <div className={'mt-3 grid gap-2 ' + (availableTabs.length === 1 ? 'grid-cols-1' : 'grid-cols-4')}>
+            <div
+                className={
+                    'mt-3 grid gap-2 ' +
+                    (availableTabs.length === 1 ? 'grid-cols-1' : availableTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4')
+                }
+            >
                 {availableTabs.map(([k, label]) => (
                     <button
                         key={k}
@@ -2218,14 +2232,18 @@ function ArmyDashboardClientInner({
                         <div className="text-xs text-zinc-400">
                             Current tier: <span className="font-semibold text-zinc-200">T{currentTier}</span>
                         </div>
-                        <button
-                            onClick={() => void advanceTier()}
-                            className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950 active:scale-95"
-                            aria-label="Increase tier"
-                            title="Increase tier"
-                        >
-                            Increase tier
-                        </button>
+                        {readOnly ? (
+                            <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">Read-only</span>
+                        ) : (
+                            <button
+                                onClick={() => void advanceTier()}
+                                className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950 active:scale-95"
+                                aria-label="Increase tier"
+                                title="Increase tier"
+                            >
+                                Increase tier
+                            </button>
+                        )}
                     </div>
 
                     <div className="mb-3 rounded-xl bg-zinc-950/35 p-2.5">
@@ -2282,7 +2300,7 @@ function ArmyDashboardClientInner({
                                                                             <button
                                                                                 key={i}
                                                                                 onClick={() => void setGoalTicks(g.id, active && filled === val ? val - 1 : val)}
-                                                                                disabled={updatingGoalId === g.id}
+                                                                                disabled={updatingGoalId === g.id || readOnly}
                                                                                 className={
                                                                                     'h-6 w-6 rounded-full text-xs tabular-nums ' +
                                                                                     (active ? 'bg-emerald-500/20 text-emerald-200' : 'bg-zinc-900 text-zinc-400')
@@ -2323,7 +2341,7 @@ function ArmyDashboardClientInner({
                             value={hazardId ?? ''}
                             onChange={(e) => void saveHazard(e.target.value || null)}
                             className="mt-1 w-full vault-input px-3 py-2 text-sm"
-                            disabled={savingHazard || loadingTurf}
+                            disabled={savingHazard || loadingTurf || readOnly}
                         >
                             <option value="">No hazard selected</option>
                             {hazardsCatalog.map((h) => (
@@ -2357,13 +2375,15 @@ function ArmyDashboardClientInner({
                     <div className="mt-5">
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <div className="text-sm font-medium">Facilities</div>
-                            <button
-                                type="button"
-                                onClick={() => setFacilityPickerOpen(true)}
-                                className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950"
-                            >
-                                Add facility
-                            </button>
+                            {!readOnly ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setFacilityPickerOpen(true)}
+                                    className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950"
+                                >
+                                    Add facility
+                                </button>
+                            ) : null}
                         </div>
 
                         <div className="grid gap-2">
@@ -2377,14 +2397,16 @@ function ArmyDashboardClientInner({
                                         <div className="mb-2 flex items-start justify-between gap-2">
                                             <div className="text-sm font-medium text-zinc-100">{f.name}</div>
                                             {rowBusy ? <span className="text-xs text-emerald-300">Saving...</span> : null}
-                                            <button
-                                                type="button"
-                                                onClick={() => void toggleFacility(f.id, false)}
-                                                disabled={rowBusy}
-                                                className="shrink-0 rounded-lg bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30 disabled:opacity-50"
-                                            >
-                                                Remove
-                                            </button>
+                                            {!readOnly ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void toggleFacility(f.id, false)}
+                                                    disabled={rowBusy}
+                                                    className="shrink-0 rounded-lg bg-red-900/20 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-900/30 disabled:opacity-50"
+                                                >
+                                                    Remove
+                                                </button>
+                                            ) : null}
                                         </div>
                                         <RuleDescription text={f.description} />
                                     </div>
@@ -2407,13 +2429,15 @@ function ArmyDashboardClientInner({
                                             className="flex items-center justify-between rounded-lg bg-zinc-950/55 px-3 py-2"
                                         >
                                             <div className="text-sm text-zinc-200">{f.name}</div>
-                                            <button
-                                                onClick={() => void deleteLegacyFacility(f.id)}
-                                                disabled={deletingLegacyFacilityId === f.id}
-                                                className="rounded-md bg-zinc-900 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
-                                            >
-                                                {deletingLegacyFacilityId === f.id ? 'Deleting...' : 'Delete'}
-                                            </button>
+                                            {!readOnly ? (
+                                                <button
+                                                    onClick={() => void deleteLegacyFacility(f.id)}
+                                                    disabled={deletingLegacyFacilityId === f.id}
+                                                    className="rounded-md bg-zinc-900 px-2 py-1 text-xs text-red-300 hover:bg-red-600/10 disabled:opacity-50"
+                                                >
+                                                    {deletingLegacyFacilityId === f.id ? 'Deleting...' : 'Delete'}
+                                                </button>
+                                            ) : null}
                                         </div>
                                     ))}
                                 </div>
