@@ -339,8 +339,7 @@ button:not(.ant-btn):not([class*="h-"]):not(.ff-btn-icon-mobile) {
 }
 
 .ff-app-header__inner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -350,9 +349,9 @@ button:not(.ant-btn):not([class*="h-"]):not(.ff-btn-icon-mobile) {
 
 .ff-app-header__title {
   display: block;
-  max-width: 100%;
+  flex: 1;
   min-width: 0;
-  justify-self: center;
+  max-width: 100%;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 12px;
@@ -360,17 +359,20 @@ button:not(.ant-btn):not([class*="h-"]):not(.ff-btn-icon-mobile) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
+  text-align: left;
 }
 
 .ff-app-header__left {
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 8px;
 }
 
 .ff-app-header__right {
+  flex-shrink: 0;
   min-width: 0;
   display: flex;
   align-items: center;

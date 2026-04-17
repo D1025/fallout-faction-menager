@@ -18,16 +18,17 @@ export function AppHeader({
     return (
         <Layout.Header className="ff-app-header">
             <div className="ff-app-header__inner" style={{ maxWidth }}>
-                <div className="ff-app-header__left">{backHref ? <BackButton fallbackHref={backHref} /> : null}</div>
-
-                <Typography.Text
-                    strong
-                    className="ff-app-header__title"
-                    ellipsis
-                    title={title}
-                >
-                    {title}
-                </Typography.Text>
+                <div className="ff-app-header__left">
+                    {backHref ? <BackButton fallbackHref={backHref} /> : null}
+                    <Typography.Text
+                        strong
+                        className="ff-app-header__title"
+                        ellipsis
+                        title={title}
+                    >
+                        {title}
+                    </Typography.Text>
+                </div>
 
                 <div className="ff-app-header__right">
                     {right}

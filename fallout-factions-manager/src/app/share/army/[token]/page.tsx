@@ -2,24 +2,89 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
-import { UserAccountMenu } from '@/components/auth/UserAccountMenu';
-import { RuleHintList } from '@/components/share/RuleHintList';
+import { ArmyPageClient } from '@/components/army/ArmyPageClient';
 import { auth } from '@/lib/authServer';
+import { getPublicArmySnapshotByToken, type PublicArmySnapshot } from '@/lib/army/publicShare';
 import { prisma } from '@/server/prisma';
-import { getPublicArmySnapshotByToken } from '@/lib/army/publicShare';
 import { redirect } from 'next/navigation';
 
-function splitTypeAndRange(raw: string | null | undefined): { type: string; range: string } {
-    const text = (raw ?? '').trim();
-    if (!text) return { type: '-', range: '-' };
-    const rangeMatch = text.match(/\(([^)]*)\)/);
-    const range = rangeMatch?.[1]?.trim() ?? '-';
-    const type = text
-        .replace(/\([^)]*\)/g, '')
-        .replace(/\s*-\s*$/g, '')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-    return { type: type || '-', range };
+type UiBonus = Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
+
+function zeroBonus(): UiBonus {
+    return { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
+}
+
+function mapSnapshotUnitsToDashboard(snapshot: PublicArmySnapshot) {
+    return snapshot.units.map((u) => {
+        const bonus = zeroBonus();
+        const bonusPositive = zeroBonus();
+        const bonusNegative = zeroBonus();
+
+        for (const up of u.upgrades) {
+            bonus[up.statKey] += up.delta;
+            if (up.delta > 0) bonusPositive[up.statKey] += up.delta;
+            if (up.delta < 0) bonusNegative[up.statKey] += Math.abs(up.delta);
+        }
+
+        const base = {
+            hp: u.special.HP - bonus.HP,
+            S: u.special.S - bonus.S,
+            P: u.special.P - bonus.P,
+            E: u.special.E - bonus.E,
+            C: u.special.C - bonus.C,
+            I: u.special.I - bonus.I,
+            A: u.special.A - bonus.A,
+            L: u.special.L - bonus.L,
+        };
+
+        return {
+            id: u.id,
+            templateName: u.name,
+            roleTag: u.roleTag,
+            base,
+            bonus,
+            bonusPositive,
+            bonusNegative,
+            wounds: u.wounds,
+            present: u.present,
+            upgradesCount: u.upgrades.length,
+            perkNames: u.perks.map((p) => p.name),
+            startPerkNames: [],
+            perks: u.perks.map((p) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+            })),
+            photoPath: null,
+            hasPhoto: false,
+            rating: u.rating,
+            weapons: u.weapons.map((w, weaponIdx) => ({
+                name: w.name,
+                selectedProfileIds: [],
+                baseType: w.type || '-',
+                baseTest: w.test || '-',
+                baseEffects: [
+                    ...w.traits.map((t, effectIdx) => ({
+                        id: `${u.id}:w${weaponIdx}:trait${effectIdx}`,
+                        name: t.label,
+                        kind: 'WEAPON' as const,
+                        valueInt: null,
+                        valueText: null,
+                    })),
+                    ...w.criticals.map((c, effectIdx) => ({
+                        id: `${u.id}:w${weaponIdx}:crit${effectIdx}`,
+                        name: c.label,
+                        kind: 'CRITICAL' as const,
+                        valueInt: null,
+                        valueText: null,
+                    })),
+                ],
+                profiles: [],
+            })),
+            isLeader: u.isLeader,
+            temporaryLeader: u.temporaryLeader,
+        };
+    });
 }
 
 export default async function Page({ params }: { params: Promise<{ token: string }> }) {
@@ -79,207 +144,41 @@ export default async function Page({ params }: { params: Promise<{ token: string
         redirect(`/army/${snapshot.army.id}`);
     }
 
-    const headerRight =
-        userMeta != null ? (
-            <UserAccountMenu
-                name={userMeta.name}
-                role={userMeta.role as 'USER' | 'ADMIN'}
-                photoEtag={userMeta.photoEtag ?? null}
-            />
-        ) : undefined;
+    const units = mapSnapshotUnitsToDashboard(snapshot);
+    const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
+    const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
     return (
-        <MobilePageShell title={snapshot.army.name} backHref="/" headerRight={headerRight}>
-            <main className="space-y-3 pt-3">
-                <section className="vault-panel p-3">
-                    <div className="text-sm font-medium">
-                        {snapshot.army.faction.name}
-                        {snapshot.army.subfactionName ? ` | ${snapshot.army.subfactionName}` : ''}
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-400">
-                        Tier {snapshot.army.tier} | Rating {snapshot.army.rating}
-                    </div>
-                    <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-2 text-xs text-zinc-300">
-                        Read-only shared view
-                    </div>
-                </section>
-
-                <section className="vault-panel p-3">
-                    <div className="text-sm font-medium">Resources</div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs sm:grid-cols-5">
-                        {(
-                            [
-                                ['CAPS', snapshot.army.resources.caps],
-                                ['PARTS', snapshot.army.resources.parts],
-                                ['SCOUT', snapshot.army.resources.scout],
-                                ['REACH', snapshot.army.resources.reach],
-                                ['XP', snapshot.army.resources.exp],
-                            ] as const
-                        ).map(([label, value]) => (
-                            <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
-                                <div className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</div>
-                                <div className="mt-1 text-base font-semibold text-zinc-100">{value}</div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-
-                <section className="vault-panel p-3">
-                    <div className="text-sm font-medium">Home Turf</div>
-                    <div className="mt-2 text-xs text-zinc-300">
-                        Hazard:{' '}
-                        <span className="font-semibold text-zinc-100">
-                            {snapshot.army.homeTurf.hazard?.name ?? 'None'}
-                        </span>
-                    </div>
-                    {snapshot.army.homeTurf.hazard?.description ? (
-                        <div className="mt-1 whitespace-pre-wrap text-xs text-zinc-400">
-                            {snapshot.army.homeTurf.hazard.description}
-                        </div>
-                    ) : null}
-                    {snapshot.army.homeTurf.facilities.length > 0 ? (
-                        <div className="mt-2 grid gap-2">
-                            {snapshot.army.homeTurf.facilities.map((f) => (
-                                <div key={f.name} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
-                                    <div className="text-xs font-semibold text-zinc-100">{f.name}</div>
-                                    <div className="mt-1 whitespace-pre-wrap text-xs text-zinc-400">{f.description || '-'}</div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="mt-1 text-xs text-zinc-500">No facilities selected.</div>
-                    )}
-                </section>
-
-                <section className="vault-panel p-3">
-                    <div className="text-sm font-medium">Units ({snapshot.units.length})</div>
-                    <div className="mt-2 grid gap-2">
-                        {snapshot.units.map((u) => (
-                            <div key={u.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <div className="truncate font-medium text-zinc-100">{u.name}</div>
-                                        <div className="mt-0.5 text-[11px] text-zinc-400">
-                                            {u.roleTag ?? 'GRUNT'} | Rating {u.rating}
-                                            {!u.present ? ' | Absent' : ''}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-2 overflow-hidden rounded-xl border border-zinc-800">
-                                    <table className="w-full table-fixed text-xs">
-                                        <thead>
-                                            <tr className="bg-teal-700/70 text-teal-50">
-                                                {(['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const).map((k) => (
-                                                    <th key={k} className="px-1 py-1 text-center">{k}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr className="bg-zinc-950 text-zinc-100">
-                                                <td className="px-1 py-1 text-center">{u.special.S}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.P}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.E}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.C}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.I}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.A}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.L}</td>
-                                                <td className="px-1 py-1 text-center">{u.special.HP}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <div className="mt-2 grid gap-2">
-                                    {u.weapons.map((w, idx) => {
-                                        const typeParts = splitTypeAndRange(w.type);
-                                        const isMeleeWeapon = typeParts.type.toLowerCase().includes('melee');
-                                        return (
-                                            <div key={`${u.id}_${idx}`} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                                                <div className="flex items-center gap-2 border-b border-zinc-800 px-2 py-1.5">
-                                                    <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
-                                                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">
-                                                        {typeParts.type}
-                                                    </div>
-                                                </div>
-                                                <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
-                                                    <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
-                                                        <thead>
-                                                            <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
-                                                                {!isMeleeWeapon ? <th className="w-[12%] px-1 py-1 text-left">Z</th> : null}
-                                                                <th className={(isMeleeWeapon ? 'w-[16%]' : 'w-[14%]') + ' px-1 py-1 text-left'}>Test</th>
-                                                                <th className={(isMeleeWeapon ? 'w-[43%]' : 'w-[38%]') + ' px-1 py-1 text-left'}>Traits</th>
-                                                                <th className={(isMeleeWeapon ? 'w-[41%]' : 'w-[36%]') + ' px-1 py-1 text-left'}>
-                                                                    <span className="sm:hidden">Crit</span>
-                                                                    <span className="hidden sm:inline">Critical Effect</span>
-                                                                </th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            <tr className="border-t border-zinc-800 align-top bg-zinc-950">
-                                                                {!isMeleeWeapon ? (
-                                                                    <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{typeParts.range || '-'}</td>
-                                                                ) : null}
-                                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{w.test || '-'}</td>
-                                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">
-                                                                    <RuleHintList items={w.traits} />
-                                                                </td>
-                                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">
-                                                                    <RuleHintList items={w.criticals} />
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                    {u.weapons.length === 0 ? (
-                                        <div className="text-xs text-zinc-500">No weapon data.</div>
-                                    ) : null}
-                                </div>
-
-                                <div className="mt-3 grid gap-2">
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
-                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-teal-50">Perks</div>
-                                        <div className="mt-1 text-xs text-zinc-300">
-                                            <RuleHintList
-                                                items={u.perks.map((p) => ({
-                                                    label: p.name,
-                                                    description: p.description,
-                                                }))}
-                                                emptyText="No perks."
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
-                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-teal-50">Upgrades</div>
-                                        <div className="mt-1 flex flex-wrap gap-1 text-xs text-zinc-200">
-                                            {u.upgrades.length === 0 ? (
-                                                <span className="text-zinc-500">No upgrades.</span>
-                                            ) : (
-                                                u.upgrades.map((up, idx) => (
-                                                    <span
-                                                        key={`${u.id}_up_${up.statKey}_${idx}`}
-                                                        className={
-                                                            'inline-flex rounded-md border px-1.5 py-0.5 font-medium ' +
-                                                            (up.delta > 0
-                                                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-                                                                : 'border-red-500/40 bg-red-500/10 text-red-200')
-                                                        }
-                                                    >
-                                                        {up.delta > 0 ? `+${up.delta}` : up.delta} {up.statKey}
-                                                    </span>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            </main>
-        </MobilePageShell>
+        <ArmyPageClient
+            backHref="/"
+            userName={userName}
+            userRole={userRole}
+            userPhotoEtag={userMeta?.photoEtag ?? null}
+            showUserMenu={Boolean(userId)}
+            readOnly
+            armyId={snapshot.army.id}
+            armyName={snapshot.army.name}
+            tier={snapshot.army.tier}
+            factionId={snapshot.army.faction.id}
+            factionName={snapshot.army.faction.name}
+            factionLimits={snapshot.army.limits.map((l) => ({
+                tag: l.tag,
+                tier1: l.tier1 ?? null,
+                tier2: l.tier2 ?? null,
+                tier3: l.tier3 ?? null,
+            }))}
+            resources={{
+                caps: snapshot.army.resources.caps,
+                parts: snapshot.army.resources.parts,
+                scout: snapshot.army.resources.scout,
+                reach: snapshot.army.resources.reach,
+                exp: snapshot.army.resources.exp,
+                ploys: snapshot.army.resources.ploys,
+            }}
+            units={units}
+            rating={snapshot.army.rating}
+            subfactionId={null}
+        />
     );
 }
+

@@ -13,10 +13,12 @@ export function ArmyPageClient(
         userRole: 'USER' | 'ADMIN';
         userPhotoEtag?: string | null;
         readOnly?: boolean;
+        showUserMenu?: boolean;
     },
 ) {
     const [actions, setActions] = useState<ArmyDashboardActions | null>(null);
     const [filtersActive, setFiltersActive] = useState(false);
+    const showUserMenu = props.showUserMenu ?? true;
 
     const headerRight = useMemo(
         () => (
@@ -25,14 +27,16 @@ export function ArmyPageClient(
                     onOpenFiltersAction={() => actions?.openFilters()}
                     hasActiveFilters={filtersActive}
                 />
-                <UserAccountMenu
-                    name={props.userName}
-                    role={props.userRole}
-                    photoEtag={props.userPhotoEtag}
-                />
+                {showUserMenu ? (
+                    <UserAccountMenu
+                        name={props.userName}
+                        role={props.userRole}
+                        photoEtag={props.userPhotoEtag}
+                    />
+                ) : null}
             </div>
         ),
-        [actions, filtersActive, props.userName, props.userPhotoEtag, props.userRole],
+        [actions, filtersActive, props.userName, props.userPhotoEtag, props.userRole, showUserMenu],
     );
 
     return (
