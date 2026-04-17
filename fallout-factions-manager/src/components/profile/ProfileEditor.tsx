@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Avatar, Button, Input } from 'antd';
+import { Avatar, Input } from 'antd';
 import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { PhotoCropperModal } from '@/components/images/PhotoCropperModal';
@@ -37,6 +37,7 @@ export function ProfileEditor({
 }) {
     const router = useRouter();
     const credentialsLocked = role === 'ADMIN';
+    const roleLabel = role === 'ADMIN' ? 'Administrator' : 'User';
 
     const [name, setName] = useState(initialName);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -160,10 +161,10 @@ export function ProfileEditor({
     }
 
     return (
-        <div className="space-y-4">
-            <section className="vault-panel p-3">
+        <div className="mt-3 space-y-2.5">
+            <section className="rounded-[22px] bg-zinc-900/60 p-3">
                 <div className="flex items-start gap-3">
-                    <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
+                    <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-xl bg-zinc-950/70">
                         {!photoMissing ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -181,12 +182,24 @@ export function ProfileEditor({
                     </div>
 
                     <div className="min-w-0 flex-1">
-                        <div className="text-base font-semibold">Account: {initialName}</div>
-                        <div className="mt-1 text-xs vault-muted">
-                            Role: {role === 'ADMIN' ? 'Administrator' : 'User'}
+                        <div className="text-base font-semibold leading-tight text-zinc-100">{initialName}</div>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                                ACCOUNT
+                            </span>
+                            <span
+                                className={
+                                    'rounded-full px-2 py-0.5 text-[11px] font-semibold ' +
+                                    (role === 'ADMIN'
+                                        ? 'bg-amber-500/10 text-amber-200'
+                                        : 'bg-sky-500/10 text-sky-200')
+                                }
+                            >
+                                {roleLabel}
+                            </span>
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs font-medium text-zinc-200">
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            <label className="inline-flex h-8 cursor-pointer items-center justify-center rounded-lg bg-zinc-950 px-3 text-xs font-medium text-zinc-200">
                                 {uploadingPhoto ? 'Uploading...' : photoMissing ? 'Add photo' : 'Change photo'}
                                 <input
                                     type="file"
@@ -218,7 +231,7 @@ export function ProfileEditor({
                                     type="button"
                                     onClick={deletePhoto}
                                     disabled={uploadingPhoto}
-                                    className="h-9 rounded-xl border border-red-700 bg-red-900/30 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
+                                    className="h-8 rounded-lg bg-red-900/25 px-3 text-xs font-medium text-red-200 disabled:opacity-50"
                                 >
                                     Delete
                                 </button>
@@ -228,8 +241,9 @@ export function ProfileEditor({
                 </div>
             </section>
 
-            <section className="vault-panel p-3">
-                <div className="text-sm font-semibold">Edit profile</div>
+            <section className="rounded-[22px] bg-zinc-900/60 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-100">Credentials</div>
+                <div className="mt-1 text-sm font-medium text-zinc-100">Edit profile</div>
                 <div className="mt-2 grid gap-2">
                     <Input
                         value={name}
@@ -238,6 +252,7 @@ export function ProfileEditor({
                         placeholder="Username"
                         prefix={<UserOutlined className="text-zinc-400" />}
                         autoComplete="username"
+                        className="!h-10 !border-none !bg-zinc-950/80 !shadow-none"
                     />
                     <Input.Password
                         value={currentPassword}
@@ -246,6 +261,7 @@ export function ProfileEditor({
                         placeholder="Current password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="current-password"
+                        className="!h-10 !border-none !bg-zinc-950/80 !shadow-none"
                     />
                     <Input.Password
                         value={newPassword}
@@ -254,6 +270,7 @@ export function ProfileEditor({
                         placeholder="New password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="new-password"
+                        className="!h-10 !border-none !bg-zinc-950/80 !shadow-none"
                     />
                     <Input.Password
                         value={newPasswordRepeat}
@@ -262,24 +279,30 @@ export function ProfileEditor({
                         placeholder="Repeat new password"
                         prefix={<LockOutlined className="text-zinc-400" />}
                         autoComplete="new-password"
+                        className="!h-10 !border-none !bg-zinc-950/80 !shadow-none"
                     />
 
                     {credentialsLocked ? (
-                        <p className="text-xs vault-muted">
+                        <p className="text-xs text-zinc-500">
                             Administrator credentials are fixed and cannot be changed from the profile screen.
                         </p>
                     ) : (
-                        <p className="text-xs vault-muted">Changing password requires your current password.</p>
+                        <p className="text-xs text-zinc-500">Changing password requires your current password.</p>
                     )}
 
-                    <Button
-                        type="primary"
+                    <button
+                        type="button"
                         onClick={() => void saveProfile()}
                         disabled={credentialsLocked || saving || !hasCredentialsChanges}
-                        loading={saving}
+                        className={
+                            'h-10 rounded-xl px-3 text-sm font-semibold transition-all ' +
+                            (credentialsLocked || saving || !hasCredentialsChanges
+                                ? 'bg-zinc-800 text-zinc-500'
+                                : 'bg-emerald-500 text-emerald-950 active:scale-[0.99]')
+                        }
                     >
-                        Save changes
-                    </Button>
+                        {saving ? 'Saving...' : 'Save changes'}
+                    </button>
                 </div>
             </section>
 
