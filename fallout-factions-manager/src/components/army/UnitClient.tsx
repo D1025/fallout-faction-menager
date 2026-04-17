@@ -55,6 +55,32 @@ function normalizeRoleTag(tag: string | null | undefined): UnitTemplateTag | nul
 }
 
 const SPECIAL_ORDER: SpecialStatKey[] = ['S', 'P', 'E', 'C', 'I', 'A', 'L'];
+type WeaponTestHint = { weaponIndex: 0 | 1; stat: SpecialStatKey };
+
+const WEAPON_TEST_ACCENTS = [
+    {
+        textClass: 'text-sky-100',
+        textBgClass: 'bg-sky-500/18',
+        cellClass: 'bg-sky-500/12',
+    },
+    {
+        textClass: 'text-amber-100',
+        textBgClass: 'bg-amber-500/18',
+        cellClass: 'bg-amber-500/12',
+    },
+] as const;
+
+function parseTestSpecialStat(test: string | null | undefined): SpecialStatKey | null {
+    const normalized = (test ?? '').toUpperCase();
+    for (const ch of normalized) {
+        if ((SPECIAL_ORDER as readonly string[]).includes(ch)) return ch as SpecialStatKey;
+    }
+    return null;
+}
+
+function getWeaponAccent(index: number) {
+    return WEAPON_TEST_ACCENTS[index] ?? WEAPON_TEST_ACCENTS[0];
+}
 
 function TagChip({ tag }: { tag: UnitTemplateTag | null }) {
     if (!tag) return null;
@@ -149,6 +175,26 @@ export function UnitClient({
         return b;
     }, [upgrades]);
 
+    const bonusPositive = useMemo(() => {
+        const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
+        for (const u of upgrades) {
+            if (u.delta <= 0) continue;
+            if (u.statKey === 'hp') b.HP += u.delta;
+            else b[u.statKey as Exclude<StatKey, 'hp'>] += u.delta;
+        }
+        return b;
+    }, [upgrades]);
+
+    const bonusNegative = useMemo(() => {
+        const b: Record<UiStatKey, number> = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
+        for (const u of upgrades) {
+            if (u.delta >= 0) continue;
+            if (u.statKey === 'hp') b.HP += Math.abs(u.delta);
+            else b[u.statKey as Exclude<StatKey, 'hp'>] += Math.abs(u.delta);
+        }
+        return b;
+    }, [upgrades]);
+
     const finalStats = useMemo(
         () => ({
             HP: special.HP + bonus.HP,
@@ -161,6 +207,22 @@ export function UnitClient({
             L: special.L + bonus.L,
         }),
         [special, bonus]
+    );
+
+    const weaponTestHints = useMemo<WeaponTestHint[]>(
+        () =>
+            weapons.slice(0, 2).flatMap((w, idx) => {
+                const rev = [...w.selectedProfileIds].reverse();
+                const testOverId = rev.find((id) => {
+                    const p = w.profiles.find((pp) => pp.id === id);
+                    return Boolean(p && p.test != null);
+                });
+                const testOver = testOverId ? w.profiles.find((pp) => pp.id === testOverId) ?? null : null;
+                const effectiveTest = testOver?.test ?? w.baseTest;
+                const stat = parseTestSpecialStat(effectiveTest);
+                return stat ? [{ weaponIndex: idx as 0 | 1, stat }] : [];
+            }),
+        [weapons],
     );
 
     const hasAllTheToys = useMemo(() => {
@@ -334,9 +396,8 @@ export function UnitClient({
     /* ===== Compact SPECIAL with correct +/- ===== */
     function renderSpecialCompact() {
         const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
-        const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`);
         return (
-            <div className="rounded-xl border border-zinc-800 overflow-hidden">
+            <div className="overflow-hidden">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {HEAD.map((h) => (
                         <div key={h} className="px-2 py-1 text-center">
@@ -346,19 +407,31 @@ export function UnitClient({
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
                     {HEAD.map((h) => {
-                        const base = h === 'HP' ? special.HP : special[h as Exclude<typeof h, 'HP'>];
-                        const fin = h === 'HP' ? finalStats.HP : finalStats[h as Exclude<typeof h, 'HP'>];
+                        const base = h === 'HP' ? special.HP : special[h as SpecialStatKey];
+                        const fin = h === 'HP' ? finalStats.HP : finalStats[h as SpecialStatKey];
                         const delta = fin - base;
+                        const plus = h === 'HP' ? bonusPositive.HP : bonusPositive[h as SpecialStatKey];
+                        const minus = h === 'HP' ? bonusNegative.HP : bonusNegative[h as SpecialStatKey];
+                        const hasW1 = h !== 'HP' && weaponTestHints.some((hint) => hint.weaponIndex === 0 && hint.stat === h);
+                        const hasW2 = h !== 'HP' && weaponTestHints.some((hint) => hint.weaponIndex === 1 && hint.stat === h);
+                        const accentClass = hasW1 && hasW2
+                            ? 'bg-violet-500/12'
+                            : hasW1
+                                ? WEAPON_TEST_ACCENTS[0].cellClass
+                                : hasW2
+                                    ? WEAPON_TEST_ACCENTS[1].cellClass
+                                    : '';
                         return (
-                            <div key={h} className="px-2 py-1 text-center tabular-nums">
-                <span className={delta !== 0 ? (delta > 0 ? 'text-emerald-300 font-semibold' : 'text-red-300 font-semibold') : ''}>
-                  {fin}
-                </span>
-                                {delta !== 0 && (
-                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>
-                                        {sign(delta)}
-                                    </sup>
-                                )}
+                            <div key={h} className={'relative px-2 py-1 text-center tabular-nums ' + accentClass}>
+                                <div className={delta !== 0 ? (delta > 0 ? 'text-emerald-300 font-semibold' : 'text-red-300 font-semibold') : ''}>
+                                    {fin}
+                                </div>
+                                {plus > 0 ? (
+                                    <span className="absolute right-0.5 top-0.5 text-[10px] leading-none text-emerald-400">+{plus}</span>
+                                ) : null}
+                                {minus > 0 ? (
+                                    <span className="absolute right-0.5 bottom-0.5 text-[10px] leading-none text-red-400">-{minus}</span>
+                                ) : null}
                             </div>
                         );
                     })}
@@ -406,8 +479,9 @@ export function UnitClient({
     }
 
     /* ===== Weapon card ===== */
-    function WeaponCard({ w }: { w: WeaponUI }) {
+    function WeaponCard({ w, weaponIndex }: { w: WeaponUI; weaponIndex: number }) {
         const [selected, setSelected] = useState<string[]>(w.selectedProfileIds);
+        const accent = getWeaponAccent(weaponIndex);
 
         type EffectRef = { name: string; valueInt: number | null; valueText?: string | null; effectId?: string; effectMode?: 'ADD' | 'REMOVE' };
 
@@ -522,12 +596,12 @@ export function UnitClient({
         };
 
         return (
-            <div className="vault-panel p-3">
+            <div className="rounded-2xl bg-zinc-900/35 p-3">
                 <div className="mb-1 flex items-center gap-2">
                     <div className="font-medium">{w.name}</div>
                     <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-                <div className="mt-1 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+                <div className="mt-1 rounded-xl bg-zinc-950/75 overflow-hidden ring-1 ring-zinc-800/70">
                     <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
                         <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                             <thead>
@@ -548,10 +622,18 @@ export function UnitClient({
                                 {rows.map((r) => {
                                     const isSel = r.kind === 'PROFILE' && r.profileId ? selected.includes(r.profileId) : false;
                                     const { range } = splitTypeAndRange(r.type);
+                                    const testStat = parseTestSpecialStat(r.test);
                                     return (
                                         <tr key={r.key} className="border-t border-zinc-800 align-top bg-zinc-950">
                                             {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range}</td> : null}
-                                            <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test ?? '-'}</td>
+                                            <td
+                                                className={
+                                                    'px-1 py-1 whitespace-normal break-all ' +
+                                                    (testStat ? accent.textBgClass + ' ' + accent.textClass : 'text-zinc-100')
+                                                }
+                                            >
+                                                {r.test ?? '-'}
+                                            </td>
                                             <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
                                             <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
                                             <td className="px-1 py-1 text-center tabular-nums">{r.parts != null ? r.parts : '-'}</td>
@@ -641,7 +723,7 @@ export function UnitClient({
 
     return (
         <div className="space-y-3">
-            <section className="vault-panel p-3">
+            <section className="rounded-2xl bg-zinc-900/35 p-3">
                 <div className="flex items-start gap-3">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
                         {!photoMissing ? (
@@ -734,7 +816,7 @@ export function UnitClient({
             </section>
 
             {/* Header + SPECIAL */}
-            <section className="mt-3 vault-panel p-3">
+            <section className="mt-3 rounded-2xl bg-zinc-900/35 p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0 font-semibold truncate">{name}</div>
                     <div className="shrink-0 flex items-center gap-2">
@@ -750,18 +832,18 @@ export function UnitClient({
             </section>
 
             {/* Weapon */}
-            <section className="mt-4">
+            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
                 <div className="text-sm font-medium">Weapon</div>
                 <div className="mt-2 grid gap-3">
-                    {weapons.map((w) => (
-                        <WeaponCard key={w.id} w={w} />
+                    {weapons.map((w, idx) => (
+                        <WeaponCard key={w.id} w={w} weaponIndex={idx} />
                     ))}
                     {weapons.length === 0 && <div className="text-zinc-500">No weapons</div>}
                 </div>
             </section>
 
             {/* Upgrades (+ Wounds) */}
-            <section className="mt-4 vault-panel p-3">
+            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
                 <div className="text-sm font-medium">Upgrades</div>
 
                 {/* Add panel - supports negative values */}
@@ -815,7 +897,7 @@ export function UnitClient({
                     {upgrades.filter((u) => u.delta >= 0).map((u) => (
                         <div
                             key={u.id}
-                            className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1"
+                            className="flex items-center justify-between rounded-lg bg-zinc-950/65 px-2 py-1 ring-1 ring-zinc-800/60"
                         >
                             <div>
                                 <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
@@ -868,7 +950,7 @@ export function UnitClient({
             </section>
 
             {/* Perks */}
-            <section className="mt-4 vault-panel p-3">
+            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Perks</div>
                     <div className="text-[11px] text-zinc-500">Owned: {(ownedPerks ?? []).length}</div>
@@ -877,7 +959,7 @@ export function UnitClient({
                 {/* Owned perks list */}
                 <div className="mt-2 grid gap-2">
                     {(ownedPerks ?? []).map((p) => (
-                        <div key={p.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                        <div key={p.id} className="rounded-xl bg-zinc-950/65 p-3 ring-1 ring-zinc-800/60">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <div className="font-medium">{p.name}</div>

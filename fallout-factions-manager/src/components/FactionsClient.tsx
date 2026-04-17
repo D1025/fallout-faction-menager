@@ -268,37 +268,72 @@ function Header({ title, right }: { title: string; right?: React.ReactNode }) {
 }
 
 function FactionCard({ faction, onOpen }: { faction: UIFaction; onOpen: () => void }) {
+    const previewLimits = faction.limits.slice(0, 4);
+    const hasMoreLimits = faction.limits.length > previewLimits.length;
+
     return (
         <button
             onClick={onOpen}
-            className="group flex items-center gap-3 vault-panel p-3 text-left active:scale-[0.99]"
+            className="group vault-panel p-3 text-left active:scale-[0.99]"
         >
-            <div className="grid h-12 w-12 place-items-center rounded-xl border border-amber-300/30 bg-zinc-900 text-amber-200">
-                {faction.name.slice(0, 2)}
-            </div>
-            <div className="flex-1">
-                <div className="flex items-center justify-between">
-                    <div className="text-base font-semibold leading-tight">{faction.name}</div>
+            <div className="flex items-center gap-3">
+                <div className="grid h-12 w-12 place-items-center rounded-xl border border-amber-300/30 bg-zinc-900 text-amber-200">
+                    {faction.name.slice(0, 2)}
+                </div>
+                <div className="min-w-0 flex-1 flex items-center justify-between gap-2">
+                    <div className="truncate text-base font-semibold leading-tight">{faction.name}</div>
                     <span className="rounded-full border border-amber-300/35 bg-zinc-900 px-2 py-0.5 text-[10px] text-amber-100">
             edit
           </span>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                    {faction.limits.slice(0, 3).map((l) => (
-                        <LimitBadge key={l.tag} tag={l.tag} values={[l.tier1, l.tier2, l.tier3]} />
-                    ))}
-                </div>
+            </div>
+            <div className="mt-2">
+                <CompactLimitsTable limits={previewLimits} />
+                {hasMoreLimits ? <div className="mt-1 text-[10px] text-zinc-500">+{faction.limits.length - previewLimits.length} more limits</div> : null}
             </div>
         </button>
     );
 }
 
-function LimitBadge({ tag, values }: { tag: string; values: (number | null | undefined)[] }) {
+function formatLimitTag(tag: string) {
+    return tag
+        .toLowerCase()
+        .split(' ')
+        .map((p) => (p ? p[0].toUpperCase() + p.slice(1) : p))
+        .join(' ');
+}
+
+function CompactLimitsTable({ limits }: { limits: FactionLimit[] }) {
     return (
-        <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-200">
-            <span className="max-w-[12rem] truncate font-medium" title={tag}>{tag}</span>
-            <span className="shrink-0 text-zinc-500">{values.map((v) => (v ?? '-')).join('/')}</span>
-        </span>
+        <div className="vault-scrollbar overflow-x-auto">
+            <table className="w-full min-w-[240px] text-[10px]">
+                <thead className="uppercase tracking-wide">
+                    <tr>
+                        <th className="px-2 py-1 text-left text-zinc-500">Limit</th>
+                        <th className="px-2 py-1 text-center text-zinc-500">T1</th>
+                        <th className="px-2 py-1 text-center text-zinc-500">T2</th>
+                        <th className="px-2 py-1 text-center text-zinc-500">T3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {limits.map((l, idx) => (
+                        <tr key={`${l.tag}_${idx}`} className="border-t border-zinc-800/60">
+                            <td className="px-2 py-1.5 text-zinc-200">{formatLimitTag(l.tag)}</td>
+                            <td className="px-2 py-1.5 text-center tabular-nums text-zinc-300">{l.tier1 ?? '-'}</td>
+                            <td className="px-2 py-1.5 text-center tabular-nums text-zinc-300">{l.tier2 ?? '-'}</td>
+                            <td className="px-2 py-1.5 text-center tabular-nums text-zinc-300">{l.tier3 ?? '-'}</td>
+                        </tr>
+                    ))}
+                    {limits.length === 0 ? (
+                        <tr>
+                            <td colSpan={4} className="px-2 py-2 text-center text-zinc-500">
+                                No limits
+                            </td>
+                        </tr>
+                    ) : null}
+                </tbody>
+            </table>
+        </div>
     );
 }
 

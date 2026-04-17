@@ -170,22 +170,11 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                         )}
 
                         {selectedFaction && (
-                            <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
-                                <div className="mb-2 flex flex-wrap gap-1.5">
-                                    {selectedFaction.limits.map((limit) => (
-                                        <span
-                                            key={limit.tag}
-                                            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-300"
-                                        >
-                                            <span className="text-zinc-400">{formatLimitTag(limit.tag)}:</span>
-                                            <span className="font-semibold text-zinc-100">{tierLimitValue(limit, tier)}</span>
-                                        </span>
-                                    ))}
-                                </div>
+                            <div className="mt-3">
                                 <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                                    Crew limits
+                                    Crew limits (active tier: T{tier})
                                 </div>
-                                <LimitGrid limits={selectedFaction.limits} />
+                                <LimitGrid limits={selectedFaction.limits} activeTier={tier} />
                             </div>
                         )}
                     </section>
@@ -351,37 +340,52 @@ function formatLimitTag(tag: string) {
         .join(' ');
 }
 
-function tierLimitValue(
-    limit: FactionDTO['limits'][number],
-    tier: 1 | 2 | 3
-) {
-    if (tier === 1) return limit.tier1 ?? '-';
-    if (tier === 2) return limit.tier2 ?? '-';
-    return limit.tier3 ?? '-';
-}
-
 function LimitGrid({
                        limits,
+                       activeTier,
                    }: {
     limits: FactionDTO['limits'];
+    activeTier: 1 | 2 | 3;
 }) {
+    const thClass = (t: 1 | 2 | 3) =>
+        'px-2 py-1 text-center ' +
+        (activeTier === t ? 'bg-emerald-500/15 text-emerald-200' : 'text-zinc-500');
+
+    const tdClass = (t: 1 | 2 | 3) =>
+        'px-2 py-1 text-center tabular-nums ' +
+        (activeTier === t
+            ? 'bg-emerald-500/12 font-semibold text-emerald-200'
+            : 'text-zinc-300');
+
     return (
-        <div className="grid gap-1.5">
-            <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 rounded-lg bg-zinc-950 px-2 py-1 text-[10px] uppercase tracking-wide text-zinc-500">
-                <span>Limit</span>
-                <span>T1</span>
-                <span>T2</span>
-                <span>T3</span>
-            </div>
-            {limits.map((l) => (
-                <div key={l.tag} className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[11px]">
-                    <span className="text-zinc-200">{formatLimitTag(l.tag)}</span>
-                    <span className="rounded-md bg-zinc-900 px-1.5 py-0.5 text-zinc-300">{l.tier1 ?? '-'}</span>
-                    <span className="rounded-md bg-zinc-900 px-1.5 py-0.5 text-zinc-300">{l.tier2 ?? '-'}</span>
-                    <span className="rounded-md bg-zinc-900 px-1.5 py-0.5 text-zinc-300">{l.tier3 ?? '-'}</span>
-                </div>
-            ))}
-            {limits.length === 0 && <div className="text-[11px] text-zinc-500">No limits defined.</div>}
+        <div className="vault-scrollbar overflow-x-auto">
+            <table className="w-full min-w-[320px] text-[11px]">
+                <thead className="bg-zinc-950">
+                    <tr className="uppercase tracking-wide">
+                        <th className="px-2 py-1 text-left text-zinc-500">Limit</th>
+                        <th className={thClass(1)}>T1</th>
+                        <th className={thClass(2)}>T2</th>
+                        <th className={thClass(3)}>T3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {limits.map((l) => (
+                        <tr key={l.tag} className="border-t border-zinc-800/70 bg-zinc-950/70">
+                            <td className="px-2 py-1.5 text-zinc-200">{formatLimitTag(l.tag)}</td>
+                            <td className={tdClass(1)}>{l.tier1 ?? '-'}</td>
+                            <td className={tdClass(2)}>{l.tier2 ?? '-'}</td>
+                            <td className={tdClass(3)}>{l.tier3 ?? '-'}</td>
+                        </tr>
+                    ))}
+                    {limits.length === 0 ? (
+                        <tr>
+                            <td colSpan={4} className="px-2 py-2 text-center text-zinc-500">
+                                No limits defined.
+                            </td>
+                        </tr>
+                    ) : null}
+                </tbody>
+            </table>
         </div>
     );
 }
@@ -548,20 +552,8 @@ function FactionPickerOverlay({
                                     </div>
                                 </div>
 
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {f.limits.map((limit) => (
-                                        <span
-                                            key={limit.tag}
-                                            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-300"
-                                        >
-                                            <span className="text-zinc-400">{formatLimitTag(limit.tag)}:</span>
-                                            <span className="font-semibold text-zinc-100">{tierLimitValue(limit, tier)}</span>
-                                        </span>
-                                    ))}
-                                </div>
-
-                                <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
-                                    <LimitGrid limits={f.limits} />
+                                <div className="mt-2">
+                                    <LimitGrid limits={f.limits} activeTier={tier} />
                                 </div>
                             </button>
                         );

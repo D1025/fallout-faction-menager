@@ -53,6 +53,8 @@ type UnitListItem = {
     roleTag: string | null;
     base: { hp: number } & Record<'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
     bonus: Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
+    bonusPositive?: Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
+    bonusNegative?: Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
     wounds: number;
     present: boolean;
     upgradesCount: number;
@@ -76,7 +78,8 @@ type UnitListItem = {
 
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
 type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
-type EditTabKey = 'VALUES' | 'CHEMS';
+type SpecialStatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
+type WeaponTestHint = { weaponIndex: 0 | 1; stat: SpecialStatKey };
 
 /* ====== Goals API ====== */
 type Goal = {
@@ -123,6 +126,33 @@ type HomeTurfResponse = {
 };
 
 type PopPos = { top: number; left: number; maxWidth: number };
+
+const SPECIAL_STAT_KEYS: readonly SpecialStatKey[] = ['S', 'P', 'E', 'C', 'I', 'A', 'L'] as const;
+
+const WEAPON_TEST_ACCENTS = [
+    {
+        textClass: 'text-sky-100',
+        textBgClass: 'bg-sky-500/18',
+        cellClass: 'bg-sky-500/12',
+    },
+    {
+        textClass: 'text-amber-100',
+        textBgClass: 'bg-amber-500/18',
+        cellClass: 'bg-amber-500/12',
+    },
+] as const;
+
+function parseTestSpecialStat(test: string | null | undefined): SpecialStatKey | null {
+    const normalized = (test ?? '').toUpperCase();
+    for (const ch of normalized) {
+        if ((SPECIAL_STAT_KEYS as readonly string[]).includes(ch)) return ch as SpecialStatKey;
+    }
+    return null;
+}
+
+function getWeaponAccent(index: number) {
+    return WEAPON_TEST_ACCENTS[index] ?? WEAPON_TEST_ACCENTS[0];
+}
 
 function StickyInfoTooltip({ title, description }: { title: string; description: string }) {
     const [open, setOpen] = useState(false);
@@ -304,7 +334,6 @@ function ArmyDashboardClientInner({
     const [hideInactive, setHideInactive] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [tab, setTab] = useState<TabKey>('OVERVIEW');
-    const [editTab, setEditTab] = useState<EditTabKey>('VALUES');
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [chems, setChems] = useState<UIChem[]>([]);
     const [loadingChems, setLoadingChems] = useState(false);
@@ -312,6 +341,8 @@ function ArmyDashboardClientInner({
     const [chemsLoaded, setChemsLoaded] = useState(false);
     const [chemQuery, setChemQuery] = useState('');
     const [showOwnedChemsOnly, setShowOwnedChemsOnly] = useState(false);
+    const [resourceEditorKind, setResourceEditorKind] = useState<CoreKind | null>(null);
+    const [resourceDraft, setResourceDraft] = useState<string>('');
 
     useEffect(() => setTotals(resources), [resources]);
     useEffect(() => setOrderedUnits(units), [units]);
@@ -339,6 +370,27 @@ function ArmyDashboardClientInner({
         } finally {
             setBusy(null);
         }
+    }
+
+    function openResourceEditor(kind: CoreKind) {
+        setResourceEditorKind(kind);
+        setResourceDraft(String(Math.max(0, totals[kind] ?? 0)));
+    }
+
+    function closeResourceEditor() {
+        setResourceEditorKind(null);
+        setResourceDraft('');
+    }
+
+    function shiftResourceDraft(delta: number) {
+        if (!resourceEditorKind) return;
+        setResourceDraft((prev) => String(Math.max(0, n(prev, totals[resourceEditorKind] ?? 0) + delta)));
+    }
+
+    async function saveResourceEditor() {
+        if (!resourceEditorKind) return;
+        await setValue(resourceEditorKind, n(resourceDraft, totals[resourceEditorKind]));
+        closeResourceEditor();
     }
 
     async function loadChems(force = false) {
@@ -504,54 +556,99 @@ function ArmyDashboardClientInner({
         });
     }, [filter, orderedUnits, groups, hideInactive, presentById]);
 
-    const limitForTier = (l: UIFactionLimit, t: number): number | null => {
-        if (t <= 1) return l.tier1;
-        if (t === 2) return l.tier2;
-        return l.tier3;
-    };
+    function FactionLimitsTable({ limits, activeTier }: { limits: UIFactionLimit[]; activeTier: number }) {
+        const thCls = (t: 1 | 2 | 3) =>
+            'px-1.5 py-1 text-center ' +
+            (activeTier === t ? 'text-emerald-200' : 'text-zinc-500');
+        const tdCls = (t: 1 | 2 | 3) =>
+            'px-1.5 py-1 text-center tabular-nums ' +
+            (activeTier === t ? 'bg-emerald-500/12 font-semibold text-emerald-200' : 'text-zinc-300');
 
-    const activeFactionLimits = useMemo(
-        () =>
-            factionLimits
-                .map((l) => ({ tag: l.tag, active: limitForTier(l, tier) }))
-                .filter((x) => x.active != null),
-        [factionLimits, tier]
-    );
+        return (
+            <div className="mt-2">
+                <table className="w-full table-fixed text-[10px] leading-tight">
+                    <thead className="bg-zinc-950/50">
+                        <tr className="uppercase tracking-wide">
+                            <th className="w-[46%] px-1.5 py-1 text-left text-zinc-500">Limit</th>
+                            <th className={thCls(1)}>T1</th>
+                            <th className={thCls(2)}>T2</th>
+                            <th className={thCls(3)}>T3</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {limits.map((l, idx) => (
+                            <tr key={`${l.tag}_${idx}`} className="border-t border-zinc-800/60">
+                                <td className="px-1.5 py-1.5 break-words text-zinc-200">{l.tag}</td>
+                                <td className={tdCls(1)}>{l.tier1 ?? '-'}</td>
+                                <td className={tdCls(2)}>{l.tier2 ?? '-'}</td>
+                                <td className={tdCls(3)}>{l.tier3 ?? '-'}</td>
+                            </tr>
+                        ))}
+                        {limits.length === 0 ? (
+                            <tr>
+                                <td colSpan={4} className="px-1.5 py-2 text-center text-zinc-500">
+                                    No limits.
+                                </td>
+                            </tr>
+                        ) : null}
+                    </tbody>
+                </table>
+            </div>
+        );
+    }
 
     /* ---------- SPECIAL (kompakt) ---------- */
     function SpecialCompact({
                                 base,
                                 bonus,
+                                bonusPositive,
+                                bonusNegative,
+                                hints = [],
                             }: {
         base: UnitListItem['base'];
         bonus: UnitListItem['bonus'];
+        bonusPositive?: UnitListItem['bonusPositive'];
+        bonusNegative?: UnitListItem['bonusNegative'];
+        hints?: WeaponTestHint[];
     }) {
-        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L', 'HP'] as const;
-        const sign = (x: number) => (x > 0 ? `+${x}` : `${x}`);
+        const HEAD = ['S', 'P', 'E', 'C', 'I', 'A', 'L'] as const;
 
         return (
-            <div className="rounded-xl border border-zinc-800 overflow-hidden">
-                <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
+            <div className="overflow-hidden bg-zinc-950/60">
+                <div className="grid grid-cols-7 bg-teal-700/65 text-[13px] font-semibold tracking-wide text-teal-50">
                     {HEAD.map((h) => (
-                        <div key={h} className="px-2 py-1 text-center">
+                        <div key={h} className="px-0.5 py-0.5 text-center">
                             {h}
                         </div>
                     ))}
                 </div>
-                <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
+                <div className="grid grid-cols-7 bg-zinc-950/95 text-[13px] text-zinc-100">
                     {HEAD.map((h) => {
-                        const baseVal = h === 'HP' ? base.hp : base[h as Exclude<typeof h, 'HP'>];
-                        const finalVal =
-                            h === 'HP' ? base.hp + bonus.HP : base[h as Exclude<typeof h, 'HP'>] + bonus[h as Exclude<typeof h, 'HP'>];
+                        const baseVal = base[h];
+                        const finalVal = base[h] + bonus[h];
                         const delta = finalVal - baseVal;
+                        const plus = bonusPositive?.[h] ?? Math.max(0, bonus[h]);
+                        const minus = bonusNegative?.[h] ?? Math.max(0, -bonus[h]);
+                        const hasW1 = hints.some((hint) => hint.weaponIndex === 0 && hint.stat === h);
+                        const hasW2 = hints.some((hint) => hint.weaponIndex === 1 && hint.stat === h);
+                        const accentClass = hasW1 && hasW2
+                            ? 'bg-violet-500/12'
+                            : hasW1
+                                ? WEAPON_TEST_ACCENTS[0].cellClass
+                                : hasW2
+                                    ? WEAPON_TEST_ACCENTS[1].cellClass
+                                    : '';
                         return (
-                            <div key={h} className="px-2 py-1 text-center tabular-nums">
-                <span className={delta !== 0 ? (delta > 0 ? 'text-emerald-300 font-semibold' : 'text-red-300 font-semibold') : ''}>
-                  {finalVal}
-                </span>
-                                {delta !== 0 && (
-                                    <sup className={'ml-0.5 align-super text-[10px] ' + (delta > 0 ? 'text-emerald-400' : 'text-red-400')}>{sign(delta)}</sup>
-                                )}
+                            <div key={h} className={'relative px-0.5 py-1 text-center tabular-nums leading-none ' + accentClass}>
+                                <div className={delta !== 0 ? (delta > 0 ? 'font-semibold text-emerald-300' : 'font-semibold text-red-300') : ''}>
+                                    {finalVal}
+                                </div>
+                                {plus > 0 ? (
+                                    <span className="absolute right-0.5 top-0.5 text-[10px] leading-none text-emerald-400">+{plus}</span>
+                                ) : null}
+                                {minus > 0 ? (
+                                    <span className="absolute bottom-0.5 right-0.5 text-[10px] leading-none text-red-400">-{minus}</span>
+                                ) : null}
                             </div>
                         );
                     })}
@@ -698,6 +795,8 @@ function ArmyDashboardClientInner({
         const [menuOpen, setMenuOpen] = useState(false);
         const menuBtnRef = useRef<HTMLButtonElement | null>(null);
         const menuRef = useRef<HTMLDivElement | null>(null);
+        const headerSpecialRef = useRef<HTMLDivElement | null>(null);
+        const [headerSpecialSize, setHeaderSpecialSize] = useState(64);
         const profileSrc = `/api/units/${u.id}/photo/file`;
 
         async function savePresence(nextPresent: boolean) {
@@ -743,6 +842,26 @@ function ArmyDashboardClientInner({
         useEffect(() => setAbsent(!u.present), [u.present]);
         useEffect(() => setTmpLeader(Boolean(u.temporaryLeader)), [u.temporaryLeader]);
         useEffect(() => {
+            const el = headerSpecialRef.current;
+            if (!el) return;
+
+            const update = () => {
+                const next = Math.max(48, Math.round(el.getBoundingClientRect().height));
+                setHeaderSpecialSize((prev) => (prev === next ? prev : next));
+            };
+
+            update();
+
+            if (typeof ResizeObserver === 'undefined') {
+                window.addEventListener('resize', update);
+                return () => window.removeEventListener('resize', update);
+            }
+
+            const ro = new ResizeObserver(update);
+            ro.observe(el);
+            return () => ro.disconnect();
+        }, [u.id]);
+        useEffect(() => {
             if (!menuOpen) return;
             const onDown = (e: MouseEvent) => {
                 const t = e.target as Node;
@@ -782,6 +901,17 @@ function ArmyDashboardClientInner({
 
         const maxHp = u.base.hp + u.bonus.HP;
         const dmg = Math.max(0, Math.min(maxHp, wounds));
+        const hpPlus = u.bonusPositive?.HP ?? Math.max(0, u.bonus.HP);
+        const hpMinus = u.bonusNegative?.HP ?? Math.max(0, -u.bonus.HP);
+        const weaponDisplays = useMemo(() => u.weapons.map((w) => computeWeaponDisplay(w)), [u.weapons]);
+        const weaponTestHints = useMemo(
+            () =>
+                weaponDisplays.slice(0, 2).flatMap((d, idx) => {
+                    const stat = parseTestSpecialStat(d.test);
+                    return stat ? [{ weaponIndex: idx as 0 | 1, stat }] : [];
+                }),
+            [weaponDisplays],
+        );
 
         function DmgBoxes() {
             return (
@@ -794,37 +924,31 @@ function ArmyDashboardClientInner({
                 >
                     {/* 0 = full HP (no DMG). Each checked box = 1 DMG */}
                     {Array.from({ length: maxHp }, (_, i) => {
-                        const idx = i + 1; // 1..maxHp (kolejny punkt DMG)
+                        const idx = i + 1;
                         const checked = idx <= dmg;
                         return (
                             <button
                                 key={idx}
                                 type="button"
                                 onClick={() => {
-                                    // click sets DMG to idx (if you click current highest checked box, it reverts by 1)
                                     const nextDmg = checked && dmg === idx ? idx - 1 : idx;
                                     void saveWounds(Math.max(0, Math.min(maxHp, nextDmg)));
                                 }}
                                 className={
                                     'relative h-6 w-6 rounded-md border transition-colors ' +
-                                    (checked
-                                        ? 'border-red-700/60 bg-red-950/40'
-                                        : 'border-zinc-700 bg-zinc-950')
+                                    (checked ? 'border-red-700/60 bg-red-950/40' : 'border-zinc-700 bg-zinc-950')
                                 }
-                                aria-label={checked ? `DMG ${idx} (uncheck)` : `Set DMG to ${idx}`}
-                                title={checked ? `DMG ${idx}` : `Set DMG: ${idx}`}
+                                aria-label={checked ? `HP marker ${idx} (uncheck)` : `Set HP marker ${idx}`}
+                                title={checked ? `HP marker ${idx}` : `Set HP marker: ${idx}`}
                             >
-                                {/* checkbox */}
                                 <span
                                     className={
-                                        'absolute inset-0 grid place-items-center text-[10px] font-bold ' +
+                                        'absolute inset-0 grid place-items-center text-xs font-bold ' +
                                         (checked ? 'text-red-200' : 'text-zinc-400')
                                     }
                                 >
                                     {checked ? 'x' : 'o'}
                                 </span>
-
-                                {/* strike-through for DMG */}
                                 {checked && (
                                     <span className="pointer-events-none absolute inset-0" aria-hidden="true">
                                         <span className="absolute left-1/2 top-1/2 h-[2px] w-[140%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-300/70" />
@@ -838,131 +962,169 @@ function ArmyDashboardClientInner({
         }
 
         return (
-            <Link href={`/army/${aId}/unit/${u.id}`} className="block max-w-full overflow-hidden vault-panel p-3">
-                <div className="flex items-center justify-between">
-                    <div className="flex min-w-0 items-center gap-2">
-                        <div className="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                            {!photoMissing ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                    src={profileSrc}
-                                    alt=""
-                                    className="h-full w-full object-cover"
-                                    loading="lazy"
-                                    onError={() => setPhotoMissing(true)}
-                                />
-                            ) : (
-                                <div className="grid h-full w-full place-items-center text-zinc-500">
-                                    <UserOutlined />
-                                </div>
-                            )}
-                        </div>
-                        <div className="truncate font-medium">{u.templateName}</div>
+            <Link
+                href={`/army/${aId}/unit/${u.id}`}
+                className="block max-w-full overflow-hidden rounded-[22px] bg-zinc-900/60 p-3 ring-1 ring-zinc-700/45"
+            >
+                <div className="flex items-start gap-2">
+                    <div
+                        className="shrink-0 overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950/70"
+                        style={{
+                            width: headerSpecialSize,
+                            minWidth: headerSpecialSize,
+                            maxWidth: headerSpecialSize,
+                            height: headerSpecialSize,
+                            minHeight: headerSpecialSize,
+                            maxHeight: headerSpecialSize,
+                        }}
+                    >
+                        {!photoMissing ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={profileSrc}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                                onError={() => setPhotoMissing(true)}
+                            />
+                        ) : (
+                            <div className="grid h-full w-full place-items-center text-zinc-500">
+                                <UserOutlined />
+                            </div>
+                        )}
                     </div>
-                    <div className="flex items-center gap-2">
-                        {u.isLeader ? (
-                            <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
-                                LEADER
-                            </span>
-                        ) : null}
-                        {tmpLeader ? (
-                            <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
-                                CREW LEADER
-                            </span>
-                        ) : null}
-                        <div className="text-xs text-zinc-400">
-                            Rating <span className="font-semibold text-zinc-200">{u.rating}</span>
-                        </div>
-                        <div className="relative">
-                            <button
-                                ref={menuBtnRef}
-                                type="button"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setMenuOpen((v) => !v);
-                                }}
-                                className="grid h-8 w-8 place-items-center rounded-md border border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
-                                aria-label="Unit actions"
-                                title="Unit actions"
-                            >
-                                <EllipsisOutlined />
-                            </button>
-                            {menuOpen ? (
-                                <div
-                                    ref={menuRef}
-                                    className="absolute right-0 top-9 z-20 w-40 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
+
+                    <div ref={headerSpecialRef} className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="truncate text-base font-semibold leading-tight">{u.templateName}</div>
+                            </div>
+
+                            <div className="relative shrink-0">
+                                <button
+                                    ref={menuBtnRef}
+                                    type="button"
                                     onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
+                                        setMenuOpen((v) => !v);
                                     }}
+                                    className="inline-flex h-auto items-center justify-center p-0 text-zinc-300 hover:text-zinc-100"
+                                    aria-label="Unit actions"
+                                    title="Unit actions"
                                 >
-                                    <button
-                                        type="button"
-                                        disabled={!canMoveUp || reordering}
+                                    <EllipsisOutlined className="text-[9px] leading-none" />
+                                </button>
+                                {menuOpen ? (
+                                    <div
+                                        ref={menuRef}
+                                        className="absolute right-0 top-6 z-20 w-44 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
                                         onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            setMenuOpen(false);
-                                            onMoveUp();
                                         }}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
                                     >
-                                        <UpOutlined />
-                                        <span>Move up</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!canMoveDown || reordering}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            setMenuOpen(false);
-                                            onMoveDown();
-                                        }}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
-                                    >
-                                        <DownOutlined />
-                                        <span>Move down</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={deleting}
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            setMenuOpen(false);
-                                            onDelete();
-                                        }}
-                                        className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
-                                    >
-                                        <span>{deleting ? 'Deleting...' : 'Delete'}</span>
-                                    </button>
-                                </div>
-                            ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                void savePresence(absent);
+                                            }}
+                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                        >
+                                            <span>Absent</span>
+                                            <span className={absent ? 'text-red-300' : 'text-zinc-500'}>{absent ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                void saveTemporaryLeader(!tmpLeader);
+                                            }}
+                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                        >
+                                            <span>Crew Leader</span>
+                                            <span className={tmpLeader ? 'text-emerald-300' : 'text-zinc-500'}>{tmpLeader ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={!canMoveUp || reordering}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                onMoveUp();
+                                            }}
+                                            className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                        >
+                                            <UpOutlined />
+                                            <span>Move up</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={!canMoveDown || reordering}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                onMoveDown();
+                                            }}
+                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                        >
+                                            <DownOutlined />
+                                            <span>Move down</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={deleting}
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                onDelete();
+                                            }}
+                                            className="flex w-full items-center gap-2 border-t border-zinc-800 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
+                                        >
+                                            <span>{deleting ? 'Deleting...' : 'Delete'}</span>
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </div>
+
+                        <div className="mt-1.5">
+                            <SpecialCompact
+                                base={u.base}
+                                bonus={u.bonus}
+                                bonusPositive={u.bonusPositive}
+                                bonusNegative={u.bonusNegative}
+                                hints={weaponTestHints}
+                            />
                         </div>
                     </div>
-                </div>
-
-                <div className="mt-2">
-                    <SpecialCompact base={u.base} bonus={u.bonus} />
                 </div>
 
                 <div className="mt-2 grid gap-2">
                     {u.weapons.map((w, idx) => {
-                        const d = computeWeaponDisplay(w);
+                        const d = weaponDisplays[idx] ?? computeWeaponDisplay(w);
                         const typeParts = splitTypeAndRange(d.type);
                         const isMeleeWeapon = typeParts.type.toLowerCase().includes('melee');
+                        const testStat = parseTestSpecialStat(d.test);
+                        const accent = getWeaponAccent(idx);
                         return (
-                            <div key={idx} className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                                <div className="flex items-center gap-2 border-b border-zinc-800 px-2 py-1.5">
-                                    <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
-                                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{typeParts.type}</div>
+                            <div key={idx} className="overflow-hidden rounded-xl bg-zinc-950/55">
+                                <div className="flex items-center gap-2 border-b border-zinc-800/70 px-2 py-1.5">
+                                    <div className="text-sm font-medium text-zinc-100 sm:text-base">{w.name}</div>
+                                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300">{typeParts.type}</div>
                                 </div>
                                 <div className={isMeleeWeapon ? 'max-w-full overflow-x-hidden' : 'vault-scrollbar max-w-full overflow-x-auto'}>
-                                    <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
+                                    <table className="w-full table-fixed text-xs leading-tight sm:text-sm">
                                         <thead>
-                                            <tr className="bg-teal-700/70 text-[11px] font-semibold uppercase tracking-wide text-teal-50">
+                                            <tr className="bg-teal-700/70 text-[13px] font-semibold uppercase tracking-wide text-teal-50">
                                                 {!isMeleeWeapon ? <th className="w-[12%] px-1 py-1 text-left">Z</th> : null}
                                                 <th className={(isMeleeWeapon ? 'w-[16%]' : 'w-[14%]') + ' px-1 py-1 text-left'}>Test</th>
                                                 <th className={(isMeleeWeapon ? 'w-[43%]' : 'w-[38%]') + ' px-1 py-1 text-left'}>Traits</th>
@@ -973,11 +1135,18 @@ function ArmyDashboardClientInner({
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <tr className="border-t border-zinc-800 align-top bg-zinc-950">
+                                            <tr className="border-t border-zinc-800/70 align-top bg-zinc-950/80">
                                                 {!isMeleeWeapon ? (
                                                     <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{typeParts.range || '-'}</td>
                                                 ) : null}
-                                                <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{d.test || '-'}</td>
+                                                <td
+                                                    className={
+                                                        'px-1 py-1 whitespace-normal break-all ' +
+                                                        (testStat ? accent.textBgClass + ' ' + accent.textClass : 'text-zinc-100')
+                                                    }
+                                                >
+                                                    {d.test || '-'}
+                                                </td>
                                                 <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">
                                                     <EffectsInline effects={d.allEffects} kind="WEAPON" />
                                                 </td>
@@ -993,48 +1162,56 @@ function ArmyDashboardClientInner({
                     })}
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                    <label
-                        className="flex items-center gap-1 text-xs"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }}
-                    >
-                        <input type="checkbox" checked={absent} onChange={(e) => void savePresence(!e.target.checked)} />
-                        <span>Absent</span>
-                    </label>
-
-                    <label
-                        className="flex items-center gap-1 text-xs"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                        }}
-                        title="Set as Crew Leader in this army (only one active at a time)"
-                    >
-                        <input
-                            type="checkbox"
-                            checked={tmpLeader}
-                            onChange={(e) => void saveTemporaryLeader(e.target.checked)}
-                        />
-                        <span>Crew Leader</span>
-                    </label>
-
+                <div className="mt-2 flex items-end gap-2">
+                    <div className="min-w-0 flex flex-1 flex-wrap items-center gap-1">
+                        <span className="whitespace-nowrap rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                            RATING {u.rating}
+                        </span>
+                        {(u.roleTag ?? '').toUpperCase() === 'CHAMPION' ? (
+                            <span className="whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                                CHAMPION
+                            </span>
+                        ) : null}
+                        {u.isLeader ? (
+                            <span className="whitespace-nowrap rounded-full border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+                                LEADER
+                            </span>
+                        ) : null}
+                        {tmpLeader ? (
+                            <span className="whitespace-nowrap rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                                CREW LEADER
+                            </span>
+                        ) : null}
+                        {absent ? (
+                            <span className="whitespace-nowrap rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-200">
+                                ABSENT
+                            </span>
+                        ) : null}
+                    </div>
                     <div
-                        className="flex items-center gap-2 text-xs"
+                        className="shrink-0 flex items-center gap-2 text-sm"
                         onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                         }}
                     >
-                        <span className="text-zinc-400">DMG</span>
+                        <span className="text-zinc-400">HP</span>
+                        {hpPlus > 0 || hpMinus > 0 ? (
+                            <span className="relative inline-flex h-6 min-w-[1.25rem] items-center justify-center tabular-nums">
+                                {hpPlus > 0 ? (
+                                    <span className="absolute right-0 top-0 text-[10px] leading-none text-emerald-400">+{hpPlus}</span>
+                                ) : null}
+                                {hpMinus > 0 ? (
+                                    <span className="absolute bottom-0 right-0 text-[10px] leading-none text-red-400">-{hpMinus}</span>
+                                ) : null}
+                            </span>
+                        ) : null}
                         <DmgBoxes />
-                     </div>
-                 </div>
-             </Link>
-         );
-     }
+                    </div>
+                </div>
+            </Link>
+        );
+    }
 
     /* ====== Resource metadata ====== */
     const RESOURCE_META: Record<Kind, { label: string; hint: string; icon: React.ReactNode; quick: number[] }> = {
@@ -1120,11 +1297,11 @@ function ArmyDashboardClientInner({
     const ploysMax = Math.max(0, Math.floor(tier));
     const ploysChecked = Math.max(0, Math.min(ploysMax, totals.ploys ?? 0));
 
-    // Lazy load chems only when resources tab is opened.
+    // Lazy load chems only when Chems tab is opened.
     useEffect(() => {
-        if (tab === 'EDIT' && editTab === 'CHEMS' && !chemsLoaded) void loadChems();
+        if (tab === 'EDIT' && !chemsLoaded) void loadChems();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [tab, editTab, chemsLoaded]);
+    }, [tab, chemsLoaded]);
 
     /* ====== HOME TURF - state and methods ====== */
     const [hazardId, setHazardId] = useState<string | null>(null);
@@ -1488,12 +1665,12 @@ function ArmyDashboardClientInner({
     function ChemCheckboxGroup({ title, items }: { title: string; items: UIChem[] }) {
         const ownedCount = items.filter((chem) => chem.quantity > 0).length;
         return (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+            <div className="rounded-2xl bg-zinc-950/35 p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
                         {title}
                     </div>
-                    <div className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
+                    <div className="text-[10px] text-zinc-500">
                         Owned: {ownedCount}/{items.length}
                     </div>
                 </div>
@@ -1501,7 +1678,7 @@ function ArmyDashboardClientInner({
                     {items.map((chem) => {
                         const rowBusy = updatingChemId === chem.id;
                         const qty = Math.max(0, Math.min(3, chem.quantity));
-                        const costLabel = chem.costCaps > 0 ? `${chem.costCaps} caps` : 'cost n/a';
+                        const costLabel = `${Math.max(0, chem.costCaps ?? 0)} caps`;
 
                         function onDoseClick(idx: number) {
                             const checked = idx <= qty;
@@ -1513,21 +1690,21 @@ function ArmyDashboardClientInner({
                             <div
                                 key={chem.id}
                                 className={
-                                    'flex items-center gap-2 rounded-xl border p-2 transition-colors ' +
+                                    'flex items-center gap-2 rounded-xl px-2.5 py-2 transition-colors ' +
                                     (qty > 0
-                                        ? 'border-emerald-500/50 bg-emerald-500/10'
-                                        : 'border-zinc-800 bg-zinc-900')
+                                        ? 'bg-emerald-500/10 ring-1 ring-emerald-500/35'
+                                        : 'bg-zinc-900/70')
                                 }
                             >
                                 <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <div className="font-medium text-zinc-100">{chem.name}</div>
-                                        {rowBusy ? <span className="text-[10px] text-emerald-300">Saving...</span> : null}
-                                    </div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-[10px] text-zinc-400">
-                                            {costLabel}
-                                        </span>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="font-medium text-zinc-100">{chem.name}</div>
+                                            {rowBusy ? <span className="text-[10px] text-emerald-300">Saving...</span> : null}
+                                        </div>
+                                        {chem.rarity === 'COMMON' ? (
+                                            <div className="shrink-0 pt-0.5 text-[10px] text-zinc-500">{costLabel}</div>
+                                        ) : null}
                                     </div>
                                     <div className="mt-2 flex items-center gap-2">
                                         {([1, 2, 3] as const).map((idx) => (
@@ -1585,7 +1762,7 @@ function ArmyDashboardClientInner({
             <div className="mt-3 grid grid-cols-4 gap-2">
                 {([
                     ['OVERVIEW', 'Overview'],
-                    ['EDIT', 'Edit Resources'],
+                    ['EDIT', 'Chems'],
                     ['TASKS', 'Tasks'],
                     ['TURF', 'Home Turf'],
                 ] as [TabKey, string][]).map(([k, label]) => (
@@ -1593,8 +1770,8 @@ function ArmyDashboardClientInner({
                         key={k}
                         onClick={() => setTab(k)}
                         className={
-                            'h-10 rounded-xl border text-xs font-medium ' +
-                            (tab === k ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
+                            'h-10 rounded-2xl border text-xs font-medium tracking-wide ' +
+                            (tab === k ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200' : 'border-zinc-700 bg-zinc-900 text-zinc-300')
                         }
                     >
                         {label}
@@ -1606,28 +1783,25 @@ function ArmyDashboardClientInner({
             {tab === 'OVERVIEW' && (
                 <>
                     {/* STASH tracker */}
-                    <section className="mt-3 vault-panel p-3">
-                        <div className="mb-2 flex items-center justify-between">
+                    <section className="mt-3">
+                        <div className="mb-2">
                             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-100">Stash</div>
-                            <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
-                                Add unit
-                            </button>
                         </div>
-                        <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/70 p-2">
-                            <div className="grid grid-cols-5 gap-2">
-                                {STASH_RESOURCE_ORDER.map((k) => (
-                                    <div
-                                        key={k}
-                                        className="flex min-h-[74px] flex-col items-center justify-center rounded-lg border border-zinc-700/90 bg-zinc-100/5 px-1 text-center"
-                                        title={RESOURCE_META[k].label}
-                                    >
-                                        <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
-                                            {RESOURCE_META[k].label}
-                                        </div>
-                                        <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
+                        <div className="grid grid-cols-5 gap-3">
+                            {STASH_RESOURCE_ORDER.map((k) => (
+                                <button
+                                    type="button"
+                                    key={k}
+                                    className="flex min-h-[74px] flex-col items-center justify-center rounded-xl bg-zinc-900/70 px-1 text-center ring-1 ring-zinc-700/45 transition-colors hover:bg-zinc-800/70"
+                                    title={`${RESOURCE_META[k].label} (tap to edit)`}
+                                    onClick={() => openResourceEditor(k)}
+                                >
+                                    <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                                        {RESOURCE_META[k].label}
                                     </div>
-                                ))}
-                            </div>
+                                    <div className="mt-1 tabular-nums text-lg font-semibold text-zinc-100">{totals[k]}</div>
+                                </button>
+                            ))}
                         </div>
                     </section>
                     {/* FILTER */}
@@ -1660,7 +1834,12 @@ function ArmyDashboardClientInner({
 
                     {/* UNITS */}
                     <section className="mt-4">
-                        <div className="text-sm font-medium">Units</div>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="text-base font-medium">Units</div>
+                            <button onClick={() => setAdding(true)} className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs">
+                                Add unit
+                            </button>
+                        </div>
                         <div className="mt-2 grid gap-2">
                             {filtered.map((u) => {
                                 const idx = unitIndexById.get(u.id) ?? -1;
@@ -1682,100 +1861,59 @@ function ArmyDashboardClientInner({
                                     />
                                 );
                             })}
-                            {filtered.length === 0 && <div className="text-sm text-zinc-500">No units for active filter</div>}
+                            {filtered.length === 0 && <div className="text-base text-zinc-500">No units for active filter</div>}
                         </div>
                     </section>
                 </>
             )}
 
-            {/* EDIT RESOURCES */}
+            {/* CHEMS */}
             {tab === 'EDIT' && (
-                <section className="mt-3 space-y-3">
-                    <div className="vault-panel p-2">
-                        <div className="grid grid-cols-2 gap-2">
-                            {([
-                                ['VALUES', 'Resources'],
-                                ['CHEMS', 'Chems & Ploys'],
-                            ] as [EditTabKey, string][]).map(([k, label]) => (
-                                <button
-                                    key={k}
-                                    onClick={() => setEditTab(k)}
-                                    className={
-                                        'h-10 rounded-xl border text-xs font-medium ' +
-                                        (editTab === k
-                                            ? 'border-emerald-400 bg-emerald-500/10 text-emerald-300'
-                                            : 'border-zinc-700 bg-zinc-900 text-zinc-300')
-                                    }
-                                >
-                                    {label}
-                                </button>
-                            ))}
+                <section className="mt-3">
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                        <div>
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <MedicineBoxOutlined className="text-zinc-200" />
+                                <span>Chems</span>
+                            </div>
+                            <div className="text-[11px] text-zinc-500">Quick tracking for common and uncommon chems.</div>
                         </div>
+                        <button
+                            onClick={() => void loadChems(true)}
+                            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
+                            disabled={loadingChems}
+                        >
+                            {loadingChems ? 'Refreshing...' : 'Refresh'}
+                        </button>
                     </div>
 
-                    {editTab === 'VALUES' && (
-                        <div className="vault-panel p-3">
-                            <div className="mb-2">
-                                <div className="text-sm font-medium">Resource values</div>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2">
-                                {EDIT_RESOURCE_ORDER.map((k) => renderResourceValueCard(k))}
-                            </div>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                        <input
+                            value={chemQuery}
+                            onChange={(e) => setChemQuery(e.target.value)}
+                            placeholder="Search chems..."
+                            className="h-10 min-w-[11rem] flex-1 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm"
+                        />
+                        <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-300">
+                            <input
+                                type="checkbox"
+                                checked={showOwnedChemsOnly}
+                                onChange={(e) => setShowOwnedChemsOnly(e.target.checked)}
+                            />
+                            Owned only
+                        </label>
+                    </div>
+
+                    {loadingChems && chems.length === 0 ? <div className="text-xs text-zinc-400">Loading chem list...</div> : null}
+
+                    {!loadingChems && visibleCommonChems.length === 0 && visibleUncommonChems.length === 0 ? (
+                        <div className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">
+                            No chems match active filters.
                         </div>
-                    )}
-
-                    {editTab === 'CHEMS' && (
-                        <div className="vault-panel p-3">
-                            <div className="mb-2 flex items-start justify-between gap-2">
-                                <div>
-                                    <div className="flex items-center gap-2 text-sm font-medium">
-                                        <MedicineBoxOutlined className="text-zinc-200" />
-                                        <span>Chem and ploy tracking</span>
-                                    </div>
-                                    <div className="text-[11px] text-zinc-500">Manage chems and ploys.</div>
-                                </div>
-                                <button
-                                    onClick={() => void loadChems(true)}
-                                    className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
-                                    disabled={loadingChems}
-                                >
-                                    {loadingChems ? 'Refreshing...' : 'Refresh'}
-                                </button>
-                            </div>
-
-                            <div className="mb-3">
-                                <PloysCheckboxCard />
-                            </div>
-
-                            <div className="mb-3 flex flex-wrap items-center gap-2">
-                                <input
-                                    value={chemQuery}
-                                    onChange={(e) => setChemQuery(e.target.value)}
-                                    placeholder="Search chems..."
-                                    className="h-9 min-w-[11rem] flex-1 vault-input px-3 text-sm"
-                                />
-                                <label className="inline-flex h-9 items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 text-xs text-zinc-300">
-                                    <input
-                                        type="checkbox"
-                                        checked={showOwnedChemsOnly}
-                                        onChange={(e) => setShowOwnedChemsOnly(e.target.checked)}
-                                    />
-                                    Owned only
-                                </label>
-                            </div>
-
-                            {loadingChems && chems.length === 0 ? <div className="text-xs text-zinc-400">Loading chem list...</div> : null}
-
-                            {!loadingChems && visibleCommonChems.length === 0 && visibleUncommonChems.length === 0 ? (
-                                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                                    No chems match active filters.
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                    <ChemCheckboxGroup title="Common chems" items={visibleCommonChems} />
-                                    <ChemCheckboxGroup title="Uncommon (rare) chems" items={visibleUncommonChems} />
-                                </div>
-                            )}
+                    ) : (
+                        <div className="grid grid-cols-1 gap-3">
+                            <ChemCheckboxGroup title="Common chems" items={visibleCommonChems} />
+                            <ChemCheckboxGroup title="Uncommon chems" items={visibleUncommonChems} />
                         </div>
                     )}
                 </section>
@@ -1783,7 +1921,7 @@ function ArmyDashboardClientInner({
 
             {/* TASKS - goal progress tracking */}
             {tab === 'TASKS' && (
-                <section className="mt-3 vault-panel p-3">
+                <section className="mt-3">
                     <div className="mb-1 flex items-center justify-between">
                         <div className="text-sm font-medium">Tasks</div>
                         <button
@@ -1810,63 +1948,31 @@ function ArmyDashboardClientInner({
                         </button>
                     </div>
 
-                    <div className="mb-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                    <div className="mb-3 rounded-xl bg-zinc-950/35 p-2.5">
                         <div className="text-sm font-medium">Faction limits (active tier: T{tier})</div>
-
-                        {activeFactionLimits.length === 0 ? (
-                            <div className="mt-2 text-xs text-zinc-500">No active limits for this tier.</div>
-                        ) : (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                {activeFactionLimits.map((l, idx) => (
-                                    <span
-                                        key={`${l.tag}_${idx}`}
-                                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200"
-                                    >
-                                        <span className="max-w-[14rem] truncate font-medium" title={l.tag}>
-                                            {l.tag}
-                                        </span>
-                                        <span className="shrink-0">: {l.active}</span>
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-
-                        <details className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900 p-2">
-                            <summary className="cursor-pointer text-xs text-zinc-300">Show all available limits ({factionLimits.length})</summary>
-                            <div className="mt-2 grid gap-1.5">
-                                {factionLimits.map((l, idx) => (
-                                    <div key={`${l.tag}_all_${idx}`} className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                                        <span className="max-w-[15rem] break-words font-medium text-zinc-200">{l.tag}</span>
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T1: {l.tier1 ?? '-'}</span>
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T2: {l.tier2 ?? '-'}</span>
-                                        <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-zinc-400">T3: {l.tier3 ?? '-'}</span>
-                                    </div>
-                                ))}
-                                {factionLimits.length === 0 ? <div className="text-xs text-zinc-500">No limits.</div> : null}
-                            </div>
-                        </details>
+                        <FactionLimitsTable limits={factionLimits} activeTier={tier} />
                     </div>
 
                     {loadingGoals && <div className="text-xs text-zinc-400">Loading...</div>}
 
                     {!loadingGoals && !goalsSet && (
-                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                        <div className="rounded-xl bg-amber-500/10 p-3 text-sm text-amber-200">
                             No active goal set for this army.
                         </div>
                     )}
 
                     {!loadingGoals && goalsSet && (
                         <>
-                            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-300">
+                            <div className="rounded-xl bg-zinc-950/35 p-2.5 text-xs text-zinc-300">
                                 <div>
                                     Set: <span className="font-semibold text-zinc-200">{goalsSet.name}</span>
                                 </div>
                                 <div className="mt-1">
                                     Current army tier: <span className="font-semibold text-zinc-200">T{currentTier}</span>
                                 </div>
-                                <div className="mt-2 flex gap-2 text-[11px] text-zinc-400">
+                                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-zinc-400">
                                     {[1, 2, 3].map((t) => (
-                                        <span key={t} className="rounded-full border border-zinc-800 bg-zinc-900 px-2 py-0.5">
+                                        <span key={t} className="rounded-full bg-zinc-900/70 px-2 py-0.5">
                       T{t}: {doneInTier(t as 1 | 2 | 3)}/{goalsByTier[t as 1 | 2 | 3].length} completed
                     </span>
                                     ))}
@@ -1884,7 +1990,7 @@ function ArmyDashboardClientInner({
                                                 const filled = g.ticks;
                                                 const total = g.target;
                                                 return (
-                                                    <div key={g.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                                                    <div key={g.id} className="rounded-xl bg-zinc-950/45 p-2">
                                                         <div className="flex items-start justify-between gap-3">
                                                             <div className="min-w-0">
                                                                 <div className="text-sm text-zinc-100">{g.description}</div>
@@ -1928,7 +2034,7 @@ function ArmyDashboardClientInner({
 
             {/* TURF */}
             {tab === 'TURF' && (
-                <section className="mt-3 vault-panel p-3">
+                <section className="mt-3">
                     <div className="text-sm font-medium">Home Turf</div>
 
                     <div className="mt-3">
@@ -1953,14 +2059,14 @@ function ArmyDashboardClientInner({
                     </div>
 
                     {selectedHazard ? (
-                        <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                        <div className="mt-3 rounded-xl bg-zinc-950/40 p-3">
                             <div className="mb-2 text-sm font-medium text-zinc-100">{selectedHazard.name}</div>
                             <RuleDescription text={selectedHazard.description} />
                         </div>
                     ) : null}
 
                     {!selectedHazard && hazardLegacy.trim() ? (
-                        <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                        <div className="mt-3 rounded-xl bg-amber-500/10 p-3">
                             <div className="mb-1 text-xs font-semibold uppercase tracking-[0.08em] text-amber-200">
                                 Legacy hazard text
                             </div>
@@ -1986,7 +2092,7 @@ function ArmyDashboardClientInner({
                                 return (
                                     <div
                                         key={f.id}
-                                        className="rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-3 transition-colors"
+                                        className="rounded-xl bg-emerald-500/10 p-3 transition-colors ring-1 ring-emerald-500/35"
                                     >
                                         <div className="mb-2 flex items-start justify-between gap-2">
                                             <div className="text-sm font-medium text-zinc-100">{f.name}</div>
@@ -2010,7 +2116,7 @@ function ArmyDashboardClientInner({
                         </div>
 
                         {legacyFacilities.length > 0 ? (
-                            <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                            <div className="mt-3 rounded-xl bg-amber-500/10 p-3">
                                 <div className="text-xs font-semibold uppercase tracking-[0.08em] text-amber-200">
                                     Legacy facilities
                                 </div>
@@ -2018,7 +2124,7 @@ function ArmyDashboardClientInner({
                                     {legacyFacilities.map((f) => (
                                         <div
                                             key={f.id}
-                                            className="flex items-center justify-between rounded-lg border border-amber-400/40 bg-zinc-950/50 px-3 py-2"
+                                            className="flex items-center justify-between rounded-lg bg-zinc-950/55 px-3 py-2"
                                         >
                                             <div className="text-sm text-zinc-200">{f.name}</div>
                                             <button
@@ -2035,6 +2141,90 @@ function ArmyDashboardClientInner({
                         ) : null}
                     </div>
                 </section>
+            )}
+
+            {resourceEditorKind && (
+                <div className="fixed inset-0 z-30 overflow-x-hidden">
+                    <button aria-label="Close" onClick={closeResourceEditor} className="absolute inset-0 bg-black/60" />
+                    <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-screen-sm rounded-t-3xl border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
+                        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                            <div>
+                                <div className="text-sm font-semibold">{RESOURCE_META[resourceEditorKind].label}</div>
+                                <div className="text-[11px] text-zinc-500">{RESOURCE_META[resourceEditorKind].hint}</div>
+                            </div>
+                            <button
+                                onClick={closeResourceEditor}
+                                className="rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300"
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-[44px_minmax(0,1fr)_44px] items-center gap-2">
+                            <button
+                                type="button"
+                                className="h-11 w-11 rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-bold"
+                                onClick={() => shiftResourceDraft(-1)}
+                                aria-label={`Decrease ${RESOURCE_META[resourceEditorKind].label}`}
+                            >
+                                -
+                            </button>
+                            <input
+                                inputMode="numeric"
+                                min={0}
+                                value={resourceDraft}
+                                onChange={(e) => setResourceDraft(String(Math.max(0, n(e.target.value, totals[resourceEditorKind]))))}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void saveResourceEditor();
+                                    }
+                                }}
+                                className="h-11 rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-center text-xl font-semibold tabular-nums"
+                            />
+                            <button
+                                type="button"
+                                className="h-11 w-11 rounded-xl border border-zinc-700 bg-zinc-900 text-xl font-bold"
+                                onClick={() => shiftResourceDraft(1)}
+                                aria-label={`Increase ${RESOURCE_META[resourceEditorKind].label}`}
+                            >
+                                +
+                            </button>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                            {RESOURCE_META[resourceEditorKind].quick.map((d) => (
+                                <button
+                                    key={`${resourceEditorKind}_${d}`}
+                                    type="button"
+                                    className="h-7 min-w-[3.25rem] rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-[11px] font-medium"
+                                    onClick={() => shiftResourceDraft(d)}
+                                >
+                                    {d > 0 ? `+${d}` : d}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={closeResourceEditor}
+                                className="h-11 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void saveResourceEditor()}
+                                disabled={busy === resourceEditorKind}
+                                className="h-11 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-40"
+                            >
+                                {busy === resourceEditorKind ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {facilityPickerOpen && (

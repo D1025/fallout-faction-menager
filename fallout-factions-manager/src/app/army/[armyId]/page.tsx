@@ -114,9 +114,18 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         };
 
         const bonus: BonusMap = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
+        const bonusPositive: BonusMap = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
+        const bonusNegative: BonusMap = { HP: 0, S: 0, P: 0, E: 0, C: 0, I: 0, A: 0, L: 0 };
         for (const up of u.upgrades) {
-            if (up.statKey === 'hp') bonus.HP += up.delta;
-            else if (isBonusKey(up.statKey)) bonus[up.statKey] += up.delta;
+            if (up.statKey === 'hp') {
+                bonus.HP += up.delta;
+                if (up.delta > 0) bonusPositive.HP += up.delta;
+                else if (up.delta < 0) bonusNegative.HP += Math.abs(up.delta);
+            } else if (isBonusKey(up.statKey)) {
+                bonus[up.statKey] += up.delta;
+                if (up.delta > 0) bonusPositive[up.statKey] += up.delta;
+                else if (up.delta < 0) bonusNegative[up.statKey] += Math.abs(up.delta);
+            }
         }
 
         const weapons = u.weapons.map((w) => {
@@ -173,6 +182,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             temporaryLeader: (u as unknown as { temporaryLeader?: boolean }).temporaryLeader ?? false,
             base,
             bonus,
+            bonusPositive,
+            bonusNegative,
             wounds: u.wounds,
             present: u.present,
             upgradesCount: u.upgrades.length,
