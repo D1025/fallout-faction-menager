@@ -114,6 +114,9 @@ model Army {
   publicShare ArmyPublicShare?
   chems    ArmyChem[]
   HomeTurf HomeTurf?
+  playedOpponents ArmyPlayed[] @relation("ArmyPlayedList")
+  appearsInPlayedBy ArmyPlayed[] @relation("ArmyPlayedOpponent")
+  captivesTaken UnitInstance[] @relation("CapturedByArmy")
 }
 
 model ArmyGoalProgress {
@@ -143,6 +146,23 @@ model ArmyShare {
   user User @relation(fields: [userId], references: [id])
 
   @@unique([armyId, userId])
+}
+
+model ArmyPlayed {
+  id            String   @id @default(cuid())
+  armyId        String
+  opponentArmyId String
+  boxesTotal    Int      @default(3)
+  boxesChecked  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  army         Army @relation("ArmyPlayedList", fields: [armyId], references: [id], onDelete: Cascade)
+  opponentArmy Army @relation("ArmyPlayedOpponent", fields: [opponentArmyId], references: [id], onDelete: Cascade)
+
+  @@unique([armyId, opponentArmyId])
+  @@index([armyId])
+  @@index([opponentArmyId])
 }
 
 model ArmyPublicShare {
@@ -398,6 +418,8 @@ model UnitInstance {
   unitId     String
   optionId   String?
   displayOrder Int    @default(0)
+  capturedByArmyId String?
+  capturedAt DateTime?
 
   wounds     Int      @default(0)
   present    Boolean  @default(true)
@@ -409,6 +431,7 @@ model UnitInstance {
   updatedAt  DateTime @updatedAt
 
   army           Army           @relation(fields: [armyId], references: [id])
+  capturedByArmy Army?          @relation("CapturedByArmy", fields: [capturedByArmyId], references: [id], onDelete: SetNull)
   unit           UnitTemplate   @relation(fields: [unitId], references: [id])
   selectedOption UnitWeaponOption? @relation("SelectedOption", fields: [optionId], references: [id])
   // Selected perks on an instance (without SPECIAL upgrades)
@@ -421,6 +444,7 @@ model UnitInstance {
 
   @@index([armyId])
   @@index([armyId, displayOrder])
+  @@index([capturedByArmyId])
   @@index([unitId])
   @@index([optionId])
 }

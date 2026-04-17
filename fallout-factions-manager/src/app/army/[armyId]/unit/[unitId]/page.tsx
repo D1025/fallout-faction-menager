@@ -13,10 +13,81 @@ function isStatKey(x: string): x is StatKey {
     return x === 'hp' || x === 'S' || x === 'P' || x === 'E' || x === 'C' || x === 'I' || x === 'A' || x === 'L';
 }
 
+type UnitPerkRow = {
+    id: string;
+    name: string;
+    description: string | null;
+    isInnate?: boolean | null;
+    statKey?: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | null;
+    minValue?: number | null;
+};
+
+type UnitDetailRow = {
+    id: string;
+    armyId: string;
+    present: boolean;
+    wounds: number;
+    photoPath: string | null;
+    photoEtag?: string | null;
+    temporaryLeader?: boolean;
+    capturedByArmyId?: string | null;
+    capturedAt?: Date | null;
+    army: { ownerId: string };
+    unit: {
+        id: string;
+        name: string;
+        roleTag: string | null;
+        isLeader: boolean;
+        hp: number;
+        s: number;
+        p: number;
+        e: number;
+        c: number;
+        i: number;
+        a: number;
+        l: number;
+        baseRating: number | null;
+        startPerks: Array<{ perk: UnitPerkRow }>;
+    } | null;
+    upgrades: Array<{ id: string; statKey: string; delta: number; at: Date }>;
+    weapons: Array<{ id: string; templateId: string; activeMods: string[] }>;
+    capturedByArmy: { id: string; name: string; faction: { name: string } } | null;
+    chosenPerks: Array<{ id: string; perk: UnitPerkRow }>;
+};
+
+type WeaponTemplateUnitRow = {
+    id: string;
+    name: string;
+    baseType: string;
+    baseTest: string;
+    baseParts: number | null;
+    baseEffects: Array<{
+        effectId: string;
+        valueInt: number | null;
+        valueText?: string | null;
+        effect: { name: string; kind: 'WEAPON' | 'CRITICAL' | string };
+    }>;
+    profiles: Array<{
+        id: string;
+        typeOverride: string | null;
+        testOverride: string | null;
+        partsOverride: number | null;
+        ratingDelta: number | null;
+        effects: Array<{
+            effectId: string;
+            valueInt: number | null;
+            valueText?: string | null;
+            effectMode?: 'ADD' | 'REMOVE';
+            effect: { name: string; kind: 'WEAPON' | 'CRITICAL' | string };
+        }>;
+    }>;
+};
+
 export default async function Page({ params }: { params: Promise<{ armyId: string; unitId: string }> }) {
     const { unitId } = await params;
     const session = await auth();
     const userId = session?.user?.id;
+    if (!userId) return <div className="p-4 text-red-300">Unauthorized.</div>;
     const userMeta = userId
         ? await prisma.user.findUnique({
             where: { id: userId },
@@ -26,9 +97,10 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
     const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
-    const unit = await prisma.unitInstance.findUnique({
+    const unit = await prisma.unitInstance.findUnique(({
         where: { id: unitId },
         include: {
+            army: { select: { ownerId: true } },
             unit: {
                 select: {
                     id: true,
@@ -49,26 +121,81 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             },
             upgrades: true,
             weapons: true,
+            capturedByArmy: {
+                select: {
+                    id: true,
+                    name: true,
+                    faction: { select: { name: true } },
+                },
+            },
             chosenPerks: {
                 select: { id: true, perk: { select: { id: true, name: true, description: true, isInnate: true, statKey: true, minValue: true } } },
                 orderBy: { perkId: 'asc' },
             },
         },
-    });
+    }) as unknown as Parameters<typeof prisma.unitInstance.findUnique>[0]) as unknown as UnitDetailRow | null;
     if (!unit) return <div className="p-4 text-red-300">Unit not found.</div>;
+
+    const share = unit.army.ownerId === userId
+        ? null
+        : await prisma.armyShare.findFirst({
+            where: { armyId: unit.armyId, userId },
+            select: { perm: true },
+        });
+    const hasReadAccess = unit.army.ownerId === userId || Boolean(share);
+    if (!hasReadAccess) return <div className="p-4 text-red-300">You do not have access to this unit.</div>;
+    const canWrite = unit.army.ownerId === userId || share?.perm === 'WRITE';
+
+    const captureTargets = canWrite
+        ? (
+            (await prisma.armyShare.findMany({
+                where: { userId },
+                include: {
+                    army: {
+                        select: {
+                            id: true,
+                            name: true,
+                            faction: { select: { name: true } },
+                            owner: { select: { id: true, name: true, photoEtag: true } },
+                        },
+                    },
+                },
+                orderBy: { createdAt: 'asc' },
+            })) as Array<{
+                army: {
+                    id: string;
+                    name: string;
+                    faction: { name: string };
+                    owner: { id: string; name: string; photoEtag: string | null };
+                };
+            }>
+        )
+            .map((row) => row.army)
+            .filter((a) => a.id !== unit.armyId)
+            .map((a) => ({
+                armyId: a.id,
+                armyName: a.name,
+                factionName: a.faction.name,
+                owner: {
+                    id: a.owner.id,
+                    name: a.owner.name,
+                    photoEtag: a.owner.photoEtag,
+                },
+            }))
+        : [];
 
     // fetch weapon templates + profiles + base effects
     const templateIds = unit.weapons.map((w) => w.templateId);
     const templates = templateIds.length
-        ? await prisma.weaponTemplate.findMany({
+        ? ((await prisma.weaponTemplate.findMany(({
             where: { id: { in: templateIds } },
             include: {
                 baseEffects: { include: { effect: true } },
                 profiles: { include: { effects: { include: { effect: true } } }, orderBy: { order: 'asc' } },
             },
-        })
-        : [];
-    const byId = new Map(templates.map((t) => [t.id, t]));
+        }) as unknown as Parameters<typeof prisma.weaponTemplate.findMany>[0])) as unknown as WeaponTemplateUnitRow[])
+        : ([] as WeaponTemplateUnitRow[]);
+    const byId = new Map<string, WeaponTemplateUnitRow>(templates.map((t) => [t.id, t]));
 
     // weapon UI: each profile is an effective row (base + override)
     const weapons = unit.weapons.map((w) => {
@@ -173,6 +300,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     ]
                         // deduplicate by perk id
                         .filter((p, idx, arr) => arr.findIndex((x) => x.id === p.id) === idx)}
+                    canManageCapture={canWrite}
+                    captureTargets={captureTargets}
+                    captureStatus={{
+                        capturedByArmyId: (unit as unknown as { capturedByArmyId?: string | null }).capturedByArmyId ?? null,
+                        capturedAt: (unit as unknown as { capturedAt?: Date | null }).capturedAt?.toISOString() ?? null,
+                    }}
                 />
         </MobilePageShell>
     );

@@ -12,6 +12,94 @@ function isBonusKey(k: string): k is Exclude<BonusKeys, 'HP'> {
     return k === 'S' || k === 'P' || k === 'E' || k === 'C' || k === 'I' || k === 'A' || k === 'L';
 }
 
+type ArmyPerkRow = {
+    id: string;
+    name: string;
+    description: string | null;
+};
+
+type ArmyUnitTemplateRow = {
+    name: string;
+    roleTag: string | null;
+    hp: number;
+    s: number;
+    p: number;
+    e: number;
+    c: number;
+    i: number;
+    a: number;
+    l: number;
+    baseRating: number | null;
+    isLeader?: boolean;
+    startPerks: Array<{ perk: ArmyPerkRow }>;
+};
+
+type ArmyUnitRow = {
+    id: string;
+    wounds: number;
+    present: boolean;
+    photoPath: string | null;
+    photoEtag?: string | null;
+    temporaryLeader?: boolean;
+    capturedAt?: Date | null;
+    unit: ArmyUnitTemplateRow;
+    upgrades: Array<{ statKey: string; delta: number }>;
+    weapons: Array<{ templateId: string; activeMods: string[] }>;
+    selectedOption: { rating: number | null } | null;
+    capturedByArmy: { id: string; name: string; faction: { name: string } } | null;
+    chosenPerks: Array<{ perk: ArmyPerkRow }>;
+};
+
+type ArmyPageData = {
+    id: string;
+    name: string;
+    tier: number;
+    factionId: string;
+    caps: number;
+    parts: number;
+    scout: number;
+    reach: number;
+    exp: number;
+    ploys: number;
+    ownerId: string;
+    subfactionId: string | null;
+    faction: {
+        id: string;
+        name: string;
+        limits: Array<{ tag: string; tier1: number | null; tier2: number | null; tier3: number | null }>;
+    };
+    units: ArmyUnitRow[];
+};
+
+type WeaponTemplateRow = {
+    id: string;
+    name: string;
+    baseType: string;
+    baseTest: string;
+    baseEffects: Array<{
+        id?: string;
+        effectId: string;
+        valueInt: number | null;
+        valueText?: string | null;
+        effect: { name: string; kind: 'WEAPON' | 'CRITICAL' | string };
+    }>;
+    profiles: Array<{
+        id: string;
+        typeOverride: string | null;
+        testOverride: string | null;
+        ratingDelta: number | null;
+        parts?: number | null;
+        effects: Array<{
+            id?: string;
+            effectId: string;
+            valueInt: number | null;
+            valueText?: string | null;
+            effectMode?: 'ADD' | 'REMOVE';
+            effect: { name: string; kind: 'WEAPON' | 'CRITICAL' | string };
+        }>;
+    }>;
+};
+
 export default async function Page({ params }: { params: Promise<{ armyId: string }> }) {
     const { armyId } = await params;
     const session = await auth();
@@ -26,7 +114,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const userName = userMeta?.name ?? session?.user?.name ?? 'Commander';
     const userRole = (userMeta?.role ?? session?.user?.role ?? 'USER') as 'USER' | 'ADMIN';
 
-    const army = await prisma.army.findUnique({
+    const army = await prisma.army.findUnique(({
         where: { id: armyId },
         include: {
             faction: {
@@ -49,6 +137,13 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     upgrades: true,
                     weapons: true,
                     selectedOption: true,
+                    capturedByArmy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            faction: { select: { name: true } },
+                        },
+                    },
                     chosenPerks: {
                         select: { perk: { select: { id: true, name: true, description: true } } },
                         orderBy: { perkId: 'asc' },
@@ -57,7 +152,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
             },
         },
-    });
+    }) as unknown as Parameters<typeof prisma.army.findUnique>[0]) as unknown as ArmyPageData | null;
 
     if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
 
@@ -79,24 +174,24 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const rules = await prisma.factionUpgradeRule.findMany({
         where: { factionId: army.factionId },
         select: { statKey: true, ratingPerPoint: true },
-    });
+    }) as Array<{ statKey: string; ratingPerPoint: number }>;
     const ruleByKey = new Map<string, number>(rules.map((r) => [r.statKey, r.ratingPerPoint]));
 
     const allTemplateIds = Array.from(new Set(army.units.flatMap((u) => u.weapons.map((w) => w.templateId))));
     const templates =
         allTemplateIds.length > 0
-            ? await prisma.weaponTemplate.findMany({
+            ? await prisma.weaponTemplate.findMany(({
                 where: { id: { in: allTemplateIds } },
                 include: {
                     baseEffects: { include: { effect: true } },
                     profiles: { include: { effects: { include: { effect: true } } }, orderBy: { order: 'asc' } },
                 },
-            })
-            : [];
-    const weaponById = new Map(templates.map((t) => [t.id, t]));
+            }) as unknown as Parameters<typeof prisma.weaponTemplate.findMany>[0]) as unknown as WeaponTemplateRow[]
+            : ([] as WeaponTemplateRow[]);
+    const weaponById = new Map<string, WeaponTemplateRow>(templates.map((t) => [t.id, t]));
 
     const unitsArr = army.units;
-    type UnitRow = (typeof unitsArr)[number];
+    type UnitRow = ArmyUnitRow;
 
     function unitRating(u: UnitRow): number {
         const baseFromTemplate = u.unit.baseRating ?? 0;
@@ -230,6 +325,14 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             photoPath: u.photoPath ?? null,
             hasPhoto: Boolean((u as unknown as { photoEtag?: string | null }).photoEtag || u.photoPath),
             rating: unitRating(u),
+            capturedByArmy: u.capturedByArmy
+                ? {
+                    id: u.capturedByArmy.id,
+                    name: u.capturedByArmy.name,
+                    factionName: u.capturedByArmy.faction.name,
+                }
+                : null,
+            capturedAt: (u as unknown as { capturedAt?: Date | null }).capturedAt?.toISOString() ?? null,
             weapons,
         };
     });

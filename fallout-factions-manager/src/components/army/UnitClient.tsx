@@ -46,6 +46,18 @@ type Perk = {
     description?: string;
 };
 
+type CaptureTarget = {
+    armyId: string;
+    armyName: string;
+    factionName: string;
+    owner: { id: string; name: string; photoEtag: string | null };
+};
+
+type CaptureStatus = {
+    capturedByArmyId: string | null;
+    capturedAt: string | null;
+};
+
 type UnitTemplateTag = 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
 
 function normalizeRoleTag(tag: string | null | undefined): UnitTemplateTag | null {
@@ -115,6 +127,9 @@ export function UnitClient({
     hasPhoto,
     startPerkNames,
     ownedPerks,
+    captureTargets,
+    captureStatus,
+    canManageCapture = false,
 }: {
     unitId: string;
     armyId: string;
@@ -131,6 +146,9 @@ export function UnitClient({
     hasPhoto?: boolean;
     startPerkNames?: string[];
     ownedPerks?: Array<{ id: string; name: string; description: string; isInnate: boolean; statKey?: SpecialStatKey | null; minValue?: number | null }>;
+    captureTargets?: CaptureTarget[];
+    captureStatus?: CaptureStatus;
+    canManageCapture?: boolean;
 }) {
     const router = useRouter();
     const armyDirtyStorageKey = `ffm:army:dirty:${armyId}`;
@@ -156,6 +174,45 @@ export function UnitClient({
         router.refresh();
     }
 
+    async function saveCapture(nextCapturedByArmyId: string | null): Promise<boolean> {
+        if (!canManageCapture) return false;
+        const prev = captureState;
+        setSavingCapture(true);
+        try {
+            const res = await fetch(`/api/units/${unitId}/capture`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ capturedByArmyId: nextCapturedByArmyId }),
+            });
+            if (!res.ok) {
+                notifyApiError(await res.text().catch(() => 'Failed to save captive state'));
+                setCaptureState(prev);
+                return false;
+            }
+            const payload = (await res.json().catch(() => null)) as { capturedByArmyId?: string | null; capturedAt?: string | null } | null;
+            const nextState: CaptureStatus = {
+                capturedByArmyId: payload?.capturedByArmyId ?? nextCapturedByArmyId,
+                capturedAt: payload?.capturedAt ?? (nextCapturedByArmyId ? new Date().toISOString() : null),
+            };
+            setCaptureState(nextState);
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(armyDirtyStorageKey, String(Date.now()));
+            }
+            router.refresh();
+            return true;
+        } catch {
+            setCaptureState(prev);
+            notifyApiError('Failed to save captive state');
+            return false;
+        } finally {
+            setSavingCapture(false);
+        }
+    }
+
+    async function clearCapture() {
+        await saveCapture(null);
+    }
+
     // cache-busting: after photo updates, the browser may keep an old image from cache
     const [photoBuster, setPhotoBuster] = useState<number>(0);
     const [hasPhotoState, setHasPhotoState] = useState(Boolean(hasPhoto));
@@ -170,12 +227,29 @@ export function UnitClient({
     const photoSrc = hasPhotoState ? `${photoSrcBase}?v=${photoBuster}` : null;
     const [photoMissing, setPhotoMissing] = useState(false);
     const [activeUpgrades, setActiveUpgrades] = useState<UpgradeUI[]>(upgrades);
+    const [captureState, setCaptureState] = useState<CaptureStatus>({
+        capturedByArmyId: captureStatus?.capturedByArmyId ?? null,
+        capturedAt: captureStatus?.capturedAt ?? null,
+    });
+    const [savingCapture, setSavingCapture] = useState(false);
+    const [capturePickerOpen, setCapturePickerOpen] = useState(false);
+    const [captureSearch, setCaptureSearch] = useState('');
     useEffect(() => {
         setPhotoMissing(false);
     }, [photoBuster, unitId, hasPhotoState]);
     useEffect(() => {
         setActiveUpgrades(upgrades);
     }, [upgrades]);
+    useEffect(() => {
+        setCaptureState({
+            capturedByArmyId: captureStatus?.capturedByArmyId ?? null,
+            capturedAt: captureStatus?.capturedAt ?? null,
+        });
+    }, [captureStatus?.capturedAt, captureStatus?.capturedByArmyId]);
+    useEffect(() => {
+        if (capturePickerOpen) return;
+        setCaptureSearch('');
+    }, [capturePickerOpen]);
 
     useEffect(() => {
         if (hasPhotoState) return;
@@ -807,6 +881,21 @@ export function UnitClient({
     const normalizedTag = useMemo(() => normalizeRoleTag(roleTag), [roleTag]);
     const positiveUpgrades = useMemo(() => activeUpgrades.filter((u) => u.delta >= 0), [activeUpgrades]);
     const woundUpgrades = useMemo(() => activeUpgrades.filter((u) => u.delta < 0), [activeUpgrades]);
+    const captureTargetById = useMemo(() => {
+        const map = new Map<string, CaptureTarget>();
+        for (const t of captureTargets ?? []) map.set(t.armyId, t);
+        return map;
+    }, [captureTargets]);
+    const activeCaptureTarget = captureState.capturedByArmyId ? captureTargetById.get(captureState.capturedByArmyId) ?? null : null;
+    const filteredCaptureTargets = useMemo(() => {
+        const query = captureSearch.trim().toLowerCase();
+        const items = captureTargets ?? [];
+        if (!query) return items;
+        return items.filter((t) => {
+            const haystack = `${t.armyName} ${t.factionName} ${t.owner.name}`.toLowerCase();
+            return haystack.includes(query);
+        });
+    }, [captureTargets, captureSearch]);
 
     return (
         <div className="space-y-3">
@@ -847,6 +936,11 @@ export function UnitClient({
                             {tmpLeader ? (
                                 <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
                                     CREW LEADER
+                                </span>
+                            ) : null}
+                            {captureState.capturedByArmyId ? (
+                                <span className="inline-flex items-center rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-200">
+                                    CAPTURED
                                 </span>
                             ) : null}
                         </div>
@@ -1085,6 +1179,60 @@ export function UnitClient({
                 </div>
             </section>
 
+            {/* Captured (rare action at bottom) */}
+            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium">Captured</div>
+                    {captureState.capturedByArmyId ? (
+                        <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200">
+                            ACTIVE
+                        </span>
+                    ) : (
+                        <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-400">
+                            NOT CAPTURED
+                        </span>
+                    )}
+                </div>
+
+                <div className="mt-2 rounded-xl bg-zinc-950/55 p-2.5">
+                    <div className="text-xs text-zinc-300">
+                        {captureState.capturedByArmyId
+                            ? activeCaptureTarget
+                                ? `${activeCaptureTarget.armyName} (${activeCaptureTarget.factionName}) | ${activeCaptureTarget.owner.name}`
+                                : 'Captured army selected'
+                            : 'Unit is currently not captured'}
+                    </div>
+                    {captureState.capturedAt ? (
+                        <div className="mt-1 text-[11px] text-zinc-500">
+                            Captured at: {new Date(captureState.capturedAt).toLocaleString()}
+                        </div>
+                    ) : null}
+
+                    {canManageCapture ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setCapturePickerOpen(true)}
+                                disabled={savingCapture || (captureTargets ?? []).length === 0}
+                                className="h-9 rounded-xl bg-emerald-500 px-3 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                            >
+                                {captureState.capturedByArmyId ? 'Change captor army' : 'Set captured army'}
+                            </button>
+                            {captureState.capturedByArmyId ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void clearCapture()}
+                                    disabled={savingCapture}
+                                    className="h-9 rounded-xl bg-red-900/25 px-3 text-xs font-semibold text-red-200 disabled:opacity-50"
+                                >
+                                    {savingCapture ? 'Saving...' : 'Cancel capture'}
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </div>
+            </section>
+
             {perkPickerOpen && (
                 <div className="fixed inset-0 z-30 overflow-x-hidden">
                     <button
@@ -1217,6 +1365,105 @@ export function UnitClient({
                                     );
                                 })}
                                 {filteredPerks.length === 0 ? <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">No perks for current filters.</div> : null}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {capturePickerOpen && (
+                <div className="fixed inset-0 z-30 overflow-x-hidden">
+                    <button
+                        aria-label="Close"
+                        onClick={() => setCapturePickerOpen(false)}
+                        className="absolute inset-0 bg-black/60"
+                    />
+
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[72dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl bg-zinc-900 shadow-xl">
+                        <div className="p-4 pb-3">
+                            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
+                            <div className="flex items-start justify-between gap-2">
+                                <div>
+                                    <div className="text-sm font-semibold">Set captured army</div>
+                                    <div className="mt-0.5 text-[11px] text-zinc-400">Select one army from your shared list.</div>
+                                </div>
+                                <button
+                                    onClick={() => setCapturePickerOpen(false)}
+                                    className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            <div className="mt-3">
+                                <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
+                                    <SearchOutlined className="text-zinc-400" />
+                                    <input
+                                        value={captureSearch}
+                                        onChange={(e) => setCaptureSearch(e.target.value)}
+                                        className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                        placeholder="Search army..."
+                                    />
+                                    {captureSearch && (
+                                        <button
+                                            onClick={() => setCaptureSearch('')}
+                                            className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
+                                            aria-label="Clear"
+                                        >
+                                            <CloseOutlined />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                            <div className="grid gap-2">
+                                {filteredCaptureTargets.map((t) => {
+                                    const ownerPhotoSrc = t.owner.photoEtag
+                                        ? `/api/users/${t.owner.id}/photo/file?v=${t.owner.photoEtag}`
+                                        : null;
+                                    return (
+                                        <div key={t.armyId} className="rounded-xl bg-zinc-950 p-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex items-center gap-2">
+                                                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-zinc-900">
+                                                        {ownerPhotoSrc ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img src={ownerPhotoSrc} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                        ) : (
+                                                            <div className="grid h-full w-full place-items-center text-[11px] font-semibold text-zinc-300">
+                                                                {(t.owner.name[0] ?? '?').toUpperCase()}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="truncate font-medium">{t.armyName}</div>
+                                                        <div className="truncate text-[11px] text-zinc-400">
+                                                            {t.factionName} | from {t.owner.name}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        void (async () => {
+                                                            const ok = await saveCapture(t.armyId);
+                                                            if (ok) setCapturePickerOpen(false);
+                                                        })();
+                                                    }}
+                                                    disabled={savingCapture}
+                                                    className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                                                >
+                                                    {savingCapture ? 'Saving...' : 'Set'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {filteredCaptureTargets.length === 0 ? (
+                                    <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">No shared armies for current search.</div>
+                                ) : null}
                             </div>
                         </div>
                     </div>

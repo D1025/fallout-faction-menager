@@ -65,6 +65,8 @@ type UnitListItem = {
     photoPath: string | null;
     hasPhoto?: boolean;
     rating: number;
+    capturedByArmy?: { id: string; name: string; factionName: string } | null;
+    capturedAt?: string | null;
 
     weapons: {
         name: string;
@@ -80,7 +82,7 @@ type UnitListItem = {
 };
 
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
-type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF';
+type TabKey = 'OVERVIEW' | 'EDIT' | 'TASKS' | 'TURF' | 'PLAYED';
 type SpecialStatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type WeaponTestHint = { weaponIndex: 0 | 1; stat: SpecialStatKey };
 type PersistedArmyFilters = {
@@ -131,6 +133,33 @@ type HomeTurfResponse = {
     facilities: UITurfDefinition[];
     selectedFacilityIds: string[];
     legacyFacilities: UILegacyFacility[];
+};
+
+type PlayedArmyOwner = {
+    id: string;
+    name: string;
+    photoEtag: string | null;
+};
+
+type PlayedArmyInfo = {
+    id: string;
+    name: string;
+    factionName: string;
+    owner: PlayedArmyOwner;
+};
+
+type PlayedArmyEntry = {
+    id: string;
+    boxesTotal: number;
+    boxesChecked: number;
+    opponentArmy: PlayedArmyInfo;
+};
+
+type CapturedUnitByUs = {
+    unitId: string;
+    unitName: string;
+    ownerArmy: PlayedArmyInfo;
+    capturedAt: string | null;
 };
 
 type PopPos = { top: number; left: number; maxWidth: number };
@@ -365,6 +394,19 @@ function ArmyDashboardClientInner({
     const [showOwnedChemsOnly, setShowOwnedChemsOnly] = useState(false);
     const [resourceEditorKind, setResourceEditorKind] = useState<CoreKind | null>(null);
     const [resourceDraft, setResourceDraft] = useState<string>('');
+    const [playedEntries, setPlayedEntries] = useState<PlayedArmyEntry[]>([]);
+    const [sharedCandidates, setSharedCandidates] = useState<PlayedArmyInfo[]>([]);
+    const [capturedByUs, setCapturedByUs] = useState<CapturedUnitByUs[]>([]);
+    const [loadingPlayed, setLoadingPlayed] = useState(false);
+    const [playedLoaded, setPlayedLoaded] = useState(false);
+    const [playedBoxesTotal, setPlayedBoxesTotal] = useState(3);
+    const [playedBoxesDraft, setPlayedBoxesDraft] = useState('3');
+    const [showAddPlayedSheet, setShowAddPlayedSheet] = useState(false);
+    const [addingPlayed, setAddingPlayed] = useState(false);
+    const [syncingPlayedBoxes, setSyncingPlayedBoxes] = useState(false);
+    const [savingPlayedId, setSavingPlayedId] = useState<string | null>(null);
+    const [deletingPlayedId, setDeletingPlayedId] = useState<string | null>(null);
+    const [releasingUnitId, setReleasingUnitId] = useState<string | null>(null);
 
     useEffect(() => setTotals(resources), [resources]);
     useEffect(() => setOrderedUnits(units), [units]);
@@ -383,6 +425,10 @@ function ArmyDashboardClientInner({
         setAdding(false);
         setResourceEditorKind(null);
     }, [readOnly]);
+
+    useEffect(() => {
+        setPlayedBoxesDraft(String(playedBoxesTotal));
+    }, [playedBoxesTotal]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -747,6 +793,12 @@ function ArmyDashboardClientInner({
             return true;
         });
     }, [filter, orderedUnits, groups, hideInactive, presentById]);
+
+    const usedPlayedArmyIds = useMemo(() => new Set(playedEntries.map((x) => x.opponentArmy.id)), [playedEntries]);
+    const availableSharedCandidates = useMemo(
+        () => sharedCandidates.filter((x) => !usedPlayedArmyIds.has(x.id)),
+        [sharedCandidates, usedPlayedArmyIds],
+    );
 
     function FactionLimitsTable({ limits, activeTier }: { limits: UIFactionLimit[]; activeTier: number }) {
         const thCls = (t: 1 | 2 | 3) =>
@@ -1439,6 +1491,11 @@ function ArmyDashboardClientInner({
                                 ABSENT
                             </span>
                         ) : null}
+                        {u.capturedByArmy ? (
+                            <span className="max-w-[14rem] truncate whitespace-nowrap rounded-full bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-200">
+                                CAPTURED: {u.capturedByArmy.name}
+                            </span>
+                        ) : null}
                     </div>
                     <div
                         className="shrink-0 flex items-center gap-2 text-sm"
@@ -1777,6 +1834,183 @@ function ArmyDashboardClientInner({
         }
     }
 
+    async function loadPlayed(force = false) {
+        if (loadingPlayed) return;
+        if (!force && playedLoaded) return;
+        setLoadingPlayed(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/played`, { cache: 'no-store' });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to load played armies'));
+            const data = (await res.json().catch(() => null)) as
+                | {
+                    played?: PlayedArmyEntry[];
+                    sharedCandidates?: PlayedArmyInfo[];
+                    capturedByUs?: CapturedUnitByUs[];
+                }
+                | null;
+            setPlayedEntries(data?.played ?? []);
+            setSharedCandidates(data?.sharedCandidates ?? []);
+            setCapturedByUs(data?.capturedByUs ?? []);
+            const firstBoxes = data?.played?.[0]?.boxesTotal;
+            if (typeof firstBoxes === 'number' && Number.isFinite(firstBoxes)) {
+                setPlayedBoxesTotal(Math.max(1, Math.min(20, Math.floor(firstBoxes))));
+            }
+            setPlayedLoaded(true);
+        } catch {
+            notifyApiError('Failed to load played armies');
+        } finally {
+            setLoadingPlayed(false);
+        }
+    }
+
+    function clampPlayedBoxes(value: number) {
+        return Math.max(1, Math.min(20, Math.floor(value)));
+    }
+
+    async function setGlobalPlayedBoxes(nextValue: number) {
+        const clamped = clampPlayedBoxes(nextValue);
+        if (clamped === playedBoxesTotal) return;
+
+        const snapshot = playedEntries;
+        setPlayedBoxesTotal(clamped);
+        if (snapshot.length === 0) return;
+
+        setSyncingPlayedBoxes(true);
+        setPlayedEntries((prev) =>
+            prev.map((x) => ({
+                ...x,
+                boxesTotal: clamped,
+                boxesChecked: Math.min(x.boxesChecked, clamped),
+            })),
+        );
+        try {
+            const patched = await Promise.all(
+                snapshot.map(async (entry) => {
+                    const res = await fetch(`/api/armies/${armyId}/played/${entry.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ boxesTotal: clamped }),
+                    });
+                    if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save played boxes'));
+                    const payload = (await res.json().catch(() => null)) as { entry?: PlayedArmyEntry } | null;
+                    if (!payload?.entry) throw new Error('Failed to parse played army row');
+                    return payload.entry;
+                }),
+            );
+            setPlayedEntries(patched);
+        } catch {
+            setPlayedEntries(snapshot);
+            setPlayedBoxesTotal(snapshot[0]?.boxesTotal ?? 3);
+            notifyApiError('Failed to save global boxes');
+        } finally {
+            setSyncingPlayedBoxes(false);
+        }
+    }
+
+    async function addPlayedArmy(opponentArmyId: string) {
+        if (!opponentArmyId) {
+            notifyWarning('Select army first.');
+            return;
+        }
+        setAddingPlayed(true);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/played`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    opponentArmyId,
+                    boxesTotal: clampPlayedBoxes(playedBoxesTotal),
+                }),
+            });
+            if (!res.ok) {
+                throw new Error(await readResponseError(res, 'Failed to add played army'));
+            }
+            const payload = (await res.json().catch(() => null)) as { entry?: PlayedArmyEntry } | null;
+            if (!payload?.entry) {
+                throw new Error('Failed to parse played army row');
+            }
+            setPlayedEntries((prev) => {
+                const idx = prev.findIndex((x) => x.id === payload.entry!.id);
+                if (idx < 0) return [...prev, payload.entry!];
+                const next = [...prev];
+                next[idx] = payload.entry!;
+                return next;
+            });
+            setShowAddPlayedSheet(false);
+        } catch {
+            notifyApiError('Failed to add played army');
+        } finally {
+            setAddingPlayed(false);
+        }
+    }
+
+    async function updatePlayedArmy(entryId: string, patch: { boxesChecked?: number; boxesTotal?: number }) {
+        setSavingPlayedId(entryId);
+        try {
+            const res = await fetch(`/api/armies/${armyId}/played/${entryId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(patch),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save played army'));
+            const payload = (await res.json().catch(() => null)) as { entry?: PlayedArmyEntry } | null;
+            if (!payload?.entry) throw new Error('Failed to parse played army row');
+            setPlayedEntries((prev) => prev.map((x) => (x.id === entryId ? payload.entry! : x)));
+        } catch {
+            notifyApiError('Failed to save played army');
+        } finally {
+            setSavingPlayedId(null);
+        }
+    }
+
+    function deletePlayedArmy(entryId: string) {
+        confirmAction({
+            title: 'Delete played army row?',
+            okText: 'Delete',
+            cancelText: 'Cancel',
+            danger: true,
+            onOk: async () => {
+                setDeletingPlayedId(entryId);
+                try {
+                    const res = await fetch(`/api/armies/${armyId}/played/${entryId}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error(await readResponseError(res, 'Failed to delete played army'));
+                    setPlayedEntries((prev) => prev.filter((x) => x.id !== entryId));
+                } catch {
+                    notifyApiError('Failed to delete played army');
+                    throw new Error('delete failed');
+                } finally {
+                    setDeletingPlayedId(null);
+                }
+            },
+        });
+    }
+
+    function releaseCapturedUnit(unitId: string) {
+        confirmAction({
+            title: 'Release this captured unit?',
+            okText: 'Release',
+            cancelText: 'Cancel',
+            onOk: async () => {
+                setReleasingUnitId(unitId);
+                try {
+                    const res = await fetch(`/api/units/${unitId}/release`, { method: 'POST' });
+                    if (!res.ok) throw new Error(await readResponseError(res, 'Failed to release captured unit'));
+                    setCapturedByUs((prev) => prev.filter((x) => x.unitId !== unitId));
+                } catch {
+                    notifyApiError('Failed to release captured unit');
+                    throw new Error('release failed');
+                } finally {
+                    setReleasingUnitId(null);
+                }
+            },
+        });
+    }
+
+    useEffect(() => {
+        if (tab === 'PLAYED') void loadPlayed();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tab]);
+
     const goalsByTier = useMemo(() => {
         const map: Record<1 | 2 | 3, Goal[]> = { 1: [], 2: [], 3: [] };
         for (const g of goals) map[g.tier].push(g);
@@ -1998,6 +2232,7 @@ function ArmyDashboardClientInner({
         : [
             ['OVERVIEW', 'Overview'],
             ['EDIT', 'Chems'],
+            ['PLAYED', 'Played'],
             ['TASKS', 'Tasks'],
             ['TURF', 'Home Turf'],
         ];
@@ -2036,7 +2271,15 @@ function ArmyDashboardClientInner({
             <div
                 className={
                     'mt-3 grid gap-2 ' +
-                    (availableTabs.length === 1 ? 'grid-cols-1' : availableTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4')
+                    (
+                        availableTabs.length === 1
+                            ? 'grid-cols-1'
+                            : availableTabs.length === 3
+                                ? 'grid-cols-3'
+                                : availableTabs.length === 4
+                                    ? 'grid-cols-4'
+                                    : 'grid-cols-5'
+                    )
                 }
             >
                 {availableTabs.map(([k, label]) => (
@@ -2210,6 +2453,194 @@ function ArmyDashboardClientInner({
                             <ChemCheckboxGroup title="Uncommon chems" items={visibleUncommonChems} />
                         </div>
                     )}
+                </section>
+            )}
+
+            {/* PLAYED / CAPTIVES */}
+            {tab === 'PLAYED' && !readOnly && (
+                <section className="mt-3">
+                    <div className="mb-3 flex items-start justify-between gap-2">
+                        <div>
+                            <div className="text-sm font-medium">Played armies</div>
+                            <div className="text-[11px] text-zinc-500">
+                                One global checkbox size for this army. Add opens the shared-armies list.
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowAddPlayedSheet(true)}
+                            disabled={addingPlayed || availableSharedCandidates.length === 0}
+                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                        >
+                            Add
+                        </button>
+                    </div>
+
+                    <div className="rounded-xl bg-zinc-950/35 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-[11px] uppercase tracking-[0.08em] text-zinc-400">Boxes (global)</div>
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    disabled={syncingPlayedBoxes || playedBoxesTotal <= 1}
+                                    onClick={() => void setGlobalPlayedBoxes(playedBoxesTotal - 1)}
+                                    className="h-7 w-7 rounded-md bg-zinc-900 text-xs text-zinc-300 disabled:opacity-40"
+                                >
+                                    -
+                                </button>
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={20}
+                                    value={playedBoxesDraft}
+                                    onChange={(e) => setPlayedBoxesDraft(e.target.value)}
+                                    onBlur={() => void setGlobalPlayedBoxes(n(playedBoxesDraft, playedBoxesTotal))}
+                                    onKeyDown={(e) => {
+                                        if (e.key !== 'Enter') return;
+                                        e.preventDefault();
+                                        void setGlobalPlayedBoxes(n(playedBoxesDraft, playedBoxesTotal));
+                                    }}
+                                    className="h-7 w-14 rounded-md bg-zinc-900 px-1 text-center text-xs tabular-nums text-zinc-100"
+                                    aria-label="Global checkbox count"
+                                    title="Global checkbox count"
+                                />
+                                <button
+                                    type="button"
+                                    disabled={syncingPlayedBoxes || playedBoxesTotal >= 20}
+                                    onClick={() => void setGlobalPlayedBoxes(playedBoxesTotal + 1)}
+                                    className="h-7 w-7 rounded-md bg-zinc-900 text-xs text-zinc-300 disabled:opacity-40"
+                                >
+                                    +
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-2 grid gap-2">
+                        {loadingPlayed && playedEntries.length === 0 ? (
+                            <div className="text-xs text-zinc-500">Loading played armies...</div>
+                        ) : null}
+                        {playedEntries.map((entry) => {
+                            const rowBusy = syncingPlayedBoxes || savingPlayedId === entry.id || deletingPlayedId === entry.id;
+                            const ownerPhotoSrc = entry.opponentArmy.owner.photoEtag
+                                ? `/api/users/${entry.opponentArmy.owner.id}/photo/file?v=${entry.opponentArmy.owner.photoEtag}`
+                                : null;
+                            return (
+                                <div key={entry.id} className="rounded-xl bg-zinc-950/45 p-2.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-zinc-900">
+                                                {ownerPhotoSrc ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={ownerPhotoSrc} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                ) : (
+                                                    <div className="grid h-full w-full place-items-center text-[11px] font-semibold text-zinc-300">
+                                                        {(entry.opponentArmy.owner.name[0] ?? '?').toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="truncate text-sm font-medium text-zinc-100">{entry.opponentArmy.name}</div>
+                                                <div className="truncate text-[11px] text-zinc-400">
+                                                    {entry.opponentArmy.factionName} | from {entry.opponentArmy.owner.name}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => deletePlayedArmy(entry.id)}
+                                            disabled={rowBusy}
+                                            className="rounded-lg bg-red-900/25 px-2 py-1 text-xs text-red-200 disabled:opacity-50"
+                                        >
+                                            {deletingPlayedId === entry.id ? '...' : 'Delete'}
+                                        </button>
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                        {Array.from({ length: entry.boxesTotal }, (_, i) => {
+                                            const idx = i + 1;
+                                            const checked = idx <= entry.boxesChecked;
+                                            return (
+                                                <button
+                                                    key={`${entry.id}_${idx}`}
+                                                    type="button"
+                                                    disabled={rowBusy}
+                                                    onClick={() => {
+                                                        const nextChecked = checked && entry.boxesChecked === idx ? idx - 1 : idx;
+                                                        void updatePlayedArmy(entry.id, { boxesChecked: nextChecked });
+                                                    }}
+                                                    className={
+                                                        'h-6 w-6 rounded-md text-xs font-semibold ' +
+                                                        (checked ? 'bg-emerald-500/20 text-emerald-200' : 'bg-zinc-900 text-zinc-500')
+                                                    }
+                                                    title={checked ? `Set ${idx - 1}` : `Set ${idx}`}
+                                                >
+                                                    {idx}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                </div>
+                            );
+                        })}
+                        {!loadingPlayed && playedEntries.length === 0 ? (
+                            <div className="text-xs text-zinc-500">No played armies tracked yet.</div>
+                        ) : null}
+                    </div>
+
+                    <div className="mt-5 mb-2">
+                        <div className="text-sm font-medium">Captured units</div>
+                        <div className="text-[11px] text-zinc-500">Units captured by this army. You can release them.</div>
+                    </div>
+                    <div className="grid gap-2">
+                        {capturedByUs.map((cu) => {
+                            const rowBusy = releasingUnitId === cu.unitId;
+                            const ownerPhotoSrc = cu.ownerArmy.owner.photoEtag
+                                ? `/api/users/${cu.ownerArmy.owner.id}/photo/file?v=${cu.ownerArmy.owner.photoEtag}`
+                                : null;
+                            return (
+                                <div key={cu.unitId} className="rounded-xl bg-zinc-950/45 p-2.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-2">
+                                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-zinc-900">
+                                                {ownerPhotoSrc ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={ownerPhotoSrc} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                ) : (
+                                                    <div className="grid h-full w-full place-items-center text-[11px] font-semibold text-zinc-300">
+                                                        {(cu.ownerArmy.owner.name[0] ?? '?').toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="truncate text-sm font-medium text-zinc-100">{cu.unitName}</div>
+                                                <div className="truncate text-[11px] text-zinc-400">
+                                                    {cu.ownerArmy.name} | {cu.ownerArmy.factionName} | owner {cu.ownerArmy.owner.name}
+                                                </div>
+                                                {cu.capturedAt ? (
+                                                    <div className="text-[10px] text-zinc-500">
+                                                        Captured: {new Date(cu.capturedAt).toLocaleString()}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => releaseCapturedUnit(cu.unitId)}
+                                            disabled={rowBusy}
+                                            className="rounded-lg bg-emerald-500 px-2 py-1 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                                        >
+                                            {rowBusy ? '...' : 'Release'}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {!loadingPlayed && capturedByUs.length === 0 ? (
+                            <div className="text-xs text-zinc-500">No units captured by this army.</div>
+                        ) : null}
+                    </div>
                 </section>
             )}
 
@@ -2641,6 +3072,15 @@ function ArmyDashboardClientInner({
                     }}
                 />
             )}
+
+            {showAddPlayedSheet && !readOnly && (
+                <AddPlayedArmySheet
+                    items={availableSharedCandidates}
+                    busy={addingPlayed}
+                    onClose={() => setShowAddPlayedSheet(false)}
+                    onAdd={(opponentArmyId) => void addPlayedArmy(opponentArmyId)}
+                />
+            )}
         </main>
     );
 }
@@ -2737,6 +3177,120 @@ function StickyTextTooltip({
                 </Portal>
             ) : null}
         </>
+    );
+}
+
+function AddPlayedArmySheet({
+    items,
+    busy,
+    onClose,
+    onAdd,
+}: {
+    items: PlayedArmyInfo[];
+    busy: boolean;
+    onClose: () => void;
+    onAdd: (opponentArmyId: string) => void;
+}) {
+    const [q, setQ] = useState('');
+    const normalizedQ = q.trim().toLowerCase();
+
+    const filtered = useMemo(() => {
+        if (!normalizedQ) return items;
+        return items.filter((item) => {
+            const hay = `${item.name} ${item.factionName} ${item.owner.name}`.toLowerCase();
+            return hay.includes(normalizedQ);
+        });
+    }, [items, normalizedQ]);
+
+    return (
+        <div className="fixed inset-0 z-20 overflow-x-hidden">
+            <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/60" />
+
+            <div className="absolute inset-x-0 bottom-0 mx-auto flex h-[80dvh] w-full max-w-screen-sm flex-col overflow-x-hidden rounded-t-3xl bg-zinc-900 shadow-xl">
+                <div className="p-4 pb-3">
+                    <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-zinc-700" />
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <div className="text-sm font-semibold">Add played army</div>
+                            <div className="mt-0.5 text-[11px] text-zinc-400">Pick an army from shared list.</div>
+                        </div>
+                        <button onClick={onClose} className="rounded-lg bg-zinc-800 px-2 py-1 text-xs text-zinc-300">
+                            Close
+                        </button>
+                    </div>
+
+                    <div className="mt-3">
+                        <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
+                            <SearchOutlined className="text-zinc-400" />
+                            <input
+                                value={q}
+                                onChange={(e) => setQ(e.target.value)}
+                                className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                placeholder="Search armies..."
+                            />
+                            {q ? (
+                                <button
+                                    onClick={() => setQ('')}
+                                    className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95"
+                                    aria-label="Clear"
+                                >
+                                    <CloseOutlined />
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>
+
+                    <div className="mt-3 text-[11px] text-zinc-500">
+                        Results: <span className="font-semibold text-zinc-300">{filtered.length}</span>
+                    </div>
+                </div>
+
+                <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                    <div className="grid gap-2">
+                        {filtered.map((item) => {
+                            const ownerPhotoSrc = item.owner.photoEtag
+                                ? `/api/users/${item.owner.id}/photo/file?v=${item.owner.photoEtag}`
+                                : null;
+                            return (
+                                <div key={item.id} className="rounded-xl bg-zinc-950 p-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0 flex items-center gap-2">
+                                            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-zinc-900">
+                                                {ownerPhotoSrc ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img src={ownerPhotoSrc} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                ) : (
+                                                    <div className="grid h-full w-full place-items-center text-[11px] font-semibold text-zinc-300">
+                                                        {(item.owner.name[0] ?? '?').toUpperCase()}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="truncate font-medium">{item.name}</div>
+                                                <div className="truncate text-[11px] text-zinc-400">
+                                                    {item.factionName} | from {item.owner.name}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => onAdd(item.id)}
+                                            disabled={busy}
+                                            className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                                        >
+                                            {busy ? 'Adding...' : 'Add'}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {filtered.length === 0 ? (
+                            <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">No armies for current search.</div>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
