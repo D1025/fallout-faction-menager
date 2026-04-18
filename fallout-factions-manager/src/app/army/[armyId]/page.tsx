@@ -28,6 +28,7 @@ type ArmyPerkRow = {
     id: string;
     name: string;
     description: string | null;
+    behavior?: 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
 };
 
 type ArmyUnitTemplateRow = {
@@ -59,7 +60,7 @@ type ArmyUnitRow = {
     weapons: Array<{ templateId: string; activeMods: string[] }>;
     selectedOption: { rating: number | null } | null;
     capturedByArmy: { id: string; name: string; faction: { name: string } } | null;
-    chosenPerks: Array<{ perk: ArmyPerkRow }>;
+    chosenPerks: Array<{ valueInt: number | null; perk: ArmyPerkRow }>;
 };
 
 type ArmyPageData = {
@@ -177,7 +178,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         },
                     },
                     chosenPerks: {
-                        select: { perk: { select: { id: true, name: true, description: true } } },
+                        select: {
+                            valueInt: true,
+                            perk: {
+                                select: { id: true, name: true, description: true, behavior: true },
+                            },
+                        },
                         orderBy: { perkId: 'asc' },
                     },
                 },
@@ -273,6 +279,12 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             ...u.unit.startPerks.map((sp) => sp.perk.name),
             ...u.chosenPerks.map((cp) => cp.perk.name),
         ];
+        const companionPerkBonus = u.chosenPerks.reduce((sum, cp) => {
+            const behavior = cp.perk.behavior ?? 'NONE';
+            if (behavior !== 'COMPANION_ROBOT' && behavior !== 'COMPANION_BEAST') return sum;
+            const bonus = cp.valueInt ?? 0;
+            return sum + (bonus > 0 ? bonus : 0);
+        }, 0);
 
         // Only positive stat upgrades count toward rating.
         const statsDelta = u.upgrades.reduce((acc, up) => {
@@ -290,7 +302,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return acc + up.delta * per;
         }, 0);
 
-        return baseFromTemplate + optionRating + weaponDelta + statsDelta;
+        return baseFromTemplate + optionRating + weaponDelta + statsDelta + companionPerkBonus;
     }
 
     const uiUnits = unitsArr.map((u) => {
@@ -402,6 +414,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             photoPath: u.photoPath ?? null,
             hasPhoto: Boolean((u as unknown as { photoEtag?: string | null }).photoEtag || u.photoPath),
             rating: unitRating(u),
+            companionOwnerId: (u as unknown as { companionOwnerId?: string | null }).companionOwnerId ?? null,
             capturedByArmy: u.capturedByArmy
                 ? {
                     id: u.capturedByArmy.id,

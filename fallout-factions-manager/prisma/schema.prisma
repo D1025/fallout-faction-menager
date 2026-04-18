@@ -418,6 +418,8 @@ model UnitInstance {
   unitId     String
   optionId   String?
   displayOrder Int    @default(0)
+  // If set, this unit is a Companion controlled by the referenced Champion unit.
+  companionOwnerId String?
   capturedByArmyId String?
   capturedAt DateTime?
 
@@ -431,6 +433,8 @@ model UnitInstance {
   updatedAt  DateTime @updatedAt
 
   army           Army           @relation(fields: [armyId], references: [id])
+  companionOwner UnitInstance?  @relation("UnitCompanionLink", fields: [companionOwnerId], references: [id], onDelete: SetNull)
+  companionUnits UnitInstance[] @relation("UnitCompanionLink")
   capturedByArmy Army?          @relation("CapturedByArmy", fields: [capturedByArmyId], references: [id], onDelete: SetNull)
   unit           UnitTemplate   @relation(fields: [unitId], references: [id])
   selectedOption UnitWeaponOption? @relation("SelectedOption", fields: [optionId], references: [id])
@@ -444,6 +448,7 @@ model UnitInstance {
 
   @@index([armyId])
   @@index([armyId, displayOrder])
+  @@index([companionOwnerId])
   @@index([capturedByArmyId])
   @@index([unitId])
   @@index([optionId])

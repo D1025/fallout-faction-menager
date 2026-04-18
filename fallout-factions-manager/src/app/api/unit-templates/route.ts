@@ -80,8 +80,10 @@ type UnitTemplateRow = {
     name: string;
     roleTag: UnitTemplateTag | null;
     isLeader?: boolean;
+    baseRating?: number | null;
     hp: number;
     s: number; p: number; e: number; c: number; i: number; a: number; l: number;
+    startPerks: Array<{ perk: { name: string } }>;
     options: UnitOptionRow[];
 };
 
@@ -94,6 +96,9 @@ type UnitTemplateDelegate = {
                     weapon1: { select: { id: true; name: true } };
                     weapon2: { select: { id: true; name: true } };
                 };
+            };
+            startPerks: {
+                include: { perk: { select: { name: true } } };
             };
         };
         orderBy: Array<{ name: 'asc' | 'desc' } | { id: 'asc' | 'desc' }>;
@@ -118,6 +123,7 @@ export async function GET(req: NextRequest) {
 
     const q = (searchParams.get('q') ?? '').trim();
     const roleTag = (searchParams.get('roleTag') ?? '').trim();
+    const roleGroup = (searchParams.get('roleGroup') ?? '').trim().toUpperCase();
 
     const limitRaw = searchParams.get('limit');
     const limit = limitRaw ? Math.max(1, Math.min(50, Number(limitRaw) || 0)) : null;
@@ -135,6 +141,10 @@ export async function GET(req: NextRequest) {
         : {};
 
     const roleWhere = roleTag && roleTag !== 'ALL' ? { roleTag: roleTag as UnitTemplateTag } : {};
+    const roleGroupWhere =
+        roleGroup === 'CORE'
+            ? { roleTag: { in: ['CHAMPION', 'GRUNT'] as UnitTemplateTag[] } }
+            : {};
 
     const cursorWhere = limit && afterName && afterId
         ? {
@@ -148,6 +158,9 @@ export async function GET(req: NextRequest) {
                 weapon1: { select: { id: true, name: true } },
                 weapon2: { select: { id: true, name: true } },
             },
+        },
+        startPerks: {
+            include: { perk: { select: { name: true } } },
         },
     } as const;
     // Helper: map templates and optionally hydrate weapon details.
@@ -230,6 +243,7 @@ export async function GET(req: NextRequest) {
             where: {
                 ...nameWhere,
                 ...roleWhere,
+                ...roleGroupWhere,
                 ...cursorWhere,
             },
             include,
@@ -247,6 +261,8 @@ export async function GET(req: NextRequest) {
             name: t.name,
             roleTag: t.roleTag,
             isLeader: Boolean((t as unknown as { isLeader?: boolean }).isLeader ?? false),
+            baseRating: (t as unknown as { baseRating?: number | null }).baseRating ?? null,
+            startPerkNames: (t.startPerks ?? []).map((sp) => sp.perk.name),
             factionId: null,
             stats: { hp: t.hp, s: t.s, p: t.p, e: t.e, c: t.c, i: t.i, a: t.a, l: t.l },
             options: (t.options ?? []).map((o) => ({
@@ -280,6 +296,7 @@ export async function GET(req: NextRequest) {
               }),
         ...nameWhere,
         ...roleWhere,
+        ...roleGroupWhere,
         ...cursorWhere,
     };
 
@@ -319,6 +336,7 @@ export async function GET(req: NextRequest) {
                       id: { in: extraIds },
                       ...nameWhere,
                       ...roleWhere,
+                      ...roleGroupWhere,
                   },
                   include,
                   orderBy: [{ name: 'asc' }, { id: 'asc' }],
@@ -338,6 +356,8 @@ export async function GET(req: NextRequest) {
         name: t.name,
         roleTag: t.roleTag,
         isLeader: Boolean((t as unknown as { isLeader?: boolean }).isLeader ?? false),
+        baseRating: (t as unknown as { baseRating?: number | null }).baseRating ?? null,
+        startPerkNames: (t.startPerks ?? []).map((sp) => sp.perk.name),
         factionId: null,
         stats: { hp: t.hp, s: t.s, p: t.p, e: t.e, c: t.c, i: t.i, a: t.a, l: t.l },
         options: (t.options ?? []).map((o) => ({

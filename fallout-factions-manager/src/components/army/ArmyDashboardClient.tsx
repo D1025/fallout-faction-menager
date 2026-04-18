@@ -67,6 +67,7 @@ type UnitListItem = {
     rating: number;
     capturedByArmy?: { id: string; name: string; factionName: string } | null;
     capturedAt?: string | null;
+    companionOwnerId?: string | null;
 
     weapons: {
         name: string;
@@ -408,16 +409,68 @@ function ArmyDashboardClientInner({
     const [deletingPlayedId, setDeletingPlayedId] = useState<string | null>(null);
     const [releasingUnitId, setReleasingUnitId] = useState<string | null>(null);
 
+    const normalizeCompanionOrder = useCallback((items: UnitListItem[]): UnitListItem[] => {
+        if (items.length < 2) return items;
+
+        const indexById = new Map<string, number>();
+        items.forEach((unit, index) => indexById.set(unit.id, index));
+
+        const companionsByOwner = new Map<string, UnitListItem[]>();
+        for (const unit of items) {
+            if (!unit.companionOwnerId) continue;
+            if (!indexById.has(unit.companionOwnerId)) continue;
+            const grouped = companionsByOwner.get(unit.companionOwnerId) ?? [];
+            grouped.push(unit);
+            companionsByOwner.set(unit.companionOwnerId, grouped);
+        }
+
+        for (const grouped of companionsByOwner.values()) {
+            grouped.sort(
+                (a, b) =>
+                    (indexById.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+                    (indexById.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+            );
+        }
+
+        const used = new Set<string>();
+        const ordered: UnitListItem[] = [];
+
+        for (const unit of items) {
+            if (unit.companionOwnerId) continue;
+            if (used.has(unit.id)) continue;
+
+            ordered.push(unit);
+            used.add(unit.id);
+
+            const linked = companionsByOwner.get(unit.id) ?? [];
+            for (const companion of linked) {
+                if (used.has(companion.id)) continue;
+                ordered.push(companion);
+                used.add(companion.id);
+            }
+        }
+
+        // Keep orphan companions and any non-standard leftovers stable at the end.
+        for (const unit of items) {
+            if (used.has(unit.id)) continue;
+            ordered.push(unit);
+            used.add(unit.id);
+        }
+
+        return ordered;
+    }, []);
+
     useEffect(() => setTotals(resources), [resources]);
-    useEffect(() => setOrderedUnits(units), [units]);
+    useEffect(() => setOrderedUnits(normalizeCompanionOrder(units)), [normalizeCompanionOrder, units]);
     useEffect(() => setCurrentTier(tier), [tier]);
     useEffect(() => {
+        const normalizedUnits = normalizeCompanionOrder(units);
         setPresentById((prev) => {
             const next: Record<string, boolean> = {};
-            for (const u of units) next[u.id] = prev[u.id] ?? u.present;
+            for (const u of normalizedUnits) next[u.id] = prev[u.id] ?? u.present;
             return next;
         });
-    }, [units]);
+    }, [normalizeCompanionOrder, units]);
 
     useEffect(() => {
         if (!readOnly) return;
@@ -643,11 +696,18 @@ function ArmyDashboardClientInner({
             onOk: async () => {
                 const prevOrdered = orderedUnits;
                 const prevPresent = presentById;
+                const targetUnit = orderedUnits.find((u) => u.id === unitId) ?? null;
+                const idsToRemove = new Set<string>([unitId]);
+                if (targetUnit && !targetUnit.companionOwnerId) {
+                    for (const u of orderedUnits) {
+                        if (u.companionOwnerId === unitId) idsToRemove.add(u.id);
+                    }
+                }
                 setDeletingId(unitId);
-                setOrderedUnits((prev) => prev.filter((u) => u.id !== unitId));
+                setOrderedUnits((prev) => prev.filter((u) => !idsToRemove.has(u.id)));
                 setPresentById((prev) => {
                     const next = { ...prev };
-                    delete next[unitId];
+                    for (const idToRemove of idsToRemove) delete next[idToRemove];
                     return next;
                 });
                 try {
@@ -666,14 +726,32 @@ function ArmyDashboardClientInner({
 
     async function moveUnit(unitId: string, direction: 'up' | 'down') {
         if (reordering) return;
-        const from = orderedUnits.findIndex((u) => u.id === unitId);
-        if (from < 0) return;
-        const to = direction === 'up' ? from - 1 : from + 1;
-        if (to < 0 || to >= orderedUnits.length) return;
+        const prev = normalizeCompanionOrder(orderedUnits);
+        const moved = prev.find((u) => u.id === unitId) ?? null;
+        if (!moved) return;
 
-        const prev = orderedUnits;
-        const next = [...orderedUnits];
-        [next[from], next[to]] = [next[to], next[from]];
+        const anchorId = moved.companionOwnerId ?? moved.id;
+        const block = prev.filter((u) => u.id === anchorId || u.companionOwnerId === anchorId);
+        const start = prev.findIndex((u) => u.id === anchorId);
+        const end = start + block.length - 1;
+        if (start < 0 || block.length === 0) return;
+
+        if (direction === 'up' && start === 0) return;
+        if (direction === 'down' && end >= prev.length - 1) return;
+
+        let next = prev;
+        if (direction === 'up') {
+            const before = prev[start - 1];
+            const head = prev.slice(0, start - 1);
+            const tail = prev.slice(end + 1);
+            next = [...head, ...block, before, ...tail];
+        } else {
+            const after = prev[end + 1];
+            const head = prev.slice(0, start);
+            const tail = prev.slice(end + 2);
+            next = [...head, after, ...block, ...tail];
+        }
+        next = normalizeCompanionOrder(next);
         setOrderedUnits(next);
         setReordering(true);
 
@@ -688,9 +766,24 @@ function ArmyDashboardClientInner({
     }
 
     function onUnitPresenceChange(unitId: string, present: boolean) {
-        setPresentById((prev) => ({ ...prev, [unitId]: present }));
+        const changed = orderedUnits.find((u) => u.id === unitId) ?? null;
+        const isChampionLike = Boolean(changed && !changed.companionOwnerId);
+
+        setPresentById((prev) => {
+            const next = { ...prev, [unitId]: present };
+            if (isChampionLike) {
+                for (const unit of orderedUnits) {
+                    if (unit.companionOwnerId === unitId) next[unit.id] = present;
+                }
+            }
+            return next;
+        });
         setOrderedUnits((prev) =>
-            prev.map((unit) => (unit.id === unitId ? { ...unit, present } : unit)),
+            prev.map((unit) => {
+                if (unit.id === unitId) return { ...unit, present };
+                if (isChampionLike && unit.companionOwnerId === unitId) return { ...unit, present };
+                return unit;
+            }),
         );
     }
 
@@ -727,9 +820,14 @@ function ArmyDashboardClientInner({
         [saveTemporaryLeaderMutation],
     );
 
-    function appendUnit(nextUnit: UnitListItem) {
-        setOrderedUnits((prev) => [...prev, nextUnit]);
-        setPresentById((prev) => ({ ...prev, [nextUnit.id]: nextUnit.present }));
+    function appendUnits(nextUnits: UnitListItem[]) {
+        if (nextUnits.length === 0) return;
+        setOrderedUnits((prev) => normalizeCompanionOrder([...prev, ...nextUnits]));
+        setPresentById((prev) => {
+            const out = { ...prev };
+            for (const nextUnit of nextUnits) out[nextUnit.id] = nextUnit.present;
+            return out;
+        });
     }
 
     function n(v: string, def = 0) {
@@ -748,9 +846,34 @@ function ArmyDashboardClientInner({
         [orderedUnits, presentById, rating],
     );
 
-    const unitIndexById = useMemo(() => {
+    const moveStateById = useMemo(() => {
+        const map = new Map<string, { canMoveUp: boolean; canMoveDown: boolean }>();
+        for (const unit of orderedUnits) {
+            const anchorId = unit.companionOwnerId ?? unit.id;
+            const start = orderedUnits.findIndex((u) => u.id === anchorId);
+            if (start < 0) {
+                map.set(unit.id, { canMoveUp: false, canMoveDown: false });
+                continue;
+            }
+            const blockSize = orderedUnits.filter((u) => u.id === anchorId || u.companionOwnerId === anchorId).length;
+            const end = start + blockSize - 1;
+            map.set(unit.id, { canMoveUp: start > 0, canMoveDown: end < orderedUnits.length - 1 });
+        }
+        return map;
+    }, [orderedUnits]);
+
+    const unitNameById = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const unit of orderedUnits) map.set(unit.id, unit.templateName);
+        return map;
+    }, [orderedUnits]);
+
+    const companionCountByOwner = useMemo(() => {
         const map = new Map<string, number>();
-        orderedUnits.forEach((u, idx) => map.set(u.id, idx));
+        for (const unit of orderedUnits) {
+            if (!unit.companionOwnerId) continue;
+            map.set(unit.companionOwnerId, (map.get(unit.companionOwnerId) ?? 0) + 1);
+        }
         return map;
     }, [orderedUnits]);
 
@@ -1015,6 +1138,8 @@ function ArmyDashboardClientInner({
                          onMoveUp,
                          onMoveDown,
                          reordering,
+                         linkedOwnerName,
+                         linkedCompanionCount,
                      }: {
         u: UnitListItem;
         armyId: string;
@@ -1032,6 +1157,8 @@ function ArmyDashboardClientInner({
         onMoveUp: () => void;
         onMoveDown: () => void;
         reordering: boolean;
+        linkedOwnerName: string | null;
+        linkedCompanionCount: number;
     }) {
         // preload effects for this unit (tooltips appear instantly)
         const effectIdsToPreload = useMemo(() => {
@@ -1245,7 +1372,12 @@ function ArmyDashboardClientInner({
                         }
                         : undefined
                 }
-                className="block max-w-full overflow-hidden rounded-[22px] bg-zinc-900/60 p-3"
+                className={
+                    'block max-w-full overflow-hidden rounded-[22px] p-3 ' +
+                    (u.companionOwnerId
+                        ? 'bg-emerald-950/20 ring-1 ring-emerald-500/25'
+                        : 'bg-zinc-900/60')
+                }
             >
                 <div className="flex items-start gap-2">
                     <div
@@ -1279,6 +1411,20 @@ function ArmyDashboardClientInner({
                         <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="truncate text-base font-semibold leading-tight">{u.templateName}</div>
+                                {(linkedOwnerName || linkedCompanionCount > 0) ? (
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                        {linkedOwnerName ? (
+                                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">
+                                                Companion of: {linkedOwnerName}
+                                            </span>
+                                        ) : null}
+                                        {!linkedOwnerName && linkedCompanionCount > 0 ? (
+                                            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-200">
+                                                Companion linked x{linkedCompanionCount}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
 
                             {!readOnly ? (
@@ -2373,9 +2519,9 @@ function ArmyDashboardClientInner({
                         </div>
                         <div className="mt-2 grid gap-2">
                             {filtered.map((u) => {
-                                const idx = unitIndexById.get(u.id) ?? -1;
-                                const canMoveUp = idx > 0;
-                                const canMoveDown = idx >= 0 && idx < orderedUnits.length - 1;
+                                const moveState = moveStateById.get(u.id) ?? { canMoveUp: false, canMoveDown: false };
+                                const linkedOwnerName = u.companionOwnerId ? unitNameById.get(u.companionOwnerId) ?? null : null;
+                                const linkedCompanionCount = companionCountByOwner.get(u.id) ?? 0;
                                 return (
                                     <UnitRow
                                         key={u.id}
@@ -2390,11 +2536,13 @@ function ArmyDashboardClientInner({
                                         persistWounds={persistWounds}
                                         persistTemporaryLeader={persistTemporaryLeader}
                                         readOnly={readOnly}
-                                        canMoveUp={canMoveUp}
-                                        canMoveDown={canMoveDown}
+                                        canMoveUp={moveState.canMoveUp}
+                                        canMoveDown={moveState.canMoveDown}
                                         onMoveUp={() => void moveUnit(u.id, 'up')}
                                         onMoveDown={() => void moveUnit(u.id, 'down')}
                                         reordering={reordering}
+                                        linkedOwnerName={linkedOwnerName}
+                                        linkedCompanionCount={linkedCompanionCount}
                                     />
                                 );
                             })}
@@ -3051,8 +3199,8 @@ function ArmyDashboardClientInner({
                     factionId={factionId}
                     subfactionId={subfactionId ?? null}
                     onClose={() => setAdding(false)}
-                    onAdded={(unit) => {
-                        appendUnit(unit);
+                    onAdded={(units) => {
+                        appendUnits(units);
                         setAdding(false);
                     }}
                 />
@@ -3281,12 +3429,16 @@ function AddPlayedArmySheet({
 
 /* ================== AddUnitSheet ================== */
 
+type AddUnitTab = 'ALL' | 'COMPANIONS' | 'LEGENDS';
+type CompanionBehavior = 'COMPANION_ROBOT' | 'COMPANION_BEAST';
+
 type UITemplate = {
     id: string;
     name: string;
     roleTag: 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS' | null;
     isLeader?: boolean;
     baseRating?: number | null;
+    startPerkNames?: string[];
     factionId: string | null;
     stats: { hp: number; s: number; p: number; e: number; c: number; i: number; a: number; l: number };
     options: {
@@ -3346,36 +3498,59 @@ function AddUnitSheet({
     factionId: string;
     subfactionId: string | null;
     onClose: () => void;
-    onAdded: (unit: UnitListItem) => void;
+    onAdded: (units: UnitListItem[]) => void;
 }) {
     const pageSize = 25;
 
     const [list, setList] = useState<UITemplate[]>([]);
+    const [companionCatalog, setCompanionCatalog] = useState<UITemplate[]>([]);
     const [q, setQ] = useState('');
-    const [roleTag, setRoleTag] = useState<'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS'>('ALL');
+    const [tab, setTab] = useState<AddUnitTab>('ALL');
 
     const [cursor, setCursor] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(true);
     const [loading, setLoading] = useState(false);
+    const [loadingCompanions, setLoadingCompanions] = useState(false);
 
     const [selT, setSelT] = useState<string | null>(null);
     const [selO, setSelO] = useState<string | null>(null);
+    const [companionBehavior, setCompanionBehavior] = useState<CompanionBehavior | null>(null);
+    const [selCompanionTemplateId, setSelCompanionTemplateId] = useState<string | null>(null);
+    const [selCompanionOptionId, setSelCompanionOptionId] = useState<string | null>(null);
+    const [companionStepOpen, setCompanionStepOpen] = useState(false);
     const [busy, setBusy] = useState(false);
 
     const addUnitMutation = useMutation({
-        mutationFn: async ({ unitTemplateId, optionId }: { unitTemplateId: string; optionId: string }) => {
+        mutationFn: async ({
+            unitTemplateId,
+            optionId,
+            companion,
+        }: {
+            unitTemplateId: string;
+            optionId: string;
+            companion?: {
+                perkBehavior: CompanionBehavior;
+                unitTemplateId: string;
+                optionId: string;
+            };
+        }) => {
             const res = await fetch(`/api/armies/${armyId}/units`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ unitTemplateId, optionId }),
+                body: JSON.stringify({ unitTemplateId, optionId, companion }),
             });
             if (!res.ok) throw new Error(await readResponseError(res, 'Failed to add unit'));
-            return (await res.json().catch(() => null)) as { id?: string; computedRating?: number | null; rating?: number | null } | null;
+            return (await res.json().catch(() => null)) as {
+                championId?: string;
+                companionId?: string | null;
+                companionRatingBonus?: number;
+            } | null;
         },
     });
 
     const sentinelRef = useRef<HTMLDivElement | null>(null);
     const inFlightRef = useRef(false);
+    const inFlightCompanionRef = useRef(false);
 
     function buildQs(nextCursor: string | null) {
         const qs = new URLSearchParams({
@@ -3385,9 +3560,34 @@ function AddUnitSheet({
         qs.set('expand', 'weapons');
         if (subfactionId) qs.set('subfactionId', subfactionId);
         if (q.trim()) qs.set('q', q.trim());
-        if (roleTag !== 'ALL') qs.set('roleTag', roleTag);
+        if (tab === 'ALL') qs.set('roleGroup', 'CORE');
+        if (tab === 'COMPANIONS') qs.set('roleTag', 'COMPANION');
+        if (tab === 'LEGENDS') qs.set('roleTag', 'LEGENDS');
         if (nextCursor) qs.set('cursor', nextCursor);
         return qs;
+    }
+
+    async function loadCompanionCatalog() {
+        if (inFlightCompanionRef.current) return;
+        inFlightCompanionRef.current = true;
+        setLoadingCompanions(true);
+        try {
+            const qs = new URLSearchParams({
+                factionId,
+                limit: '250',
+                roleTag: 'COMPANION',
+                expand: 'weapons',
+            });
+            if (subfactionId) qs.set('subfactionId', subfactionId);
+            const res = await fetch(`/api/unit-templates?${qs.toString()}`, { cache: 'no-store' });
+            if (!res.ok) return;
+            const json = (await res.json()) as Paged<UITemplate> | UITemplate[];
+            const payload: Paged<UITemplate> = Array.isArray(json) ? { items: json, nextCursor: null } : json;
+            setCompanionCatalog(payload.items ?? []);
+        } finally {
+            setLoadingCompanions(false);
+            inFlightCompanionRef.current = false;
+        }
     }
 
     async function loadNext(reset = false) {
@@ -3425,13 +3625,18 @@ function AddUnitSheet({
     // initial + on filter change => reset
     useEffect(() => {
         setList([]);
+        setCompanionCatalog([]);
         setCursor(null);
         setHasMore(true);
         setSelT(null);
         setSelO(null);
+        setCompanionBehavior(null);
+        setSelCompanionTemplateId(null);
+        setSelCompanionOptionId(null);
+        setCompanionStepOpen(false);
         void loadNext(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [factionId, subfactionId, roleTag, q]);
+    }, [factionId, subfactionId, tab, q]);
 
     // infinite scroll (IntersectionObserver)
     useEffect(() => {
@@ -3450,7 +3655,49 @@ function AddUnitSheet({
     }, [sentinelRef.current, cursor, hasMore, loading]);
 
     const selected = list.find((t) => t.id === selT) ?? null;
-    const can = Boolean(selT && selO);
+    const selectedOption = selected?.options.find((o) => o.id === selO) ?? null;
+    const isChampionSelection = selected?.roleTag === 'CHAMPION';
+    const canOpenCompanionStep = isChampionSelection;
+    const needsCompanionSelection = isChampionSelection && Boolean(companionBehavior);
+
+    const availableCompanions = useMemo(() => {
+        const behavior = companionBehavior;
+        if (!behavior) return [] as UITemplate[];
+        return companionCatalog.filter((t) => {
+            const perks = new Set((t.startPerkNames ?? []).map((p) => p.trim().toUpperCase()));
+            if (behavior === 'COMPANION_ROBOT') return perks.has('MACHINE');
+            return perks.has('BEAST');
+        });
+    }, [companionCatalog, companionBehavior]);
+
+    const selectedCompanionTemplate = availableCompanions.find((t) => t.id === selCompanionTemplateId) ?? null;
+    const selectedCompanionOption = selectedCompanionTemplate?.options.find((o) => o.id === selCompanionOptionId) ?? null;
+    const selectedLoadoutLabel = selectedOption
+        ? `${selectedOption.weapon1Name}${selectedOption.weapon2Name ? ` + ${selectedOption.weapon2Name}` : ''}`
+        : '-';
+    const can =
+        Boolean(selT && selO) &&
+        (!needsCompanionSelection || Boolean(selCompanionTemplateId && selCompanionOptionId));
+
+    useEffect(() => {
+        if (!needsCompanionSelection && !companionStepOpen) return;
+        if (companionCatalog.length > 0) return;
+        void loadCompanionCatalog();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [needsCompanionSelection, companionStepOpen, factionId, subfactionId]);
+
+    function openCompanionStep() {
+        if (!canOpenCompanionStep) return;
+        if (!companionBehavior) setCompanionBehavior('COMPANION_ROBOT');
+        setCompanionStepOpen(true);
+    }
+
+    function clearCompanionSelection() {
+        setCompanionBehavior(null);
+        setSelCompanionTemplateId(null);
+        setSelCompanionOptionId(null);
+        setCompanionStepOpen(false);
+    }
 
     function toUnitEffects(effects: UIWeaponTemplateEffect[]): UIEffect[] {
         return (effects ?? []).map((e, idx) => ({
@@ -3482,33 +3729,58 @@ function AddUnitSheet({
         };
     }
 
+    function zeroBonus() {
+        return {
+            HP: 0,
+            S: 0,
+            P: 0,
+            E: 0,
+            C: 0,
+            I: 0,
+            A: 0,
+            L: 0,
+        } as Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number>;
+    }
+
+    function weaponHintsForOption(
+        opt: Pick<UITemplate['options'][number], 'weapon1' | 'weapon2'> | null | undefined,
+    ): WeaponTestHint[] {
+        if (!opt) return [];
+        const out: WeaponTestHint[] = [];
+        const stat1 = parseTestSpecialStat(opt.weapon1?.baseTest);
+        if (stat1) out.push({ weaponIndex: 0, stat: stat1 });
+        const stat2 = parseTestSpecialStat(opt.weapon2?.baseTest);
+        if (stat2) out.push({ weaponIndex: 1, stat: stat2 });
+        return out;
+    }
+
     async function add() {
-        if (!selected || !selO) return;
-        const selectedOption = selected.options.find((o) => o.id === selO);
-        if (!selectedOption) return;
+        if (!selected || !selectedOption) return;
+
+        const companionPayload =
+            needsCompanionSelection && selectedCompanionTemplate && selectedCompanionOption && companionBehavior
+                ? {
+                      perkBehavior: companionBehavior,
+                      unitTemplateId: selectedCompanionTemplate.id,
+                      optionId: selectedCompanionOption.id,
+                  }
+                : undefined;
 
         setBusy(true);
         try {
-            const payload = await addUnitMutation.mutateAsync({ unitTemplateId: selected.id, optionId: selO });
-            const createdId = payload?.id;
-            if (!createdId) {
-                notifyApiError('Could not read created unit id.');
+            const payload = await addUnitMutation.mutateAsync({
+                unitTemplateId: selected.id,
+                optionId: selectedOption.id,
+                companion: companionPayload,
+            });
+            const championId = payload?.championId;
+            if (!championId) {
+                notifyApiError('Could not read created champion id.');
                 return;
             }
 
-            const zeroBonus: Record<'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L', number> = {
-                HP: 0,
-                S: 0,
-                P: 0,
-                E: 0,
-                C: 0,
-                I: 0,
-                A: 0,
-                L: 0,
-            };
-
-            const createdUnit: UnitListItem = {
-                id: createdId,
+            const createdChampion: UnitListItem = {
+                id: championId,
                 templateName: selected.name,
                 roleTag: selected.roleTag,
                 isLeader: Boolean(selected.isLeader),
@@ -3523,21 +3795,22 @@ function AddUnitSheet({
                     A: selected.stats.a,
                     L: selected.stats.l,
                 },
-                bonus: { ...zeroBonus },
-                bonusPositive: { ...zeroBonus },
-                bonusNegative: { ...zeroBonus },
+                bonus: zeroBonus(),
+                bonusPositive: zeroBonus(),
+                bonusNegative: zeroBonus(),
                 wounds: 0,
                 present: true,
                 upgradesCount: 0,
-                perkNames: [],
-                startPerkNames: [],
+                perkNames: companionBehavior === 'COMPANION_ROBOT' ? ['ROBOTEER'] : companionBehavior === 'COMPANION_BEAST' ? ['CREATURE TAMER'] : [],
+                startPerkNames: selected.startPerkNames ?? [],
                 perks: [],
                 photoPath: null,
                 hasPhoto: false,
+                companionOwnerId: null,
                 rating:
-                    payload?.computedRating ??
-                    payload?.rating ??
-                    ((selected.baseRating ?? 0) + (selectedOption.rating ?? 0)),
+                    (selected.baseRating ?? 0) +
+                    (selectedOption.rating ?? 0) +
+                    (payload?.companionRatingBonus ?? 0),
                 weapons: [
                     toUnitWeapon(selectedOption.weapon1, selectedOption.weapon1Name),
                     ...(selectedOption.weapon2Name
@@ -3545,7 +3818,48 @@ function AddUnitSheet({
                         : []),
                 ],
             };
-            onAdded(createdUnit);
+
+            const created: UnitListItem[] = [createdChampion];
+            if (payload?.companionId && selectedCompanionTemplate && selectedCompanionOption) {
+                created.push({
+                    id: payload.companionId,
+                    templateName: selectedCompanionTemplate.name,
+                    roleTag: selectedCompanionTemplate.roleTag,
+                    isLeader: Boolean(selectedCompanionTemplate.isLeader),
+                    temporaryLeader: false,
+                    base: {
+                        hp: selectedCompanionTemplate.stats.hp,
+                        S: selectedCompanionTemplate.stats.s,
+                        P: selectedCompanionTemplate.stats.p,
+                        E: selectedCompanionTemplate.stats.e,
+                        C: selectedCompanionTemplate.stats.c,
+                        I: selectedCompanionTemplate.stats.i,
+                        A: selectedCompanionTemplate.stats.a,
+                        L: selectedCompanionTemplate.stats.l,
+                    },
+                    bonus: zeroBonus(),
+                    bonusPositive: zeroBonus(),
+                    bonusNegative: zeroBonus(),
+                    wounds: 0,
+                    present: true,
+                    upgradesCount: 0,
+                    perkNames: selectedCompanionTemplate.startPerkNames ?? [],
+                    startPerkNames: selectedCompanionTemplate.startPerkNames ?? [],
+                    perks: [],
+                    photoPath: null,
+                    hasPhoto: false,
+                    companionOwnerId: championId,
+                    rating: (selectedCompanionTemplate.baseRating ?? 0) + (selectedCompanionOption.rating ?? 0),
+                    weapons: [
+                        toUnitWeapon(selectedCompanionOption.weapon1, selectedCompanionOption.weapon1Name),
+                        ...(selectedCompanionOption.weapon2Name
+                            ? [toUnitWeapon(selectedCompanionOption.weapon2, selectedCompanionOption.weapon2Name)]
+                            : []),
+                    ],
+                });
+            }
+
+            onAdded(created);
             onClose();
         } catch {
             notifyApiError('Failed to add unit');
@@ -3554,13 +3868,13 @@ function AddUnitSheet({
         }
     }
 
-    const RoleChip = ({ k, label }: { k: typeof roleTag; label: string }) => (
+    const TabChip = ({ k, label }: { k: AddUnitTab; label: string }) => (
         <button
             type="button"
-            onClick={() => setRoleTag(k)}
+            onClick={() => setTab(k)}
             className={
                 'h-9 rounded-full px-3 text-xs font-medium ' +
-                (roleTag === k ? 'bg-emerald-500/10 text-emerald-200' : 'bg-zinc-950 text-zinc-300')
+                (tab === k ? 'bg-emerald-500/10 text-emerald-200' : 'bg-zinc-950 text-zinc-300')
             }
         >
             {label}
@@ -3579,7 +3893,7 @@ function AddUnitSheet({
         return out;
     }
 
-    function WeaponDetails({ w }: { w: UIWeaponTemplate | null }) {
+    function WeaponDetails({ w, accentIndex }: { w: UIWeaponTemplate | null; accentIndex: 0 | 1 }) {
         if (!w) return <div className="text-[11px] text-zinc-500">No weapon data</div>;
 
         function EffectSpan({ e, prefix = '', className = '' }: { e: UIWeaponTemplateEffect; prefix?: string; className?: string }) {
@@ -3664,9 +3978,10 @@ function AddUnitSheet({
                 </div>
             );
         };
+        const accent = getWeaponAccent(accentIndex);
 
         return (
-            <div className="mt-1 overflow-hidden rounded-xl bg-zinc-950">
+            <div className="mt-1 overflow-hidden bg-zinc-950">
                 <div className="flex items-center gap-2 px-2 py-1.5">
                     <div className="text-xs font-medium text-zinc-100 sm:text-sm">{w.name}</div>
                     <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
@@ -3689,10 +4004,19 @@ function AddUnitSheet({
                         <tbody>
                             {rows.map((r) => {
                                 const { woundsge } = splitTypeAndRange(r.type);
+                                const testStat = parseTestSpecialStat(r.test);
+                                const isMatch = testStat != null;
                                 return (
                                     <tr key={r.key} className="align-top bg-zinc-950">
                                         {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{woundsge || '-'}</td> : null}
-                                        <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{r.test || '-'}</td>
+                                        <td
+                                            className={
+                                                'px-1 py-1 whitespace-normal break-all text-zinc-100 ' +
+                                                (isMatch ? `${accent.textBgClass} ${accent.textClass}` : '')
+                                            }
+                                        >
+                                            {r.test || '-'}
+                                        </td>
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.traits)}</td>
                                         <td className="px-1 py-1 whitespace-normal break-all text-zinc-300">{renderEffects(r.crits)}</td>
                                         <td className="px-1 py-1 text-center tabular-nums">{r.parts != null ? r.parts : '-'}</td>
@@ -3706,23 +4030,42 @@ function AddUnitSheet({
             </div>
         );
     }
-    function SpecialRow({ t }: { t: UITemplate }) {
+
+    function SpecialRow({ t, hints = [] }: { t: UITemplate; hints?: WeaponTestHint[] }) {
         const s = t.stats;
+        const cells: Array<{ key: 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L'; value: number }> = [
+            { key: 'S', value: s.s },
+            { key: 'P', value: s.p },
+            { key: 'E', value: s.e },
+            { key: 'C', value: s.c },
+            { key: 'I', value: s.i },
+            { key: 'A', value: s.a },
+            { key: 'L', value: s.l },
+        ];
         return (
-            <div className="mt-2 overflow-hidden rounded-xl bg-zinc-950">
+            <div className="mt-2 overflow-hidden bg-zinc-950">
                 <div className="grid grid-cols-8 bg-teal-700/70 text-teal-50 text-[11px] font-semibold tracking-widest">
                     {['S','P','E','C','I','A','L','HP'].map((h) => (
                         <div key={h} className="px-2 py-1 text-center">{h}</div>
                     ))}
                 </div>
                 <div className="grid grid-cols-8 bg-zinc-950 text-sm text-zinc-100">
-                    <div className="px-2 py-1 text-center tabular-nums">{s.s}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.p}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.e}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.c}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.i}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.a}</div>
-                    <div className="px-2 py-1 text-center tabular-nums">{s.l}</div>
+                    {cells.map((cell) => {
+                        const hasW1 = hints.some((h) => h.weaponIndex === 0 && h.stat === cell.key);
+                        const hasW2 = hints.some((h) => h.weaponIndex === 1 && h.stat === cell.key);
+                        const accentClass = hasW1 && hasW2
+                            ? 'bg-violet-500/12 text-violet-100'
+                            : hasW1
+                                ? `${WEAPON_TEST_ACCENTS[0].cellClass} ${WEAPON_TEST_ACCENTS[0].textClass}`
+                                : hasW2
+                                    ? `${WEAPON_TEST_ACCENTS[1].cellClass} ${WEAPON_TEST_ACCENTS[1].textClass}`
+                                    : '';
+                        return (
+                            <div key={cell.key} className={'px-2 py-1 text-center tabular-nums ' + accentClass}>
+                                {cell.value}
+                            </div>
+                        );
+                    })}
                     <div className="px-2 py-1 text-center tabular-nums">{s.hp}</div>
                 </div>
             </div>
@@ -3746,135 +4089,282 @@ function AddUnitSheet({
                         </button>
                     </div>
 
-                    <div className="mt-3">
-                        <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
-                            <SearchOutlined className="text-zinc-400" />
-                            <input
-                                value={q}
-                                onChange={(e) => setQ(e.target.value)}
-                                className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
-                                placeholder="Search units..."
-                            />
-                            {q && (
-                                <button onClick={() => setQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95" aria-label="Clear">
-                                    <CloseOutlined />
-                                </button>
-                            )}
-                        </div>
-                    </div>
+                    {!companionStepOpen ? (
+                        <>
+                            <div className="mt-3">
+                                <div className="flex items-center gap-2 rounded-2xl bg-zinc-950 px-3 py-2">
+                                    <SearchOutlined className="text-zinc-400" />
+                                    <input
+                                        value={q}
+                                        onChange={(e) => setQ(e.target.value)}
+                                        className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-500"
+                                        placeholder="Search units..."
+                                    />
+                                    {q && (
+                                        <button onClick={() => setQ('')} className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 active:scale-95" aria-label="Clear">
+                                            <CloseOutlined />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <RoleChip k="ALL" label="All" />
-                        <RoleChip k="CHAMPION" label="Champion" />
-                        <RoleChip k="GRUNT" label="Grunt" />
-                        <RoleChip k="COMPANION" label="Companion" />
-                        <RoleChip k="LEGENDS" label="Legends" />
-                     </div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                <TabChip k="ALL" label="All" />
+                                <TabChip k="COMPANIONS" label="Companions" />
+                                <TabChip k="LEGENDS" label="Legends" />
+                            </div>
+                        </>
+                    ) : (
+                        <div className="mt-3 rounded-2xl bg-zinc-950 p-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-zinc-300">
+                                Companion Selection
+                            </div>
+                            <div className="mt-1 text-sm text-zinc-100">
+                                Champion: {selected?.name ?? '-'}
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-zinc-400">
+                                Loadout: {selectedLoadoutLabel}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCompanionBehavior('COMPANION_ROBOT');
+                                        setSelCompanionTemplateId(null);
+                                        setSelCompanionOptionId(null);
+                                    }}
+                                    className={
+                                        'h-8 rounded-full px-3 text-xs font-medium ' +
+                                        (companionBehavior === 'COMPANION_ROBOT'
+                                            ? 'bg-emerald-500/10 text-emerald-200'
+                                            : 'bg-zinc-900 text-zinc-300')
+                                    }
+                                >
+                                    Roboteer
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCompanionBehavior('COMPANION_BEAST');
+                                        setSelCompanionTemplateId(null);
+                                        setSelCompanionOptionId(null);
+                                    }}
+                                    className={
+                                        'h-8 rounded-full px-3 text-xs font-medium ' +
+                                        (companionBehavior === 'COMPANION_BEAST'
+                                            ? 'bg-emerald-500/10 text-emerald-200'
+                                            : 'bg-zinc-900 text-zinc-300')
+                                    }
+                                >
+                                    Creature Tamer
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={clearCompanionSelection}
+                                    className="h-8 rounded-full bg-zinc-900 px-3 text-xs font-medium text-zinc-300"
+                                >
+                                    Remove companion
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="vault-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3">
-                    <div className="grid gap-2">
-                        {list.map((t) => {
-                            const isSel = t.id === selT;
-                            const initials = t.name
-                                .split(' ')
-                                .filter(Boolean)
-                                .slice(0, 2)
-                                .map((x) => x[0]!.toUpperCase())
-                                .join('');
-
-                            return (
-                                <div key={t.id} className={'rounded-2xl ' + (isSel ? 'bg-emerald-500/5' : 'bg-zinc-900')}>
-                                    <button
-                                        onClick={() => {
-                                            setSelT(t.id);
-                                            setSelO(null);
-                                        }}
-                                        className="flex w-full items-center gap-3 p-3 text-left"
-                                    >
-                                        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-zinc-950 text-sm font-semibold text-zinc-200">
-                                            {initials || 'U'}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="truncate font-medium">{t.name}</div>
-                                            <div className="mt-0.5 text-[11px] text-zinc-400">
-                                                <span className="inline-flex flex-wrap items-center gap-1.5">
-                                                    <span>{t.roleTag ? t.roleTag : '-'}</span>
-                                                    {t.isLeader ? (
-                                                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
-                                                            LEADER
-                                                        </span>
-                                                    ) : null}
-                                                    <span>| {t.options.length} options</span>
-                                                </span>
-                                             </div>
-                                             {isSel && <SpecialRow t={t} />}
-                                         </div>
-                                        <div className="text-xs text-zinc-400">{isSel ? <UpOutlined /> : <DownOutlined />}</div>
-                                    </button>
-
-                                    {isSel && (
-                                        <div className="bg-zinc-950 p-2">
-                                            {t.options.map((o) => {
-                                                const checked = selO === o.id;
-                                                return (
-                                                    <label
-                                                        key={o.id}
-                                                        className={
-                                                            'mb-2 block rounded-xl p-2 ' +
-                                                            (checked ? 'bg-emerald-500/10' : 'bg-zinc-900')
-                                                        }
-                                                    >
-                                                        <div className="flex items-start gap-2">
-                                                            <input
-                                                                type="radio"
-                                                                name={`opt_${t.id}`}
-                                                                checked={checked}
-                                                                onChange={() => setSelO(o.id)}
-                                                                className="mt-1"
-                                                            />
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="text-sm font-medium">
-                                                                    {o.weapon1Name}
-                                                                    {o.weapon2Name ? ` + ${o.weapon2Name}` : ''}
-                                                                </div>
-                                                                <div className="mt-0.5 text-[11px] text-zinc-400">
-                                                                    Cost {o.costCaps}
-                                                                    {o.rating != null ? ` | Rating ${o.rating}` : ''}
-                                                                </div>
-
-                                                                <div className="mt-2 grid gap-2">
-                                                                    <div>
-                                                                        <div className="text-[11px] font-semibold text-zinc-300">Weapon 1</div>
-                                                                        <WeaponDetails w={o.weapon1} />
-                                                                    </div>
-                                                                    {o.weapon2Name && (
-                                                                        <div>
-                                                                            <div className="text-[11px] font-semibold text-zinc-300">Weapon 2</div>
-                                                                            <WeaponDetails w={o.weapon2} />
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </label>
-                                                );
-                                            })}
-
-                                            {t.options.length === 0 && <div className="text-sm text-zinc-500">No loadout options.</div>}
-                                        </div>
-                                    )}
+                    {companionStepOpen ? (
+                        <>
+                            {loadingCompanions ? <div className="py-3 text-center text-xs text-zinc-400">Loading companions...</div> : null}
+                            {!loadingCompanions && availableCompanions.length === 0 ? (
+                                <div className="rounded-xl bg-zinc-950 p-3 text-sm text-zinc-500">
+                                    No companions available for selected perk.
                                 </div>
-                            );
-                        })}
+                            ) : null}
+                            <div className="grid gap-2">
+                                {availableCompanions.map((companionTemplate) => {
+                                    const isCompanionSelected = selCompanionTemplateId === companionTemplate.id;
+                                    const selectedCompanionOptionLocal = isCompanionSelected
+                                        ? companionTemplate.options.find((o) => o.id === selCompanionOptionId) ?? null
+                                        : null;
+                                    const selectedCompanionHints = weaponHintsForOption(selectedCompanionOptionLocal ?? undefined);
 
-                        {list.length === 0 && !loading && <div className="text-sm text-zinc-500">No results.</div>}
-                    </div>
+                                    return (
+                                        <div
+                                            key={companionTemplate.id}
+                                            className={'rounded-2xl ' + (isCompanionSelected ? 'bg-emerald-500/5' : 'bg-zinc-900')}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelCompanionTemplateId(companionTemplate.id);
+                                                    setSelCompanionOptionId(null);
+                                                }}
+                                                className="flex w-full items-center gap-2 p-3 text-left"
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="truncate font-medium">{companionTemplate.name}</div>
+                                                    <div className="mt-0.5 text-[11px] text-zinc-400">
+                                                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                                                            <span>{companionTemplate.roleTag ? companionTemplate.roleTag : '-'}</span>
+                                                            <span>| {companionTemplate.options.length} options</span>
+                                                        </span>
+                                                    </div>
+                                                    {isCompanionSelected ? <SpecialRow t={companionTemplate} hints={selectedCompanionHints} /> : null}
+                                                </div>
+                                                <div className="text-xs text-zinc-400">{isCompanionSelected ? <UpOutlined /> : <DownOutlined />}</div>
+                                            </button>
 
-                    <div ref={sentinelRef} className="h-12" />
+                                            {isCompanionSelected ? (
+                                                <div className="bg-zinc-950 p-2">
+                                                    {companionTemplate.options.map((o) => {
+                                                        const checked = selCompanionOptionId === o.id;
+                                                        return (
+                                                            <label
+                                                                key={o.id}
+                                                                className={'mb-2 block rounded-xl p-2 ' + (checked ? 'bg-emerald-500/10' : 'bg-zinc-900')}
+                                                            >
+                                                                <div className="flex items-start gap-2">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`comp_opt_${companionTemplate.id}`}
+                                                                        checked={checked}
+                                                                        onChange={() => setSelCompanionOptionId(o.id)}
+                                                                        className="mt-1"
+                                                                    />
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-sm font-medium">
+                                                                            {o.weapon1Name}
+                                                                            {o.weapon2Name ? ` + ${o.weapon2Name}` : ''}
+                                                                        </div>
+                                                                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                                                                            Cost {o.costCaps}
+                                                                            {o.rating != null ? ` | Rating ${o.rating}` : ''}
+                                                                        </div>
+                                                                        <div className="mt-2 grid gap-2">
+                                                                            <div>
+                                                                                <div className="text-[11px] font-semibold text-zinc-300">Weapon 1</div>
+                                                                                <WeaponDetails w={o.weapon1} accentIndex={0} />
+                                                                            </div>
+                                                                            {o.weapon2Name ? (
+                                                                                <div>
+                                                                                    <div className="text-[11px] font-semibold text-zinc-300">Weapon 2</div>
+                                                                                    <WeaponDetails w={o.weapon2} accentIndex={1} />
+                                                                                </div>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </label>
+                                                        );
+                                                    })}
+                                                    {companionTemplate.options.length === 0 ? (
+                                                        <div className="text-sm text-zinc-500">No loadout options.</div>
+                                                    ) : null}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid gap-2">
+                                {list.map((t) => {
+                                    const isSel = t.id === selT;
+                                    const selectedCompanionHints = isSel ? weaponHintsForOption(selectedOption ?? undefined) : [];
 
-                    {loading && <div className="py-3 text-center text-xs text-zinc-400">Loading...</div>}
-                    {!hasMore && list.length > 0 && <div className="py-3 text-center text-xs text-zinc-500">To wszystko.</div>}
+                                    return (
+                                        <div key={t.id} className={'rounded-2xl ' + (isSel ? 'bg-emerald-500/5' : 'bg-zinc-900')}>
+                                            <button
+                                                onClick={() => {
+                                                    setSelT(t.id);
+                                                    setSelO(null);
+                                                    setCompanionBehavior(null);
+                                                    setSelCompanionTemplateId(null);
+                                                    setSelCompanionOptionId(null);
+                                                    setCompanionStepOpen(false);
+                                                }}
+                                                className="flex w-full items-center gap-2 p-3 text-left"
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="truncate font-medium">{t.name}</div>
+                                                    <div className="mt-0.5 text-[11px] text-zinc-400">
+                                                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                                                            <span>{t.roleTag ? t.roleTag : '-'}</span>
+                                                            {t.isLeader ? (
+                                                                <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
+                                                                    LEADER
+                                                                </span>
+                                                            ) : null}
+                                                            <span>| {t.options.length} options</span>
+                                                        </span>
+                                                    </div>
+                                                    {isSel ? <SpecialRow t={t} hints={selectedCompanionHints} /> : null}
+                                                </div>
+                                                <div className="text-xs text-zinc-400">{isSel ? <UpOutlined /> : <DownOutlined />}</div>
+                                            </button>
+
+                                            {isSel ? (
+                                                <div className="bg-zinc-950 p-2">
+                                                    {t.options.map((o) => {
+                                                        const checked = selO === o.id;
+                                                        return (
+                                                            <label
+                                                                key={o.id}
+                                                                className={'mb-2 block rounded-xl p-2 ' + (checked ? 'bg-emerald-500/10' : 'bg-zinc-900')}
+                                                            >
+                                                                <div className="flex items-start gap-2">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`opt_${t.id}`}
+                                                                        checked={checked}
+                                                                        onChange={() => setSelO(o.id)}
+                                                                        className="mt-1"
+                                                                    />
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="text-sm font-medium">
+                                                                            {o.weapon1Name}
+                                                                            {o.weapon2Name ? ` + ${o.weapon2Name}` : ''}
+                                                                        </div>
+                                                                        <div className="mt-0.5 text-[11px] text-zinc-400">
+                                                                            Cost {o.costCaps}
+                                                                            {o.rating != null ? ` | Rating ${o.rating}` : ''}
+                                                                        </div>
+
+                                                                        <div className="mt-2 grid gap-2">
+                                                                            <div>
+                                                                                <div className="text-[11px] font-semibold text-zinc-300">Weapon 1</div>
+                                                                                <WeaponDetails w={o.weapon1} accentIndex={0} />
+                                                                            </div>
+                                                                            {o.weapon2Name ? (
+                                                                                <div>
+                                                                                    <div className="text-[11px] font-semibold text-zinc-300">Weapon 2</div>
+                                                                                    <WeaponDetails w={o.weapon2} accentIndex={1} />
+                                                                                </div>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </label>
+                                                        );
+                                                    })}
+
+                                                    {t.options.length === 0 ? <div className="text-sm text-zinc-500">No loadout options.</div> : null}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    );
+                                })}
+
+                                {list.length === 0 && !loading ? <div className="text-sm text-zinc-500">No results.</div> : null}
+                            </div>
+
+                            <div ref={sentinelRef} className="h-12" />
+
+                            {loading ? <div className="py-3 text-center text-xs text-zinc-400">Loading...</div> : null}
+                            {!hasMore && list.length > 0 ? <div className="py-3 text-center text-xs text-zinc-500">To wszystko.</div> : null}
+                        </>
+                    )}
                 </div>
 
                 <div className="bg-zinc-900 p-4">
@@ -3885,12 +4375,29 @@ function AddUnitSheet({
                         >
                             Cancel
                         </button>
+                        {companionStepOpen ? (
+                            <button
+                                type="button"
+                                onClick={() => setCompanionStepOpen(false)}
+                                className="ff-cta ff-cta-neutral h-11 flex-1 text-sm"
+                            >
+                                Back
+                            </button>
+                        ) : canOpenCompanionStep ? (
+                            <button
+                                type="button"
+                                onClick={openCompanionStep}
+                                className="ff-cta ff-cta-neutral h-11 flex-1 text-sm"
+                            >
+                                {needsCompanionSelection ? 'Edit companion' : 'Add companion'}
+                            </button>
+                        ) : null}
                         <button
                             onClick={() => void add()}
                             disabled={!can || busy}
                             className="ff-cta ff-cta-primary h-11 flex-1 text-sm disabled:cursor-not-allowed"
                         >
-                            {busy ? 'Adding...' : 'Add'}
+                            {busy ? 'Adding...' : needsCompanionSelection ? 'Add with companion' : 'Add'}
                         </button>
                     </div>
                 </div>

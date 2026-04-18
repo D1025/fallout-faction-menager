@@ -57,6 +57,7 @@ function mapSnapshotUnitsToDashboard(snapshot: PublicArmySnapshot) {
             })),
             photoPath: null,
             hasPhoto: false,
+            companionOwnerId: null,
             rating: u.rating,
             weapons: u.weapons.map((w, weaponIdx) => ({
                 name: w.name,
@@ -181,4 +182,3 @@ export default async function Page({ params }: { params: Promise<{ token: string
         />
     );
 }
-

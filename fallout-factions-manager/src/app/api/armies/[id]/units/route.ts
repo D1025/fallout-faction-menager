@@ -1,8 +1,43 @@
-﻿import { auth } from '@/lib/authServer';
+import { auth } from '@/lib/authServer';
 import { prisma } from '@/server/prisma';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
+
+type AsyncCtx = { params: Promise<{ id: string }> };
+type CompanionBehavior = 'COMPANION_ROBOT' | 'COMPANION_BEAST';
+
+const CreateUnitSchema = z.object({
+    unitTemplateId: z.string().min(1),
+    optionId: z.string().min(1),
+    companion: z
+        .object({
+            perkBehavior: z.enum(['COMPANION_ROBOT', 'COMPANION_BEAST']),
+            unitTemplateId: z.string().min(1),
+            optionId: z.string().min(1),
+        })
+        .optional(),
+});
+
+type OptionRow = {
+    id: string;
+    unitId: string;
+    weapon1Id: string;
+    weapon2Id: string | null;
+    rating: number | null;
+    unit: {
+        id: string;
+        roleTag: 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS' | null;
+        baseRating: number | null;
+        startPerks: Array<{ perk: { name: string } }>;
+    };
+};
+
+type PerkRow = {
+    id: string;
+    behavior: string;
+    isInnate: boolean;
+};
 
 type UnitInstanceTx = {
     create(args: {
@@ -13,6 +48,7 @@ type UnitInstanceTx = {
             displayOrder: number;
             wounds: number;
             present: boolean;
+            companionOwnerId?: string | null;
         };
         select: { id: true };
     }): Promise<{ id: string }>;
@@ -24,11 +60,8 @@ type UnitInstanceTx = {
     findUnique(args: { where: { id: string }; include: { weapons: true; upgrades: true } }): Promise<unknown>;
 };
 
-type UnitWeaponOptionDelegate = {
-    findUnique(args: { where: { id: string }; select: { id: true; unitId: true; weapon1Id: true; weapon2Id: true } }): Promise<
-        | { id: string; unitId: string; weapon1Id: string; weapon2Id: string | null }
-        | null
-    >;
+type UnitChosenPerkTx = {
+    create(args: { data: { unitId: string; perkId: string; valueInt: number | null } }): Promise<unknown>;
 };
 
 type WeaponInstanceTx = {
@@ -37,22 +70,33 @@ type WeaponInstanceTx = {
 
 type Tx = {
     unitInstance: UnitInstanceTx;
+    unitChosenPerk: UnitChosenPerkTx;
     weaponInstance: WeaponInstanceTx;
 };
 
 type PrismaLike = {
-    unitWeaponOption: UnitWeaponOptionDelegate;
+    unitWeaponOption: {
+        findUnique(args: {
+            where: { id: string };
+            include: {
+                unit: {
+                    select: {
+                        id: true;
+                        roleTag: true;
+                        baseRating: true;
+                        startPerks: { select: { perk: { select: { name: true } } } };
+                    };
+                };
+            };
+        }): Promise<OptionRow | null>;
+    };
+    perk: {
+        findFirst(args: { where: { behavior: CompanionBehavior } }): Promise<PerkRow | null>;
+    };
     $transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
 };
 
 const p = prisma as unknown as PrismaLike;
-
-type AsyncCtx = { params: Promise<{ id: string }> };
-
-const CreateUnitSchema = z.object({
-    unitTemplateId: z.string().min(1),
-    optionId: z.string().min(1),
-});
 
 async function userHasWriteAccess(armyId: string, userId: string): Promise<boolean> {
     const army = await prisma.army.findUnique({ where: { id: armyId }, select: { ownerId: true } });
@@ -66,12 +110,22 @@ async function userHasWriteAccess(armyId: string, userId: string): Promise<boole
     return Boolean(share);
 }
 
-/**
- * Add a unit to an army:
- * - validate that optionId belongs to the provided UnitTemplate (unitTemplateId)
- * - create UnitInstance (selectedOptionId = optionId)
- * - based on option.weapon1Id / option.weapon2Id create 1-2 WeaponInstance rows
- */
+function extractWeaponIds(option: Pick<OptionRow, 'weapon1Id' | 'weapon2Id'>): string[] {
+    return [option.weapon1Id, option.weapon2Id].filter(
+        (x): x is string => typeof x === 'string' && x.length > 0,
+    );
+}
+
+function hasStartPerk(unit: OptionRow['unit'], perkName: string): boolean {
+    const needle = perkName.trim().toUpperCase();
+    return unit.startPerks.some((sp) => sp.perk.name.trim().toUpperCase() === needle);
+}
+
+function companionRatingFromOption(option: OptionRow): number {
+    const optionRating = option.rating ?? 0;
+    const baseRating = option.unit.baseRating ?? 0;
+    return optionRating !== 0 ? optionRating : baseRating;
+}
 
 export async function POST(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
@@ -86,28 +140,111 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     if (!parsed.success) {
         return new Response(JSON.stringify({ error: 'VALIDATION', details: parsed.error.flatten() }), { status: 400 });
     }
-    const { unitTemplateId, optionId } = parsed.data;
 
     const can = await userHasWriteAccess(armyId, userId);
     if (!can) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
-    const option = await p.unitWeaponOption.findUnique({
-        where: { id: optionId },
-        select: { id: true, unitId: true, weapon1Id: true, weapon2Id: true },
-    });
+    const { unitTemplateId, optionId, companion } = parsed.data;
 
-    if (!option || option.unitId !== unitTemplateId) {
-        return new Response(
-            JSON.stringify({ error: 'Option does not belong to the provided unit template' }),
-            { status: 400 },
-        );
+    const mainOption = await p.unitWeaponOption.findUnique({
+        where: { id: optionId },
+        include: {
+            unit: {
+                select: {
+                    id: true,
+                    roleTag: true,
+                    baseRating: true,
+                    startPerks: { select: { perk: { select: { name: true } } } },
+                },
+            },
+        },
+    });
+    if (!mainOption || mainOption.unitId !== unitTemplateId) {
+        return new Response(JSON.stringify({ error: 'Option does not belong to the provided unit template' }), {
+            status: 400,
+        });
+    }
+    const mainWeaponIds = extractWeaponIds(mainOption);
+    if (mainWeaponIds.length === 0) {
+        return new Response(JSON.stringify({ error: 'Selected option has no weapons' }), { status: 400 });
     }
 
-    const weaponIds = [option.weapon1Id, option.weapon2Id].filter(
-        (x): x is string => typeof x === 'string' && x.length > 0,
-    );
-    if (weaponIds.length === 0) {
-        return new Response(JSON.stringify({ error: 'Selected option has no weapons' }), { status: 400 });
+    let companionOption: OptionRow | null = null;
+    let companionPerk: PerkRow | null = null;
+    let companionRatingBonus = 0;
+
+    if (companion) {
+        if (mainOption.unit.roleTag !== 'CHAMPION') {
+            return new Response(
+                JSON.stringify({ error: 'Companion perk can only be selected for Champion units.' }),
+                { status: 400 },
+            );
+        }
+
+        companionPerk = await p.perk.findFirst({
+            where: { behavior: companion.perkBehavior },
+        });
+        if (!companionPerk) {
+            return new Response(
+                JSON.stringify({ error: `Missing perk with behavior ${companion.perkBehavior}.` }),
+                { status: 400 },
+            );
+        }
+        if (companionPerk.isInnate) {
+            return new Response(
+                JSON.stringify({ error: 'Companion perk must be a selectable non-innate perk.' }),
+                { status: 400 },
+            );
+        }
+
+        companionOption = await p.unitWeaponOption.findUnique({
+            where: { id: companion.optionId },
+            include: {
+                unit: {
+                    select: {
+                        id: true,
+                        roleTag: true,
+                        baseRating: true,
+                        startPerks: { select: { perk: { select: { name: true } } } },
+                    },
+                },
+            },
+        });
+        if (!companionOption || companionOption.unitId !== companion.unitTemplateId) {
+            return new Response(
+                JSON.stringify({ error: 'Companion option does not belong to the provided companion template.' }),
+                { status: 400 },
+            );
+        }
+        if (companionOption.unit.roleTag !== 'COMPANION') {
+            return new Response(
+                JSON.stringify({ error: 'Selected companion unit must have COMPANION role.' }),
+                { status: 400 },
+            );
+        }
+
+        const isRobotCompanion = hasStartPerk(companionOption.unit, 'MACHINE');
+        const isCreatureCompanion = hasStartPerk(companionOption.unit, 'BEAST');
+        if (companion.perkBehavior === 'COMPANION_ROBOT' && !isRobotCompanion) {
+            return new Response(
+                JSON.stringify({ error: 'Roboteer can only select robot companions.' }),
+                { status: 400 },
+            );
+        }
+        if (companion.perkBehavior === 'COMPANION_BEAST' && !isCreatureCompanion) {
+            return new Response(
+                JSON.stringify({ error: 'Creature Tamer can only select creature companions.' }),
+                { status: 400 },
+            );
+        }
+
+        const companionWeaponIds = extractWeaponIds(companionOption);
+        if (companionWeaponIds.length === 0) {
+            return new Response(JSON.stringify({ error: 'Selected companion option has no weapons.' }), {
+                status: 400,
+            });
+        }
+        companionRatingBonus = companionRatingFromOption(companionOption);
     }
 
     const created = await p.$transaction(async (tx) => {
@@ -116,28 +253,68 @@ export async function POST(req: Request, ctx: AsyncCtx) {
             orderBy: [{ displayOrder: 'desc' }, { createdAt: 'desc' }],
             select: { displayOrder: true },
         });
-        const nextDisplayOrder = (last?.displayOrder ?? -1) + 1;
 
-        const unit = await tx.unitInstance.create({
+        let nextDisplayOrder = (last?.displayOrder ?? -1) + 1;
+
+        const champion = await tx.unitInstance.create({
             data: {
                 armyId,
-                unitId: unitTemplateId,
-                optionId: option.id,
+                unitId: mainOption.unitId,
+                optionId: mainOption.id,
                 displayOrder: nextDisplayOrder,
                 wounds: 0,
                 present: true,
             },
             select: { id: true },
         });
-
         await tx.weaponInstance.createMany({
-            data: weaponIds.map((wid) => ({ unitId: unit.id, templateId: wid, activeMods: [] })),
+            data: mainWeaponIds.map((wid) => ({
+                unitId: champion.id,
+                templateId: wid,
+                activeMods: [],
+            })),
         });
 
-        return tx.unitInstance.findUnique({
-            where: { id: unit.id },
-            include: { weapons: true, upgrades: true },
-        });
+        let linkedCompanionId: string | null = null;
+        if (companion && companionPerk && companionOption) {
+            await tx.unitChosenPerk.create({
+                data: {
+                    unitId: champion.id,
+                    perkId: companionPerk.id,
+                    valueInt: companionRatingBonus,
+                },
+            });
+
+            nextDisplayOrder += 1;
+            const companionInstance = await tx.unitInstance.create({
+                data: {
+                    armyId,
+                    unitId: companionOption.unitId,
+                    optionId: companionOption.id,
+                    displayOrder: nextDisplayOrder,
+                    wounds: 0,
+                    present: true,
+                    companionOwnerId: champion.id,
+                },
+                select: { id: true },
+            });
+            linkedCompanionId = companionInstance.id;
+
+            const companionWeaponIds = extractWeaponIds(companionOption);
+            await tx.weaponInstance.createMany({
+                data: companionWeaponIds.map((wid) => ({
+                    unitId: companionInstance.id,
+                    templateId: wid,
+                    activeMods: [],
+                })),
+            });
+        }
+
+        return {
+            championId: champion.id,
+            companionId: linkedCompanionId,
+            companionRatingBonus,
+        };
     });
 
     return new Response(JSON.stringify(created), { status: 201 });

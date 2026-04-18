@@ -34,10 +34,37 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     const ok = await canWriteByUnitId(id, userId);
     if (!ok) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
+    const unit = (await prisma.unitInstance.findUnique(({
+        where: { id },
+        select: {
+            id: true,
+            companionOwnerId: true,
+            companionUnits: { select: { id: true } },
+        },
+    }) as unknown as Parameters<typeof prisma.unitInstance.findUnique>[0])) as unknown as
+        | {
+              id: string;
+              companionOwnerId: string | null;
+              companionUnits: Array<{ id: string }>;
+          }
+        | null;
+    if (!unit) return new Response('NOT_FOUND', { status: 404 });
+
     await prisma.unitInstance.update({
         where: { id },
         data: { present: parsed.data.present },
     });
+
+    // Rule support: if Champion is marked absent/present, mirror state to its linked Companions.
+    if (!unit.companionOwnerId) {
+        const ownedCompanionIds = unit.companionUnits.map((c) => c.id);
+        if (ownedCompanionIds.length > 0) {
+            await prisma.unitInstance.updateMany({
+                where: { id: { in: ownedCompanionIds } },
+                data: { present: parsed.data.present },
+            });
+        }
+    }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
 }

@@ -290,6 +290,7 @@ async function upsertUnitTemplate(
     name: string,
     data: {
         factionId: string | null;
+        isGlobal?: boolean;
         roleTag?: 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS' | null;
         isLeader?: boolean;
         baseRating?: number | null;
@@ -413,6 +414,7 @@ type PerkSpec = {
     description: string;
     category?: 'REGULAR' | 'AUTOMATRON';
     isInnate?: boolean;
+    behavior?: 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
     statKey?: StatKeySpecial | null;
     minValue?: number | null;
 };
@@ -429,6 +431,7 @@ async function ensurePerk(spec: PerkSpec) {
                 description: spec.description,
                 isInnate,
                 category: spec.category ?? 'REGULAR',
+                behavior: spec.behavior ?? 'NONE',
                 statKey: spec.statKey ?? null,
                 minValue: spec.minValue ?? null,
             },
@@ -440,11 +443,11 @@ async function ensurePerk(spec: PerkSpec) {
             description: spec.description,
             isInnate,
             category: spec.category ?? 'REGULAR',
+            behavior: spec.behavior ?? 'NONE',
             statKey: spec.statKey ?? null,
             minValue: spec.minValue ?? null,
             requiresValue: false,
             startAllowed: false,
-            behavior: 'NONE',
         },
     });
 }
@@ -974,6 +977,75 @@ async function main(): Promise<void> {
         { name: 'STICKY FINGERS', description: 'When this model makes the Rummage Action to Find a Chem, after adding a Chem to the Crew Roster, they may add a second Chem with a Cap cost no greater than the total result of the two rolled dice.' },
         { name: 'SURVIVALIST', description: 'Whenever this model would Suffer Harm from an attack, and there is another Friendly model within 3" that has no Harm, the Friendly model may Suffer that Harm instead.' },
         { name: 'SWARM', description: "When this model is taken as a Companion, you may add up to three models to your crew, instead of one, adding the Rating of each individual Companion to your Champion's Rating." },
+        {
+            name: 'ROBOTEER',
+            description:
+                'Companion Perk. When recruiting a Champion, it may gain this Perk and add one Robot Companion to the crew. The selected Companion Rating is added to this Champion Rating.',
+            isInnate: false,
+            behavior: 'COMPANION_ROBOT',
+        },
+        {
+            name: 'CREATURE TAMER',
+            description:
+                'Companion Perk. When recruiting a Champion, it may gain this Perk and add one Creature Companion to the crew. The selected Companion Rating is added to this Champion Rating.',
+            isInnate: false,
+            behavior: 'COMPANION_BEAST',
+        },
+        {
+            name: 'KING OF THE CASTLE',
+            description:
+                "This model's crew may use the Nuka-nuke Launcher Ploy. In addition, this model's crew may use The Pack, Operators, and Disciples Faction Ploys from the Fallout: Factions - Battle for Nuka-World Starter Set.",
+        },
+        {
+            name: 'EVERY MINIMUM ACCEPTABLE SAFETY STANDARD MET',
+            description:
+                'This model has no Harm Limit.',
+        },
+        {
+            name: 'ZIP OF NUKA-COLA',
+            description:
+                'When this model would be Incapacitated, if a Friendly model is within 2 inches, add one dose of Nuka-Cola to your Crew Roster.',
+        },
+        {
+            name: 'RECRUITER',
+            description:
+                'If at the end of a game this model was not Incapacitated, its crew may make the Recruit Story Action once for free during the next Story Phase.',
+        },
+        {
+            name: 'ONE RULE',
+            description:
+                "All Friendly models within this model's Control Area have the Blitz Perk.",
+        },
+        {
+            name: 'CHEATER',
+            description:
+                'This model can take the Get Moving, Open Fire, Patch Up, and Rummage Actions while Engaged.',
+        },
+        {
+            name: 'UNSTOPPABLE',
+            description:
+                'At the start of each Round, add the corresponding Perk to this model for the rest of the game: Round 1 Toughness, Round 2 Iron Fist, Round 3 Wide Swings.',
+        },
+        {
+            name: 'GREATER NUMBERS',
+            description:
+                "When you add a Pack Hound to your Crew Roster, add two models instead of one and pay the Hiring Fee once. Each model acts independently; for Rating references each Pack Hound counts as Rating 21.",
+        },
+        {
+            name: 'ON THE HOUSE (WHISKEY)',
+            description:
+                "When hiring this model, your crew gains one dose of X Chem/Rare Chem. Whiskey option: spend a dose to increase the Active model's Strength or Endurance by 2 for one Strength or Endurance Test.",
+        },
+        {
+            name: 'SERMONS',
+            description:
+                "At the beginning of this model's Activation, it may Take Fatigue to grant one temporary sermon bonus until end of Round to another Friendly model within Control Area (rummage without fatigue, sniper-like visibility, shielding others vs Area attacks, or anti-targeting protection).",
+        },
+        {
+            name: 'KNOW YOUR ENEMY (SUPER MUTANTS)',
+            description:
+                'When creating the Dice Pool for an Attack Action against an Enemy model from the Super Mutants faction, this model gains 1 Bonus Die.',
+        },
         { name: 'TRY OUTS', description: 'When this model makes an Attack Action, increase its Strength and Agility statistics by 2 if this model has line of sight to a Friendly Leader model.' },
         { name: 'VISIONS', description: "At the beginning of this model's first Activation of the Round, you may choose for it to Take Fatigue. If it does, place a Radiation Token anywhere on the Battlefield that is not within 3\" of a Search Token, a model, Objective Token, or another Radiation Token." },
         { name: 'KNOW YOUR ENEMY (FACTION)', description: 'When creating the Dice Pool for an Attack Action against an Enemy model from X Faction, this model gains 1 Bonus Dice. If a model gains this Perk, their controller picks the applicable Faction at that time.' },
@@ -1360,6 +1432,48 @@ async function main(): Promise<void> {
             baseEffects: [wfx('Wind Up'), cfx('Pushback', 3)],
         },
         {
+            name: 'Bloodbug Proboscis',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [cfx('Poison', 2)],
+        },
+        {
+            name: 'Claws and Jaws',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [wfx('Fast'), cfx('Suppress', 1)],
+        },
+        {
+            name: 'Deathclaw Claws',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '5S' },
+            baseEffects: [cfx('Maim'), cfx('Pushback', 1)],
+        },
+        {
+            name: 'Doe Shove',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '2S' },
+            baseEffects: [],
+        },
+        {
+            name: 'Mirelurk Claws',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '2S' },
+            baseEffects: [cfx('Maim')],
+        },
+        {
+            name: 'Radstag Antlers',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [wfx('Wind Up'), cfx('Pierce')],
+        },
+        {
+            name: 'Yao Guai Claws and Jaws',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Melee', baseTest: '5S' },
+            baseEffects: [cfx('Maim'), cfx('Pushback', 2)],
+        },
+        {
             name: '.44 Pistol',
             base: { baseType: 'Pistol (14")', baseTest: '4A' },
             baseEffects: [wfx('Aim', 1), cfx('Pierce')],
@@ -1500,8 +1614,20 @@ async function main(): Promise<void> {
         },
         {
             name: 'Hand Cryojet',
+            base: { baseType: 'Heavy (6")', baseTest: '3S' },
+            baseEffects: [wfx('Area', 2), wfx('CQB'), wfx('Slow'), cfx('Suppress', 1)],
+        },
+        {
+            name: 'Nuka Dispenser',
+            notes: 'Cannot be modified.',
             base: { baseType: 'Pistol (8")', baseTest: '4A' },
-            baseEffects: [wfx('CQB'), cfx('Suppress', 2)],
+            baseEffects: [cfx('Suppress', 1)],
+        },
+        {
+            name: 'Bloatfly Larvae',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Pistol (10")', baseTest: '2A' },
+            baseEffects: [wfx('Fast')],
         },
         {
             name: 'Flame Breath',
@@ -1634,6 +1760,12 @@ async function main(): Promise<void> {
                 { order: 1, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [wfx('Fast')] },
                 { order: 2, typeOverride: null, testOverride: null, partsOverride: 4, ratingDelta: 8, effects: [cfx('Suppress', 2)] },
             ],
+        },
+        {
+            name: 'Securitron SMG',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Rifle (12")', baseTest: '3P' },
+            baseEffects: [wfx('Storm', 3), cfx('Suppress', 2)],
         },
         {
             name: 'Syringer',
@@ -1811,6 +1943,12 @@ async function main(): Promise<void> {
             ],
         },
         {
+            name: 'Shoulder Launchers',
+            notes: 'Cannot be modified.',
+            base: { baseType: 'Heavy (12")', baseTest: '3S' },
+            baseEffects: [wfx('Area', 2), cfx('Maim')],
+        },
+        {
             name: 'Harpoon Gun',
             base: { baseType: 'Heavy (16")', baseTest: '5S' },
             baseEffects: [wfx('Aim', 1), wfx('Slow'), cfx('Haul', 3)],
@@ -1880,6 +2018,90 @@ async function main(): Promise<void> {
             name: 'Centaur Spit',
             base: { baseType: 'Grenade (10")', baseTest: '2A' },
             baseEffects: [wfx('Area', 1), wfx('CQB'), wfx('Irradiate'), wfx('Slow')],
+        },
+        {
+            name: 'Iron Fist',
+            notes: 'Legend profile.',
+            base: { baseType: 'Melee', baseTest: '5S' },
+            baseEffects: [wfx('Fast'), cfx('Maim')],
+        },
+        {
+            name: 'Nuka-nuke Launcher',
+            notes: 'Legend ploy weapon profile.',
+            base: { baseType: 'Heavy (20")', baseTest: '5S' },
+            baseEffects: [wfx('Area', 2), wfx('CQB'), wfx('Irradiate'), wfx('One & Done')],
+        },
+        {
+            name: 'Splattercannon',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (22")', baseTest: '5P' },
+            baseEffects: [wfx('Fast'), cfx('Suppress', 3)],
+        },
+        {
+            name: 'Bladed Commie Whacker',
+            notes: 'Legend profile.',
+            base: { baseType: 'Melee', baseTest: '2S' },
+            baseEffects: [wfx('Fast'), cfx('Pierce')],
+        },
+        {
+            name: 'The Red Deal',
+            notes: 'Legend profile.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [wfx('Fast'), cfx('Maim')],
+        },
+        {
+            name: 'Heavy Combat Shotgun',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (10")', baseTest: '5P' },
+            baseEffects: [wfx('Fast'), wfx('Storm', 1), cfx('Maim')],
+        },
+        {
+            name: 'Suppressing Handmade Rifle',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (22")', baseTest: '4P' },
+            baseEffects: [wfx('Fast'), cfx('Suppress', 3)],
+        },
+        {
+            name: "Disciple's Blade",
+            notes: 'Legend profile.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [wfx('Fast'), cfx('Maim')],
+        },
+        {
+            name: 'Powerful Combat Rifle',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (24")', baseTest: '5P' },
+            baseEffects: [wfx('Fast'), cfx('Maim')],
+        },
+        {
+            name: 'Upgraded Handmade Rifle',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (18")', baseTest: '5P' },
+            baseEffects: [wfx('Fast'), cfx('Suppress', 2)],
+        },
+        {
+            name: 'Upgraded Hand Weapon',
+            notes: 'Legend profile.',
+            base: { baseType: 'Melee', baseTest: '4S' },
+            baseEffects: [wfx('Fast')],
+        },
+        {
+            name: 'Trusty Lever-action Rifle',
+            notes: 'Legend profile.',
+            base: { baseType: 'Rifle (16")', baseTest: '4P' },
+            baseEffects: [cfx('Pierce')],
+        },
+        {
+            name: 'Breaching Harpoon Gun',
+            notes: 'Legend profile.',
+            base: { baseType: 'Heavy (16")', baseTest: '5S' },
+            baseEffects: [wfx('Aim', 1), wfx('Slow'), cfx('Haul', 3), cfx('Pushback', 3)],
+        },
+        {
+            name: 'Aeternus',
+            notes: 'Legend profile.',
+            base: { baseType: 'Heavy (10")', baseTest: '4S' },
+            baseEffects: [wfx('Slow'), wfx('Storm', 3), cfx('Ignite', 2)],
         },
     ];
 
@@ -4588,7 +4810,474 @@ async function main(): Promise<void> {
         { weapon1Id: mustWeaponId('Eyebot Laser'), costCaps: 15, rating: 15 },
     ]);
 
-    console.log('Seed OK: admin, effects, weapons, Brotherhood of Steel, Super Mutants, Survivors, Wasteland Raiders, The Pack, The Operators, The Disciples, The Gunners, Followers of the Winged One, Zetans, Children of Atom, Trappers, Automatrons, unit templates.');
+    /* 34) LEGENDS (global) */
+    const kingOfThePark = await upsertUnitTemplate('King of the Park', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 4, s: 7, p: 5, e: 7, c: 6, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(kingOfThePark.id, ['IRON FIST', 'KING OF THE CASTLE', 'NATURAL LEADER', 'POWER ARMOR']);
+    await replaceUnitOptions(kingOfThePark.id, [
+        { weapon1Id: mustWeaponId('Iron Fist'), costCaps: 87, rating: 87 },
+    ]);
+
+    const bottleAndCappy = await upsertUnitTemplate('Bottle and Cappy, All Fizzed Up', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 4, c: 6, i: 5, a: 4, l: 4,
+    });
+    await setUnitStartPerks(bottleAndCappy.id, ['EVERY MINIMUM ACCEPTABLE SAFETY STANDARD MET', 'FOUR LEAF CLOVER', 'HIDDEN', 'ZIP OF NUKA-COLA']);
+    await replaceUnitOptions(bottleAndCappy.id, [
+        { weapon1Id: mustWeaponId('Splattercannon'), weapon2Id: mustWeaponId('Bladed Commie Whacker'), costCaps: 48, rating: 48 },
+    ]);
+
+    const redeye = await upsertUnitTemplate('Redeye', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 4, c: 6, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(redeye.id, ['INSPIRATIONAL', 'INTIMIDATION', 'RECRUITER']);
+    await replaceUnitOptions(redeye.id, [
+        { weapon1Id: mustWeaponId('The Red Deal'), costCaps: 50, rating: 50 },
+    ]);
+
+    const mason = await upsertUnitTemplate('Mason', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 5, c: 6, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(mason.id, ['INSPIRATIONAL', 'NATURAL LEADER', 'SURVIVALIST', 'TOUGHNESS']);
+    await replaceUnitOptions(mason.id, [
+        { weapon1Id: mustWeaponId('Heavy Combat Shotgun'), costCaps: 63, rating: 63 },
+    ]);
+
+    const magsBlack = await upsertUnitTemplate('Mags Black', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 5, p: 6, e: 5, c: 5, i: 6, a: 5, l: 2,
+    });
+    await setUnitStartPerks(magsBlack.id, ['MAKING A WITHDRAWAL', 'NATURAL LEADER', 'RIFLEMAN']);
+    await replaceUnitOptions(magsBlack.id, [
+        { weapon1Id: mustWeaponId('Suppressing Handmade Rifle'), costCaps: 61, rating: 61 },
+    ]);
+
+    const nisha = await upsertUnitTemplate('Nisha', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 5, c: 6, i: 6, a: 6, l: 3,
+    });
+    await setUnitStartPerks(nisha.id, ['BLITZ', 'ONE RULE', 'NATURAL LEADER']);
+    await replaceUnitOptions(nisha.id, [
+        { weapon1Id: mustWeaponId("Disciple's Blade"), weapon2Id: mustWeaponId('Plasma Pistol'), costCaps: 68, rating: 68 },
+    ]);
+
+    const overbossColter = await upsertUnitTemplate('Overboss Colter', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 4, s: 7, p: 5, e: 7, c: 2, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(overbossColter.id, ['CHEATER', 'NATURAL LEADER', 'POWER ARMOR']);
+    await replaceUnitOptions(overbossColter.id, [
+        { weapon1Id: mustWeaponId('Powerful Combat Rifle'), weapon2Id: mustWeaponId('Iron Fist'), costCaps: 72, rating: 72 },
+    ]);
+
+    const nickValentine = await upsertUnitTemplate('Nick Valentine', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 6, i: 7, a: 4, l: 3,
+    });
+    await setUnitStartPerks(nickValentine.id, ['ADAPTABLE', 'INFORMANT', 'RAD RESISTANT']);
+    await replaceUnitOptions(nickValentine.id, [
+        { weapon1Id: mustWeaponId('Pipe Revolver'), costCaps: 37, rating: 37 },
+    ]);
+
+    const fist = await upsertUnitTemplate('Fist', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 4, s: 7, p: 5, e: 6, c: 5, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(fist.id, ['BURLY', 'NATURAL LEADER', 'RAD RESISTANT', 'TOUGHNESS', 'UNENDING STAMINA']);
+    await replaceUnitOptions(fist.id, [
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 72, rating: 72 },
+    ]);
+
+    const paladinDanse = await upsertUnitTemplate('Paladin Danse', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 4, s: 6, p: 6, e: 7, c: 5, i: 5, a: 4, l: 3,
+    });
+    await setUnitStartPerks(paladinDanse.id, ['KNOW YOUR ENEMY (SUPER MUTANTS)', 'NATURAL LEADER', 'ODD ANATOMY', 'POWER ARMOR']);
+    await replaceUnitOptions(paladinDanse.id, [
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 78, rating: 78 },
+    ]);
+
+    const theRogueKnight = await upsertUnitTemplate('The Rogue Knight', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 4, i: 4, a: 4, l: 2,
+    });
+    await setUnitStartPerks(theRogueKnight.id, ['POWER ARMOR', 'UNSTOPPABLE']);
+    await replaceUnitOptions(theRogueKnight.id, [
+        { weapon1Id: mustWeaponId('Aeternus'), costCaps: 76, rating: 76 },
+    ]);
+
+    const packHounds = await upsertUnitTemplate('Pack Hounds', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 3, e: 5, c: 3, i: 3, a: 4, l: 1,
+    });
+    await setUnitStartPerks(packHounds.id, ['BEAST', 'CANNIBAL', 'GREATER NUMBERS', "SIC 'EM", 'SPRINT']);
+    await replaceUnitOptions(packHounds.id, [
+        { weapon1Id: mustWeaponId('Claws and Jaws'), costCaps: 42, rating: 42 },
+    ]);
+
+    const williamBlack = await upsertUnitTemplate('William Black', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 4, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(williamBlack.id, ['SNIPER']);
+    await replaceUnitOptions(williamBlack.id, [
+        { weapon1Id: mustWeaponId('Upgraded Handmade Rifle'), costCaps: 50, rating: 50 },
+    ]);
+
+    const dixie = await upsertUnitTemplate('Dixie', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 4, e: 4, c: 5, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(dixie.id, ['HIDDEN', 'LONE WANDERER']);
+    await replaceUnitOptions(dixie.id, [
+        { weapon1Id: mustWeaponId('Upgraded Hand Weapon'), weapon2Id: mustWeaponId('.44 Pistol'), costCaps: 34, rating: 34 },
+    ]);
+
+    const oldLongfellow = await upsertUnitTemplate('Old Longfellow', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 6, e: 5, c: 3, i: 5, a: 3, l: 3,
+    });
+    await setUnitStartPerks(oldLongfellow.id, ['HOBBLE', 'ON THE HOUSE (WHISKEY)', 'PENETRATOR']);
+    await replaceUnitOptions(oldLongfellow.id, [
+        { weapon1Id: mustWeaponId('Trusty Lever-action Rifle'), costCaps: 54, rating: 54 },
+    ]);
+
+    const bilge = await upsertUnitTemplate('Bilge', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 6, p: 5, e: 6, c: 5, i: 5, a: 5, l: 2,
+    });
+    await setUnitStartPerks(bilge.id, ['NATURAL LEADER', 'POWER ARMOR']);
+    await replaceUnitOptions(bilge.id, [
+        { weapon1Id: mustWeaponId('Breaching Harpoon Gun'), costCaps: 64, rating: 64 },
+    ]);
+
+    const highConfessorTektus = await upsertUnitTemplate('High Confessor Tektus', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: true,
+        baseRating: 0,
+        hp: 3, s: 3, p: 5, e: 5, c: 7, i: 6, a: 5, l: 3,
+    });
+    await setUnitStartPerks(highConfessorTektus.id, ['INSPIRATIONAL', 'NATURAL LEADER', 'RAD RESISTANT', 'SERMONS']);
+    await replaceUnitOptions(highConfessorTektus.id, [
+        { weapon1Id: mustWeaponId('Gamma Gun'), costCaps: 48, rating: 48 },
+    ]);
+
+    const grandZealotRichter = await upsertUnitTemplate('Grand Zealot Richter', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'LEGENDS',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 7, c: 4, i: 5, a: 5, l: 3,
+    });
+    await setUnitStartPerks(grandZealotRichter.id, ['LIFEGIVER', 'RAD RESISTANT', 'TOUGHNESS']);
+    await replaceUnitOptions(grandZealotRichter.id, [
+        { weapon1Id: mustWeaponId('Radium Rifle'), costCaps: 65, rating: 65 },
+    ]);
+
+    /* 35) GLOBAL COMPANIONS (available to all factions) */
+    // NOTE: model entries with 3+ weapons are represented by the closest 2-weapon setup,
+    // because current UnitWeaponOption supports max two equipped weapons.
+    const companionEyebot = await upsertUnitTemplate('Eyebot (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 2, p: 4, e: 4, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(companionEyebot.id, ['BULLET MAGNET', 'EYE CATCHING', 'FLIGHT', 'MACHINE', 'PROGRAMMED']);
+    await replaceUnitOptions(companionEyebot.id, [
+        { weapon1Id: mustWeaponId('Eyebot Laser'), costCaps: 15, rating: 15 },
+    ]);
+
+    const companionMrFrothy = await upsertUnitTemplate('Mr. Frothy (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 6, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(companionMrFrothy.id, ['HARDY', 'MACHINE', 'PROGRAMMED', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(companionMrFrothy.id, [
+        { weapon1Id: mustWeaponId('Nuka Dispenser'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 40, rating: 40 },
+    ]);
+
+    const companionMrHandy = await upsertUnitTemplate('Mr. Handy (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 5, p: 5, e: 5, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(companionMrHandy.id, ['HARDY', 'MACHINE', 'MEDIC', 'PROGRAMMED']);
+    await replaceUnitOptions(companionMrHandy.id, [
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Various Appendages'), costCaps: 52, rating: 52 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Various Appendages'), costCaps: 57, rating: 57 },
+        { weapon1Id: mustWeaponId('Flamer'), weapon2Id: mustWeaponId('Robot Lasers'), costCaps: 60, rating: 60 },
+    ]);
+
+    const companionNukatron = await upsertUnitTemplate('Nukatron (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 1, i: 1, a: 2, l: 1,
+    });
+    await setUnitStartPerks(companionNukatron.id, ['HARDY', 'MACHINE', 'PROGRAMMED', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(companionNukatron.id, [
+        { weapon1Id: mustWeaponId('Robot Bash'), costCaps: 20, rating: 20 },
+        { weapon1Id: mustWeaponId('Nuka Dispenser'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 25, rating: 25 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 30, rating: 30 },
+    ]);
+
+    const companionProtectron = await upsertUnitTemplate('Protectron (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 5, e: 5, c: 1, i: 1, a: 2, l: 1,
+    });
+    await setUnitStartPerks(companionProtectron.id, ['HARDY', 'MACHINE', 'MEDIC', 'PROGRAMMED', 'SELF-DESTRUCT']);
+    await replaceUnitOptions(companionProtectron.id, [
+        { weapon1Id: mustWeaponId('Nail Gun'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 30, rating: 30 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 32, rating: 32 },
+        { weapon1Id: mustWeaponId('Robot Bash'), costCaps: 33, rating: 33 },
+        { weapon1Id: mustWeaponId('Hand Cryojet'), weapon2Id: mustWeaponId('Robot Bash'), costCaps: 35, rating: 35 },
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Shock Hand'), costCaps: 35, rating: 35 },
+    ]);
+
+    const companionSecuritronMk1 = await upsertUnitTemplate('Securitron MK 1.0 (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 6, c: 1, i: 1, a: 2, l: 2,
+    });
+    await setUnitStartPerks(companionSecuritronMk1.id, ['BURLY', 'HARDY', 'MACHINE', 'PROGRAMMED']);
+    await replaceUnitOptions(companionSecuritronMk1.id, [
+        { weapon1Id: mustWeaponId('Robot Lasers'), weapon2Id: mustWeaponId('Securitron SMG'), costCaps: 45, rating: 45 },
+    ]);
+
+    const companionSecuritronMk2 = await upsertUnitTemplate('Securitron MK 2.0 (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 5, e: 7, c: 1, i: 1, a: 2, l: 2,
+    });
+    await setUnitStartPerks(companionSecuritronMk2.id, ['BURLY', 'HARDY', 'LIFEGIVER', 'MACHINE', 'PROGRAMMED']);
+    await replaceUnitOptions(companionSecuritronMk2.id, [
+        { weapon1Id: mustWeaponId('Securitron SMG'), weapon2Id: mustWeaponId('Shoulder Launchers'), costCaps: 70, rating: 70 },
+    ]);
+
+    const companionBrahmin = await upsertUnitTemplate('Brahmin (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 4, p: 3, e: 5, c: 1, i: 1, a: 2, l: 1,
+    });
+    await setUnitStartPerks(companionBrahmin.id, ['BEAST', 'RAD RESISTANT']);
+    await replaceUnitOptions(companionBrahmin.id, [
+        { weapon1Id: mustWeaponId('Trample'), costCaps: 15, rating: 15 },
+    ]);
+
+    const companionBloodbug = await upsertUnitTemplate('Bloodbug (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 2, e: 3, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionBloodbug.id, ['BEAST', 'DISPOSABLE', 'FLIGHT', 'RAD RESISTANT', 'SWARM']);
+    await replaceUnitOptions(companionBloodbug.id, [
+        { weapon1Id: mustWeaponId('Bloodbug Proboscis'), costCaps: 5, rating: 5 },
+    ]);
+
+    const companionBloatfly = await upsertUnitTemplate('Bloatfly (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 2, p: 3, e: 2, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionBloatfly.id, ['BEAST', 'DISPOSABLE', 'FLIGHT', 'RAD RESISTANT', 'SWARM']);
+    await replaceUnitOptions(companionBloatfly.id, [
+        { weapon1Id: mustWeaponId('Bloatfly Larvae'), costCaps: 5, rating: 5 },
+    ]);
+
+    const companionDeathclaw = await upsertUnitTemplate('Deathclaw (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 7, p: 2, e: 7, c: 1, i: 1, a: 5, l: 1,
+    });
+    await setUnitStartPerks(companionDeathclaw.id, ['BEAST', 'BLITZ', 'BURLY', 'HARDY', 'RAD RESISTANT', 'WIDE SWINGS']);
+    await replaceUnitOptions(companionDeathclaw.id, [
+        { weapon1Id: mustWeaponId('Deathclaw Claws'), costCaps: 70, rating: 70 },
+    ]);
+
+    const companionMirelurk = await upsertUnitTemplate('Mirelurk (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 2, s: 5, p: 2, e: 4, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionMirelurk.id, ['BEAST', 'BURLY', 'RAD RESISTANT']);
+    await replaceUnitOptions(companionMirelurk.id, [
+        { weapon1Id: mustWeaponId('Mirelurk Claws'), costCaps: 17, rating: 17 },
+    ]);
+
+    const companionRadstag = await upsertUnitTemplate('Radstag (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 3, e: 4, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionRadstag.id, ['BEAST', 'RAD RESISTANT']);
+    await replaceUnitOptions(companionRadstag.id, [
+        { weapon1Id: mustWeaponId('Radstag Antlers'), costCaps: 10, rating: 10 },
+    ]);
+
+    const companionRadstagDoe = await upsertUnitTemplate('Radstag Doe (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 3, e: 3, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionRadstagDoe.id, ['BEAST', 'RAD RESISTANT', 'SWARM']);
+    await replaceUnitOptions(companionRadstagDoe.id, [
+        { weapon1Id: mustWeaponId('Doe Shove'), costCaps: 5, rating: 5 },
+    ]);
+
+    const companionMoleRat = await upsertUnitTemplate('Mole Rat (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 3, p: 2, e: 3, c: 1, i: 1, a: 3, l: 1,
+    });
+    await setUnitStartPerks(companionMoleRat.id, ['BEAST', 'BURROWING', 'DISPOSABLE', 'RAD RESISTANT', 'SWARM']);
+    await replaceUnitOptions(companionMoleRat.id, [
+        { weapon1Id: mustWeaponId('Claws and Jaws'), costCaps: 6, rating: 6 },
+    ]);
+
+    const companionMongrel = await upsertUnitTemplate('Mongrel (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 1, s: 4, p: 4, e: 4, c: 1, i: 2, a: 4, l: 1,
+    });
+    await setUnitStartPerks(companionMongrel.id, ['BEAST', 'RAD RESISTANT', 'SPRINT', 'SWARM']);
+    await replaceUnitOptions(companionMongrel.id, [
+        { weapon1Id: mustWeaponId('Claws and Jaws'), costCaps: 10, rating: 10 },
+    ]);
+
+    const companionYaoGuai = await upsertUnitTemplate('Yao Guai (Companion)', {
+        factionId: null,
+        isGlobal: true,
+        roleTag: 'COMPANION',
+        isLeader: false,
+        baseRating: 0,
+        hp: 3, s: 7, p: 3, e: 6, c: 1, i: 1, a: 4, l: 1,
+    });
+    await setUnitStartPerks(companionYaoGuai.id, ['BEAST', 'FREIGHT TRAIN', 'HARDY', 'RAD RESISTANT']);
+    await replaceUnitOptions(companionYaoGuai.id, [
+        { weapon1Id: mustWeaponId('Yao Guai Claws and Jaws'), costCaps: 60, rating: 60 },
+    ]);
+
+    console.log('Seed OK: admin, effects, weapons, Brotherhood of Steel, Super Mutants, Survivors, Wasteland Raiders, The Pack, The Operators, The Disciples, The Gunners, Followers of the Winged One, Zetans, Children of Atom, Trappers, Automatrons, Legends, companions, unit templates.');
 }
 main()
     .catch((e) => {

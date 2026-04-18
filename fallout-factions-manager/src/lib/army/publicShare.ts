@@ -155,7 +155,15 @@ type SnapshotArmyData = {
             baseRating: number | null;
             startPerks: Array<{ perk: { id: string; name: string; description: string | null } }>;
         };
-        chosenPerks: Array<{ perk: { id: string; name: string; description: string | null } }>;
+        chosenPerks: Array<{
+            valueInt: number | null;
+            perk: {
+                id: string;
+                name: string;
+                description: string | null;
+                behavior?: 'NONE' | 'COMPANION_ROBOT' | 'COMPANION_BEAST';
+            };
+        }>;
         upgrades: Array<{ statKey: string; delta: number; trainingFactionId?: string | null }>;
         weapons: Array<{ templateId: string; activeMods: string[] }>;
         selectedOption: { rating: number | null } | null;
@@ -327,8 +335,9 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
                     },
                     chosenPerks: {
                         select: {
+                            valueInt: true,
                             perk: {
-                                select: { id: true, name: true, description: true },
+                                select: { id: true, name: true, description: true, behavior: true },
                             },
                         },
                         orderBy: { perkId: 'asc' },
@@ -424,6 +433,12 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             ...unit.unit.startPerks.map((sp) => sp.perk.name),
             ...unit.chosenPerks.map((cp) => cp.perk.name),
         ];
+        const companionPerkBonus = unit.chosenPerks.reduce((sum, cp) => {
+            const behavior = cp.perk.behavior ?? 'NONE';
+            if (behavior !== 'COMPANION_ROBOT' && behavior !== 'COMPANION_BEAST') return sum;
+            const bonus = cp.valueInt ?? 0;
+            return sum + (bonus > 0 ? bonus : 0);
+        }, 0);
 
         const statsDelta = unit.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc;
@@ -440,7 +455,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             return acc + up.delta * per;
         }, 0);
 
-        return baseFromTemplate + optionRating + weaponDelta + statsDelta;
+        return baseFromTemplate + optionRating + weaponDelta + statsDelta + companionPerkBonus;
     }
 
     const units = armyUnits.map((u) => {
