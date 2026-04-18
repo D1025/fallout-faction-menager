@@ -482,11 +482,17 @@ model StatUpgrade {
   unitId  String
   statKey String // "S","P","E","C","I","A","L","hp"
   delta   Int
+  // Optional training source used mainly by Zetans to bind one upgrade
+  // to a specific opponent army/faction table.
+  trainingArmyId    String?
+  trainingFactionId String?
   at      DateTime @default(now())
 
   unit UnitInstance @relation(fields: [unitId], references: [id])
 
   @@index([unitId])
+  @@index([trainingArmyId])
+  @@index([trainingFactionId])
 }
 
 /**
@@ -527,6 +533,7 @@ model FactionUpgradeRule {
   factionId      String
   statKey        String // "hp","S","P","E","C","I","A","L"
   ratingPerPoint Int
+  ratingPerPointChampion Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @default(now())
 

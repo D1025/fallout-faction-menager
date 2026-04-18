@@ -6,12 +6,19 @@ import { auth } from '@/lib/authServer';
 import { UnitClient } from '@/components/army/UnitClient';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { UserAccountMenu } from '@/components/auth/UserAccountMenu';
+import { isZetansFactionName } from '@/lib/rules/trainingTable';
 
 type UiStatKey = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type StatKey = 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L' | 'hp';
 function isStatKey(x: string): x is StatKey {
     return x === 'hp' || x === 'S' || x === 'P' || x === 'E' || x === 'C' || x === 'I' || x === 'A' || x === 'L';
 }
+
+const p = prisma as unknown as {
+    armyPlayed: {
+        findMany: (args: unknown) => Promise<unknown[]>;
+    };
+};
 
 type UnitPerkRow = {
     id: string;
@@ -32,7 +39,11 @@ type UnitDetailRow = {
     temporaryLeader?: boolean;
     capturedByArmyId?: string | null;
     capturedAt?: Date | null;
-    army: { ownerId: string };
+    army: {
+        ownerId: string;
+        factionId: string;
+        faction: { name: string };
+    };
     unit: {
         id: string;
         name: string;
@@ -49,7 +60,14 @@ type UnitDetailRow = {
         baseRating: number | null;
         startPerks: Array<{ perk: UnitPerkRow }>;
     } | null;
-    upgrades: Array<{ id: string; statKey: string; delta: number; at: Date }>;
+    upgrades: Array<{
+        id: string;
+        statKey: string;
+        delta: number;
+        at: Date;
+        trainingArmyId?: string | null;
+        trainingFactionId?: string | null;
+    }>;
     weapons: Array<{ id: string; templateId: string; activeMods: string[] }>;
     capturedByArmy: { id: string; name: string; faction: { name: string } } | null;
     chosenPerks: Array<{ id: string; perk: UnitPerkRow }>;
@@ -83,6 +101,15 @@ type WeaponTemplateUnitRow = {
     }>;
 };
 
+type ZetanTrainingSourceRow = {
+    opponentArmy: {
+        id: string;
+        name: string;
+        factionId: string;
+        faction: { name: string };
+    };
+};
+
 export default async function Page({ params }: { params: Promise<{ armyId: string; unitId: string }> }) {
     const { unitId } = await params;
     const session = await auth();
@@ -100,7 +127,13 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const unit = await prisma.unitInstance.findUnique(({
         where: { id: unitId },
         include: {
-            army: { select: { ownerId: true } },
+            army: {
+                select: {
+                    ownerId: true,
+                    factionId: true,
+                    faction: { select: { name: true } },
+                },
+            },
             unit: {
                 select: {
                     id: true,
@@ -145,6 +178,33 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const hasReadAccess = unit.army.ownerId === userId || Boolean(share);
     if (!hasReadAccess) return <div className="p-4 text-red-300">You do not have access to this unit.</div>;
     const canWrite = unit.army.ownerId === userId || share?.perm === 'WRITE';
+    const isZetansArmy = isZetansFactionName(unit.army.faction.name);
+
+    const zetanTrainingSources = isZetansArmy
+        ? (
+            (await p.armyPlayed.findMany({
+                where: { armyId: unit.armyId, boxesChecked: { gt: 0 } },
+                include: {
+                    opponentArmy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            factionId: true,
+                            faction: { select: { name: true } },
+                        },
+                    },
+                },
+                orderBy: { updatedAt: 'desc' },
+            })) as ZetanTrainingSourceRow[]
+        )
+            .filter((row) => !isZetansFactionName(row.opponentArmy.faction.name))
+            .map((row) => ({
+                armyId: row.opponentArmy.id,
+                armyName: row.opponentArmy.name,
+                factionId: row.opponentArmy.factionId,
+                factionName: row.opponentArmy.faction.name,
+            }))
+        : [];
 
     const captureTargets = canWrite
         ? (
@@ -274,6 +334,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         id: u.id,
                         statKey: isStatKey(u.statKey) ? u.statKey : 'S',
                         delta: u.delta,
+                        trainingArmyId: u.trainingArmyId ?? null,
+                        trainingFactionId: u.trainingFactionId ?? null,
                         at: u.at.toISOString(),
                     }))}
                     weapons={weapons}
@@ -301,6 +363,8 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                         // deduplicate by perk id
                         .filter((p, idx, arr) => arr.findIndex((x) => x.id === p.id) === idx)}
                     canManageCapture={canWrite}
+                    isZetansArmy={isZetansArmy}
+                    zetanTrainingOptions={zetanTrainingSources}
                     captureTargets={captureTargets}
                     captureStatus={{
                         capturedByArmyId: (unit as unknown as { capturedByArmyId?: string | null }).capturedByArmyId ?? null,

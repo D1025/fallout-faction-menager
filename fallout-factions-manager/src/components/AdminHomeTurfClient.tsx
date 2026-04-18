@@ -241,12 +241,6 @@ export function AdminHomeTurfClient() {
                     <div className="text-sm font-medium">
                         {activeLabel} list ({filtered.length})
                     </div>
-                    <button
-                        className="h-9 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-xs"
-                        onClick={() => void reload()}
-                    >
-                        Refresh
-                    </button>
                 </div>
 
                 <input

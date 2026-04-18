@@ -2366,7 +2366,7 @@ function ArmyDashboardClientInner({
                         <div className="mb-2 flex items-center justify-between gap-2">
                             <div className="text-base font-medium">Units</div>
                             {!readOnly ? (
-                                <button onClick={() => setAdding(true)} className="rounded-xl bg-zinc-900 px-3 py-1 text-xs">
+                                <button onClick={() => setAdding(true)} className="ff-cta ff-cta-primary">
                                     Add unit
                                 </button>
                             ) : null}
@@ -2407,7 +2407,7 @@ function ArmyDashboardClientInner({
             {/* CHEMS */}
             {tab === 'EDIT' && (
                 <section className="mt-3">
-                    <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="mb-3">
                         <div>
                             <div className="flex items-center gap-2 text-sm font-medium">
                                 <MedicineBoxOutlined className="text-zinc-200" />
@@ -2415,13 +2415,6 @@ function ArmyDashboardClientInner({
                             </div>
                             <div className="text-[11px] text-zinc-500">Quick tracking for common and uncommon chems.</div>
                         </div>
-                        <button
-                            onClick={() => void loadChems(true)}
-                            className="rounded-xl bg-zinc-900 px-3 py-1 text-xs disabled:opacity-50"
-                            disabled={loadingChems}
-                        >
-                            {loadingChems ? 'Refreshing...' : 'Refresh'}
-                        </button>
                     </div>
 
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -2470,7 +2463,7 @@ function ArmyDashboardClientInner({
                             type="button"
                             onClick={() => setShowAddPlayedSheet(true)}
                             disabled={addingPlayed || availableSharedCandidates.length === 0}
-                            className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                            className="ff-cta ff-cta-primary"
                         >
                             Add
                         </button>
@@ -2647,16 +2640,8 @@ function ArmyDashboardClientInner({
             {/* TASKS - goal progress tracking */}
             {tab === 'TASKS' && (
                 <section className="mt-3">
-                    <div className="mb-1 flex items-center justify-between">
+                    <div className="mb-1">
                         <div className="text-sm font-medium">Tasks</div>
-                        <button
-                            onClick={() => void loadGoals()}
-                            className="rounded-xl bg-zinc-900 px-3 py-1 text-xs"
-                            aria-label="Refresh goals"
-                            title="Refresh"
-                        >
-                            Refresh
-                        </button>
                     </div>
 
                     <div className="mb-3 flex items-center justify-between gap-2">
@@ -2668,7 +2653,7 @@ function ArmyDashboardClientInner({
                         ) : (
                             <button
                                 onClick={() => void advanceTier()}
-                                className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950 active:scale-95"
+                                className="ff-cta ff-cta-primary"
                                 aria-label="Increase tier"
                                 title="Increase tier"
                             >
@@ -2810,7 +2795,7 @@ function ArmyDashboardClientInner({
                                 <button
                                     type="button"
                                     onClick={() => setFacilityPickerOpen(true)}
-                                    className="rounded-xl bg-emerald-500 px-3 py-1 text-xs font-semibold text-emerald-950"
+                                    className="ff-cta ff-cta-primary"
                                 >
                                     Add facility
                                 </button>
@@ -2949,7 +2934,7 @@ function ArmyDashboardClientInner({
                                 <button
                                     type="button"
                                     onClick={closeResourceEditor}
-                                    className="h-11 rounded-xl bg-zinc-950 text-sm font-medium text-zinc-300"
+                                    className="ff-cta ff-cta-neutral h-11 text-sm"
                                 >
                                     Cancel
                                 </button>
@@ -2957,7 +2942,7 @@ function ArmyDashboardClientInner({
                                     type="button"
                                     onClick={() => void saveResourceEditor()}
                                     disabled={busy === resourceEditorKind}
-                                    className="h-11 rounded-xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:opacity-40"
+                                    className="ff-cta ff-cta-primary h-11 text-sm"
                                 >
                                     {busy === resourceEditorKind ? 'Saving...' : 'Save'}
                                 </button>
@@ -3034,10 +3019,10 @@ function ArmyDashboardClientInner({
                                                     disabled={!canAdd}
                                                     onClick={() => void toggleFacility(f.id, true)}
                                                     className={
-                                                        'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
+                                                        'ff-cta shrink-0 ' +
                                                         (canAdd
-                                                            ? 'bg-emerald-500 text-emerald-950'
-                                                            : 'bg-zinc-900 text-zinc-500')
+                                                            ? 'ff-cta-primary'
+                                                            : 'ff-cta-neutral text-zinc-500')
                                                     }
                                                 >
                                                     {selected ? 'Added' : rowBusy ? 'Adding...' : 'Add'}
@@ -3276,7 +3261,7 @@ function AddPlayedArmySheet({
                                             type="button"
                                             onClick={() => onAdd(item.id)}
                                             disabled={busy}
-                                            className="shrink-0 rounded-lg bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-emerald-950 disabled:opacity-50"
+                                            className="ff-cta ff-cta-primary shrink-0"
                                         >
                                             {busy ? 'Adding...' : 'Add'}
                                         </button>
@@ -3896,14 +3881,14 @@ function AddUnitSheet({
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}
-                            className="h-11 flex-1 rounded-2xl bg-zinc-800 text-sm text-zinc-300"
+                            className="ff-cta ff-cta-neutral h-11 flex-1 text-sm"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={() => void add()}
                             disabled={!can || busy}
-                            className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="ff-cta ff-cta-primary h-11 flex-1 text-sm disabled:cursor-not-allowed"
                         >
                             {busy ? 'Adding...' : 'Add'}
                         </button>

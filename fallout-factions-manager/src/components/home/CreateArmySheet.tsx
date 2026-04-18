@@ -28,7 +28,7 @@ export default function CreateArmySheetDefault({ factions }: { factions: Faction
         <>
             <button
                 onClick={() => setOpen(true)}
-                className="ff-btn ff-btn-primary ff-btn-icon-mobile"
+                className="ff-cta ff-cta-primary ff-btn-icon-mobile"
                 title="Add army"
                 aria-label="Add army"
             >
@@ -239,14 +239,14 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}
-                            className="h-11 flex-1 rounded-2xl bg-zinc-800 text-sm text-zinc-300 active:scale-[0.99]"
+                            className="ff-cta ff-cta-neutral h-11 flex-1 text-sm"
                         >
                             Cancel
                         </button>
                         <button
                             disabled={!can}
                             onClick={() => void createArmy()}
-                            className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40 active:scale-[0.99]"
+                            className="ff-cta ff-cta-primary h-11 flex-1 text-sm disabled:cursor-not-allowed"
                         >
                             Create
                         </button>

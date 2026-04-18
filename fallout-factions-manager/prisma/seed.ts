@@ -1,4 +1,4 @@
-/* prisma/seed.ts */
+﻿/* prisma/seed.ts */
 import {
     PrismaClient,
     Prisma,
@@ -202,9 +202,18 @@ export type FactionInput = {
         name: string;
         goals: Array<{ tier: Tier; description: string; target: number; order?: number }>;
     }>;
-    upgradeRules: Array<{ statKey: string; ratingPerPoint: number }>;
+    upgradeRules: Array<{ statKey: string; ratingPerPoint: number; ratingPerPointChampion?: number | null }>;
     limits: Array<{ tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null }>;
 };
+
+function defaultChampionRatingPerPoint(statKey: string): number {
+    const key = statKey === 'hp' ? 'HP' : statKey.toUpperCase();
+    if (key === 'HP') return 20;
+    if (key === 'S' || key === 'P' || key === 'A') return 10;
+    if (key === 'E' || key === 'L') return 15;
+    if (key === 'C' || key === 'I') return 8;
+    return 0;
+}
 
 function assertThreePerTier(goals: Array<{ tier: Tier }>): void {
     const counts: Record<Tier, number> = { 1: 0, 2: 0, 3: 0 };
@@ -232,10 +241,18 @@ async function upsertFactionFull(input: FactionInput) {
     await prisma.factionLimit.deleteMany({ where: { factionId: faction.id } });
 
     if (input.upgradeRules.length) {
-        await prisma.factionUpgradeRule.createMany({
-            data: input.upgradeRules.map((r) => ({ factionId: faction.id, ...r })),
+        await prisma.factionUpgradeRule.createMany(({
+            data: input.upgradeRules.map((r) => ({
+                factionId: faction.id,
+                statKey: r.statKey,
+                ratingPerPoint: r.ratingPerPoint,
+                ratingPerPointChampion:
+                    r.ratingPerPointChampion != null
+                        ? r.ratingPerPointChampion
+                        : defaultChampionRatingPerPoint(r.statKey),
+            })),
             skipDuplicates: true,
-        });
+        }) as unknown as Parameters<typeof prisma.factionUpgradeRule.createMany>[0]);
     }
 
     for (const gs of input.goalSets) {
@@ -443,7 +460,7 @@ function uniqByName(perks: PerkSpec[]): PerkSpec[] {
 
 function applySpecialRequirements(perks: PerkSpec[]): PerkSpec[] {
     const reqByName = new Map<string, { statKey: StatKeySpecial; minValue: number }>();
-    const keyOf = (name: string): string => name.trim().toUpperCase().replace(/[’‘`]/g, "'");
+    const keyOf = (name: string): string => name.trim().toUpperCase().replace(/[â€™â€`]/g, "'");
 
     const assign = (statKey: StatKeySpecial, pairs: Array<[string, number]>) => {
         for (const [name, minValue] of pairs) {
@@ -2246,8 +2263,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Super Mutant training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -2502,8 +2518,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Survivors training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -2924,8 +2939,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Wasteland Raiders training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -3272,8 +3286,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from The Pack training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -3421,8 +3434,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from The Operators training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -3568,8 +3580,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from The Disciples training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -3714,8 +3725,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from The Gunners training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -3875,8 +3885,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Followers of the Winged One training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -4030,8 +4039,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Zetans training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -4169,8 +4177,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Children of Atom training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -4311,8 +4318,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Trappers training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -4455,8 +4461,7 @@ async function main(): Promise<void> {
                 ],
             },
         ],
-        // Current schema stores one value per stat key (no champion/grunt split),
-        // so we use the GRUNT column from the Automatrons training table.
+        // Training table values are stored per stat with separate Champion/Grunt fields.
         upgradeRules: [
             { statKey: 'hp', ratingPerPoint: 12 },
             { statKey: 'S', ratingPerPoint: 7 },
@@ -4593,3 +4598,4 @@ main()
     .finally(async () => {
         await prisma.$disconnect();
     });
+

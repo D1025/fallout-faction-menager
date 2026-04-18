@@ -5,12 +5,24 @@ export const revalidate = 0;
 import { prisma } from '@/server/prisma';
 import { auth } from '@/lib/authServer';
 import { ArmyPageClient } from '@/components/army/ArmyPageClient';
+import {
+    buildTrainingRuleLookup,
+    getUpgradeRatingPerPointForUnit,
+    resolveEffectiveTrainingFactionId,
+    type TrainingRuleLookup,
+} from '@/lib/rules/trainingTable';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;
 function isBonusKey(k: string): k is Exclude<BonusKeys, 'HP'> {
     return k === 'S' || k === 'P' || k === 'E' || k === 'C' || k === 'I' || k === 'A' || k === 'L';
 }
+
+const p = prisma as unknown as {
+    factionUpgradeRule: {
+        findMany: (args: unknown) => Promise<unknown[]>;
+    };
+};
 
 type ArmyPerkRow = {
     id: string;
@@ -43,7 +55,7 @@ type ArmyUnitRow = {
     temporaryLeader?: boolean;
     capturedAt?: Date | null;
     unit: ArmyUnitTemplateRow;
-    upgrades: Array<{ statKey: string; delta: number }>;
+    upgrades: Array<{ statKey: string; delta: number; trainingFactionId?: string | null }>;
     weapons: Array<{ templateId: string; activeMods: string[] }>;
     selectedOption: { rating: number | null } | null;
     capturedByArmy: { id: string; name: string; faction: { name: string } } | null;
@@ -68,6 +80,14 @@ type ArmyPageData = {
         name: string;
         limits: Array<{ tag: string; tier1: number | null; tier2: number | null; tier3: number | null }>;
     };
+    playedOpponents: Array<{
+        boxesChecked: number;
+        updatedAt: Date;
+        opponentArmy: {
+            factionId: string;
+            faction: { name: string };
+        };
+    }>;
     units: ArmyUnitRow[];
 };
 
@@ -127,6 +147,18 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                     },
                 },
             },
+            playedOpponents: {
+                where: { boxesChecked: { gt: 0 } },
+                orderBy: { updatedAt: 'desc' },
+                include: {
+                    opponentArmy: {
+                        select: {
+                            factionId: true,
+                            faction: { select: { name: true } },
+                        },
+                    },
+                },
+            },
             units: {
                 include: {
                     unit: {
@@ -170,12 +202,45 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         return <div className="p-4 text-red-300">You do not have access to this army.</div>;
     }
     const readOnly = !isOwner;
+    const crewFactionName = army.faction.name;
 
-    const rules = await prisma.factionUpgradeRule.findMany({
-        where: { factionId: army.factionId },
-        select: { statKey: true, ratingPerPoint: true },
-    }) as Array<{ statKey: string; ratingPerPoint: number }>;
-    const ruleByKey = new Map<string, number>(rules.map((r) => [r.statKey, r.ratingPerPoint]));
+    const effectiveTrainingFactionId = resolveEffectiveTrainingFactionId({
+        ownFactionId: army.factionId,
+        ownFactionName: army.faction.name,
+        playedOpponents: army.playedOpponents.map((row) => ({
+            boxesChecked: row.boxesChecked,
+            updatedAt: row.updatedAt,
+            opponentFactionId: row.opponentArmy.factionId,
+            opponentFactionName: row.opponentArmy.faction.name,
+        })),
+    });
+
+    const explicitTrainingFactionIds = Array.from(
+        new Set(
+            army.units
+                .flatMap((u) => u.upgrades.map((up) => up.trainingFactionId ?? null))
+                .filter((id): id is string => Boolean(id)),
+        ),
+    );
+    const allTrainingFactionIds = Array.from(
+        new Set([effectiveTrainingFactionId, ...explicitTrainingFactionIds]),
+    );
+
+    const rules = await p.factionUpgradeRule.findMany({
+        where: { factionId: { in: allTrainingFactionIds } },
+        select: { factionId: true, statKey: true, ratingPerPoint: true, ratingPerPointChampion: true },
+    }) as Array<{
+        factionId: string;
+        statKey: string;
+        ratingPerPoint: number;
+        ratingPerPointChampion?: number | null;
+    }>;
+    const trainingRuleLookupByFaction = new Map<string, TrainingRuleLookup>();
+    for (const factionId of allTrainingFactionIds) {
+        const rows = rules.filter((rule) => rule.factionId === factionId);
+        trainingRuleLookupByFaction.set(factionId, buildTrainingRuleLookup(rows));
+    }
+    const defaultTrainingRuleLookup = trainingRuleLookupByFaction.get(effectiveTrainingFactionId) ?? new Map();
 
     const allTemplateIds = Array.from(new Set(army.units.flatMap((u) => u.weapons.map((w) => w.templateId))));
     const templates =
@@ -204,12 +269,24 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             const sum = t.profiles.reduce((a, p) => (selected.has(p.id) ? a + (p.ratingDelta ?? 0) : a), 0);
             return acc + sum;
         }, 0);
+        const unitPerkNames = [
+            ...u.unit.startPerks.map((sp) => sp.perk.name),
+            ...u.chosenPerks.map((cp) => cp.perk.name),
+        ];
 
         // Only positive stat upgrades count toward rating.
         const statsDelta = u.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc; // ignoruj rany
-            const key = up.statKey === 'hp' ? 'hp' : up.statKey;
-            const per = ruleByKey.get(key) ?? 0;
+            const rulesLookup = up.trainingFactionId
+                ? trainingRuleLookupByFaction.get(up.trainingFactionId) ?? defaultTrainingRuleLookup
+                : defaultTrainingRuleLookup;
+            const per = getUpgradeRatingPerPointForUnit({
+                statKey: up.statKey,
+                roleTag: u.unit.roleTag,
+                unitPerkNames,
+                crewFactionName,
+                rulesLookup,
+            });
             return acc + up.delta * per;
         }, 0);
 

@@ -185,10 +185,10 @@ export function PhotoCropperModal({ file, onCancel, onConfirm, targetSize = 400,
                     </div>
 
                     <div className="mt-4 flex gap-2">
-                        <button onClick={onCancel} className="h-11 flex-1 rounded-2xl border border-zinc-700 bg-zinc-900 text-sm text-zinc-300">
+                        <button onClick={onCancel} className="ff-cta ff-cta-neutral h-11 flex-1 text-sm">
                             Cancel
                         </button>
-                        <button onClick={() => void confirmCrop()} className="h-11 flex-1 rounded-2xl bg-emerald-500 text-sm font-semibold text-emerald-950">
+                        <button onClick={() => void confirmCrop()} className="ff-cta ff-cta-primary h-11 flex-1 text-sm">
                             Save photo
                         </button>
                     </div>

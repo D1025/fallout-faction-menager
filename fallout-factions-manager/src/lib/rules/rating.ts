@@ -2,9 +2,15 @@ import type { FactionUpgradeRule } from '@prisma/client';
 
 export function ratingFromStatUpgrades(
     upgrades: { statKey: string; delta: number }[],
-    rules: Pick<FactionUpgradeRule, 'statKey' | 'ratingPerPoint'>[],
+    rules: (Pick<FactionUpgradeRule, 'statKey' | 'ratingPerPoint'> & { ratingPerPointChampion?: number | null })[],
+    opts?: { isChampion?: boolean },
 ): number {
-    const map = new Map(rules.map((r) => [r.statKey.toUpperCase(), r.ratingPerPoint]));
+    const map = new Map(
+        rules.map((r) => [
+            r.statKey.toUpperCase(),
+            opts?.isChampion ? (r.ratingPerPointChampion ?? r.ratingPerPoint) : r.ratingPerPoint,
+        ]),
+    );
     let sum = 0;
     for (const u of upgrades) {
         const per = map.get(u.statKey.toUpperCase()) ?? 0;

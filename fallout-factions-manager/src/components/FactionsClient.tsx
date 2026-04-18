@@ -10,7 +10,7 @@ import { confirmAction, notifyApiError, notifyWarning } from '@/lib/ui/notify';
 export type FactionLimit = { tag: string; tier1?: number | null; tier2?: number | null; tier3?: number | null };
 export type Goal = { id?: string; tier: 1 | 2 | 3; description: string; target: number; order: number };
 export type GoalSet = { id?: string; name: string; goals: Goal[] };
-export type UpgradeRule = { statKey: string; ratingPerPoint: number };
+export type UpgradeRule = { statKey: string; ratingPerPoint: number; ratingPerPointChampion: number };
 
 export type Faction = {
     id: string;
@@ -30,6 +30,37 @@ function getErrorMessage(err: unknown): string {
     } catch {
         return String(err);
     }
+}
+
+function defaultChampionRating(statKey: string): number {
+    const key = statKey === 'hp' ? 'HP' : statKey.toUpperCase();
+    if (key === 'HP') return 20;
+    if (key === 'S' || key === 'P' || key === 'A') return 10;
+    if (key === 'E' || key === 'L') return 15;
+    if (key === 'C' || key === 'I') return 8;
+    return 0;
+}
+
+function normalizeFactionUpgradeRules(
+    rules: Array<{ statKey: string; ratingPerPoint: number; ratingPerPointChampion?: number | null }>,
+): UpgradeRule[] {
+    return rules.map((r) => ({
+        statKey: r.statKey,
+        ratingPerPoint: r.ratingPerPoint,
+        ratingPerPointChampion:
+            r.ratingPerPointChampion != null && Number.isFinite(r.ratingPerPointChampion)
+                ? r.ratingPerPointChampion
+                : defaultChampionRating(r.statKey),
+    }));
+}
+
+function normalizeFaction(faction: UIFaction): UIFaction {
+    return {
+        ...faction,
+        upgradeRules: normalizeFactionUpgradeRules(
+            faction.upgradeRules as Array<{ statKey: string; ratingPerPoint: number; ratingPerPointChampion?: number | null }>,
+        ),
+    };
 }
 
 /* ===== API helpers ===== */
@@ -76,7 +107,7 @@ async function putUpgrades(factionId: string, rules: UpgradeRule[]): Promise<voi
 export function FactionsClient({ initialFactions }: { initialFactions: UIFaction[] }) {
     const router = useRouter();
     const [q, setQ] = useState('');
-    const [factions, setFactions] = useState<UIFaction[]>(initialFactions);
+    const [factions, setFactions] = useState<UIFaction[]>(() => initialFactions.map(normalizeFaction));
     const [onlyWithLimits, setOnlyWithLimits] = useState(false);
     const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; data: UIFaction } | null>(null);
     const [savingAll, setSavingAll] = useState(false);
@@ -98,21 +129,21 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
             limits: [],
             goalSets: [{ name: 'Set 1', goals: emptyGoals }],
             upgradeRules: [
-                { statKey: 'hp', ratingPerPoint: 0 },
-                { statKey: 'S', ratingPerPoint: 0 },
-                { statKey: 'P', ratingPerPoint: 0 },
-                { statKey: 'E', ratingPerPoint: 0 },
-                { statKey: 'C', ratingPerPoint: 0 },
-                { statKey: 'I', ratingPerPoint: 0 },
-                { statKey: 'A', ratingPerPoint: 0 },
-                { statKey: 'L', ratingPerPoint: 0 },
+                { statKey: 'hp', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('hp') },
+                { statKey: 'S', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('S') },
+                { statKey: 'P', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('P') },
+                { statKey: 'E', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('E') },
+                { statKey: 'C', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('C') },
+                { statKey: 'I', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('I') },
+                { statKey: 'A', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('A') },
+                { statKey: 'L', ratingPerPoint: 0, ratingPerPointChampion: defaultChampionRating('L') },
             ],
         };
         setEditor({ mode: 'create', data: blank });
     }
 
     function openEdit(f: UIFaction) {
-        const deep = JSON.parse(JSON.stringify(f)) as UIFaction;
+        const deep = normalizeFaction(JSON.parse(JSON.stringify(f)) as UIFaction);
         setEditor({ mode: 'edit', data: deep });
     }
 
@@ -198,7 +229,7 @@ export function FactionsClient({ initialFactions }: { initialFactions: UIFaction
                     initial={editor.data}
                     onCancel={() => setEditor(null)}
                     onSaved={(saved) => {
-                        upsertLocalFaction(saved);
+                        upsertLocalFaction(normalizeFaction(saved));
                         setEditor(null);
                         router.refresh();
                     }}
@@ -423,12 +454,19 @@ function EditorSheet({
 
     /* === UPGRADE RULES === */
     const statKeys = ['hp', 'S', 'P', 'E', 'C', 'I', 'A', 'L'] as const;
-    function setRule(statKey: string, ratingPerPoint: number) {
+    function setRule(
+        statKey: string,
+        patch: Partial<Pick<UpgradeRule, 'ratingPerPoint' | 'ratingPerPointChampion'>>,
+    ) {
         setDraft((d) => {
             const exists = d.upgradeRules.find((r) => r.statKey === statKey);
             const rules = exists
-                ? d.upgradeRules.map((r) => (r.statKey === statKey ? { ...r, ratingPerPoint } : r))
-                : [...d.upgradeRules, { statKey, ratingPerPoint }];
+                ? d.upgradeRules.map((r) => (r.statKey === statKey ? { ...r, ...patch } : r))
+                : [{
+                    statKey,
+                    ratingPerPoint: patch.ratingPerPoint ?? 0,
+                    ratingPerPointChampion: patch.ratingPerPointChampion ?? defaultChampionRating(statKey),
+                }, ...d.upgradeRules];
             return { ...d, upgradeRules: rules };
         });
     }
@@ -604,24 +642,51 @@ function EditorSheet({
                     {/* UPGRADE RULES */}
                     <section className="mt-6">
                         <div className="text-sm font-medium">Upgrade table (rating per +1)</div>
-                        <div className="mt-2 grid grid-cols-4 gap-2">
-                            {statKeys.map((k) => {
-                                const v = draft.upgradeRules.find((r) => r.statKey === k)?.ratingPerPoint ?? 0;
-                                return (
-                                    <div key={k}>
-                                        <label className="block text-[10px] text-zinc-400 uppercase">{k}</label>
-                                        <input
-                                            inputMode="numeric"
-                                            value={v}
-                                            onChange={(e) => {
-                                                const num = Number(e.target.value);
-                                                setRule(k, Number.isFinite(num) ? num : 0);
-                                            }}
-                                            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-                                        />
-                                    </div>
-                                );
-                            })}
+                        <div className="mt-1 text-[11px] text-zinc-500">Set separate values for Champion and Grunt.</div>
+                        <div className="mt-2 overflow-x-auto">
+                            <table className="w-full min-w-[280px] text-xs">
+                                <thead>
+                                    <tr className="text-zinc-400 uppercase tracking-wide">
+                                        <th className="px-2 py-1 text-left">Stat</th>
+                                        <th className="px-2 py-1 text-center">Champion</th>
+                                        <th className="px-2 py-1 text-center">Grunt</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {statKeys.map((k) => {
+                                        const row = draft.upgradeRules.find((r) => r.statKey === k);
+                                        const champion = row?.ratingPerPointChampion ?? defaultChampionRating(k);
+                                        const grunt = row?.ratingPerPoint ?? 0;
+                                        return (
+                                            <tr key={k} className="border-t border-zinc-800/70">
+                                                <td className="px-2 py-1.5 font-medium text-zinc-200 uppercase">{k}</td>
+                                                <td className="px-2 py-1.5">
+                                                    <input
+                                                        inputMode="numeric"
+                                                        value={champion}
+                                                        onChange={(e) => {
+                                                            const num = Number(e.target.value);
+                                                            setRule(k, { ratingPerPointChampion: Number.isFinite(num) ? num : 0 });
+                                                        }}
+                                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-sm"
+                                                    />
+                                                </td>
+                                                <td className="px-2 py-1.5">
+                                                    <input
+                                                        inputMode="numeric"
+                                                        value={grunt}
+                                                        onChange={(e) => {
+                                                            const num = Number(e.target.value);
+                                                            setRule(k, { ratingPerPoint: Number.isFinite(num) ? num : 0 });
+                                                        }}
+                                                        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-sm"
+                                                    />
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
                     </section>
                 </div>

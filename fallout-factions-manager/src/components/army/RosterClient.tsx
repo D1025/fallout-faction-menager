@@ -24,7 +24,7 @@ export function RosterClient(props: {
               Back to army
             </Button>
           ) : null}
-          <Button type="primary" icon={<PlusOutlined />} href={`/army/${props.armyId}/roster/add`} size="large" style={{ minHeight: 44 }}>
+          <Button type="primary" icon={<PlusOutlined />} href={`/army/${props.armyId}/roster/add`} size="large" style={{ minHeight: 44 }} className="ff-cta-primary">
             Add unit
           </Button>
         </Flex>

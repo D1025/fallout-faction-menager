@@ -29,12 +29,12 @@ export function StoryActionsClient() {
     );
 
     return (
-        <div className="grid gap-2.5">
-            <section className="vault-panel p-3">
+        <div className="space-y-4">
+            <section className="space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-100">Rules</div>
-                <h2 className="mt-1 text-sm font-semibold text-zinc-100">Story Actions</h2>
-                <p className="mt-2 text-xs leading-relaxed text-zinc-300">{STORY_ACTIONS_INTRO}</p>
-                <p className="mt-2 text-xs leading-relaxed text-zinc-400">{CAPTIVE_STORY_ACTIONS_INTRO}</p>
+                <h2 className="text-sm font-semibold text-zinc-100">Story Actions</h2>
+                <p className="text-xs leading-relaxed text-zinc-300">{STORY_ACTIONS_INTRO}</p>
+                <p className="text-xs leading-relaxed text-zinc-400">{CAPTIVE_STORY_ACTIONS_INTRO}</p>
                 <Input
                     allowClear
                     value={query}
@@ -50,30 +50,30 @@ export function StoryActionsClient() {
             </section>
 
             {filteredActions.length === 0 ? (
-                <section className="vault-panel p-3">
+                <section className="border-b border-zinc-800/70 py-2">
                     <div className="text-sm text-zinc-400">No Story Action title matches your search.</div>
                 </section>
             ) : null}
 
             {filteredActions.map((entry) => (
-                <details key={entry.id} className="ff-story-action-card">
-                    <summary className="ff-story-action-card__summary">
+                <details key={entry.id} className="border-b border-zinc-800/70 py-2">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                         <div className="min-w-0">
                             <div className="truncate text-sm font-semibold text-zinc-100">{entry.title}</div>
                             <div className="mt-1 flex flex-wrap gap-1.5">
-                                <span className="ff-story-action-badge ff-story-action-badge--category">
+                                <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200">
                                     {entry.category}
                                 </span>
                                 {entry.faction ? (
-                                    <span className="ff-story-action-badge ff-story-action-badge--faction">
+                                    <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
                                         {entry.faction}
                                     </span>
                                 ) : null}
                             </div>
                         </div>
-                        <span className="ff-story-action-card__hint">Details</span>
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-500">Open</span>
                     </summary>
-                    <div className="ff-story-action-card__body">
+                    <div className="pt-2">
                         <RuleDescription text={entry.rules} />
                     </div>
                 </details>

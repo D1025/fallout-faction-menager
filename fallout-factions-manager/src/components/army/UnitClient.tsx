@@ -34,7 +34,14 @@ type WeaponUI = {
     profiles: WeaponProfileUI[];
 };
 
-type UpgradeUI = { id: string; statKey: StatKey; delta: number; at: string };
+type UpgradeUI = {
+    id: string;
+    statKey: StatKey;
+    delta: number;
+    trainingArmyId?: string | null;
+    trainingFactionId?: string | null;
+    at: string;
+};
 type Perk = {
     id: string;
     name: string;
@@ -56,6 +63,13 @@ type CaptureTarget = {
 type CaptureStatus = {
     capturedByArmyId: string | null;
     capturedAt: string | null;
+};
+
+type ZetanTrainingOption = {
+    armyId: string;
+    armyName: string;
+    factionId: string;
+    factionName: string;
 };
 
 type UnitTemplateTag = 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
@@ -130,6 +144,8 @@ export function UnitClient({
     captureTargets,
     captureStatus,
     canManageCapture = false,
+    isZetansArmy = false,
+    zetanTrainingOptions = [],
 }: {
     unitId: string;
     armyId: string;
@@ -149,6 +165,8 @@ export function UnitClient({
     captureTargets?: CaptureTarget[];
     captureStatus?: CaptureStatus;
     canManageCapture?: boolean;
+    isZetansArmy?: boolean;
+    zetanTrainingOptions?: ZetanTrainingOption[];
 }) {
     const router = useRouter();
     const armyDirtyStorageKey = `ffm:army:dirty:${armyId}`;
@@ -432,27 +450,62 @@ export function UnitClient({
 
     const [upStat, setUpStat] = useState<StatKey>('S');
     const [upDelta, setUpDelta] = useState<number>(1);
+    const [upTrainingArmyId, setUpTrainingArmyId] = useState<string>('');
     const [addingUpgrade, setAddingUpgrade] = useState(false);
     const [revertingUpgradeId, setRevertingUpgradeId] = useState<string | null>(null);
+    const requiresTrainingSource = isZetansArmy && upDelta > 0 && zetanTrainingOptions.length > 0;
+    const zetanTrainingOptionByArmyId = useMemo(() => {
+        const map = new Map<string, ZetanTrainingOption>();
+        for (const row of zetanTrainingOptions) map.set(row.armyId, row);
+        return map;
+    }, [zetanTrainingOptions]);
+
+    useEffect(() => {
+        if (!isZetansArmy || zetanTrainingOptions.length === 0) {
+            setUpTrainingArmyId('');
+            return;
+        }
+        setUpTrainingArmyId((prev) =>
+            prev && zetanTrainingOptions.some((row) => row.armyId === prev)
+                ? prev
+                : zetanTrainingOptions[0].armyId,
+        );
+    }, [isZetansArmy, zetanTrainingOptions]);
 
     async function addUpgrade() {
         if (upDelta === 0) {
             notifyWarning('Delta cannot be 0.');
             return;
         }
+        if (requiresTrainingSource && !upTrainingArmyId) {
+            notifyWarning('Select training source army for Zetans upgrade.');
+            return;
+        }
         setAddingUpgrade(true);
         try {
+            const body: { statKey: StatKey; delta: number; trainingArmyId?: string } = {
+                statKey: upStat,
+                delta: upDelta,
+            };
+            if (requiresTrainingSource) body.trainingArmyId = upTrainingArmyId;
             const res = await fetch(`/api/units/${unitId}/upgrades`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ statKey: upStat, delta: upDelta }), // can be negative
+                body: JSON.stringify(body), // can be negative
             });
             if (!res.ok) {
                 notifyApiError('Failed to add ulepszenia');
                 return;
             }
             const payload = (await res.json().catch(() => null)) as
-                | { id?: string; statKey?: StatKey; delta?: number; at?: string }
+                | {
+                    id?: string;
+                    statKey?: StatKey;
+                    delta?: number;
+                    trainingArmyId?: string | null;
+                    trainingFactionId?: string | null;
+                    at?: string;
+                }
                 | null;
             if (!payload?.id) {
                 notifyApiError('Saved, but failed to read new upgrade data.');
@@ -468,6 +521,8 @@ export function UnitClient({
                     id: createdId,
                     statKey: payload.statKey ?? upStat,
                     delta: Number.isFinite(payload.delta) ? Number(payload.delta) : upDelta,
+                    trainingArmyId: payload.trainingArmyId ?? null,
+                    trainingFactionId: payload.trainingFactionId ?? null,
                     at: payload.at ?? new Date().toISOString(),
                 },
             ]);
@@ -744,12 +799,12 @@ export function UnitClient({
         };
 
         return (
-            <div className="bg-zinc-900/35">
+            <div>
                 <div className="mb-1 flex items-center gap-2">
                     <div className="font-medium">{w.name}</div>
                     <div className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">{weaponTypeLabel}</div>
                 </div>
-                <div className="mt-1 overflow-hidden bg-zinc-950/75">
+                <div className="mt-1 overflow-hidden">
                     <div className="max-w-full overflow-x-hidden">
                         <table className="w-full table-fixed text-[10px] leading-tight sm:text-xs">
                             <thead>
@@ -772,7 +827,7 @@ export function UnitClient({
                                     const { range } = splitTypeAndRange(r.type);
                                     const testStat = parseTestSpecialStat(r.test);
                                     return (
-                                        <tr key={r.key} className="align-top bg-zinc-950">
+                                        <tr key={r.key} className="align-top border-b border-zinc-800/70">
                                             {!isMeleeWeapon ? <td className="px-1 py-1 whitespace-normal break-all text-zinc-100">{range}</td> : null}
                                             <td
                                                 className={
@@ -898,8 +953,8 @@ export function UnitClient({
     }, [captureTargets, captureSearch]);
 
     return (
-        <div className="space-y-3">
-            <section className="rounded-2xl bg-zinc-900/35 p-3">
+        <div className="space-y-4">
+            <section className="pb-2">
                 <div className="flex items-start gap-3">
                     <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-zinc-950">
                         {hasPhotoState && !photoMissing ? (
@@ -1000,13 +1055,13 @@ export function UnitClient({
             </section>
 
             {/* SPECIAL */}
-            <section className="mt-3 rounded-2xl bg-zinc-900/35 p-3">
+            <section className="mt-2">
                 <div className="text-sm font-medium">SPECIAL</div>
                 <div className="mt-2">{renderSpecialCompact()}</div>
             </section>
 
             {/* Weapon */}
-            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
+            <section className="mt-4">
                 <div className="text-sm font-medium">Weapon</div>
                 <div className="mt-2 grid gap-3">
                     {weapons.map((w, idx) => (
@@ -1017,7 +1072,7 @@ export function UnitClient({
             </section>
 
             {/* Upgrades (+ Wounds) */}
-            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
+            <section className="mt-4">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Upgrades</div>
                     <div className="text-[11px] text-zinc-500">
@@ -1025,7 +1080,7 @@ export function UnitClient({
                     </div>
                 </div>
 
-                <div className="mt-3 rounded-xl bg-zinc-950/55 p-2.5">
+                <div className="mt-3 space-y-2">
                     <div className="grid grid-cols-[minmax(0,1fr)_88px] items-center gap-2">
                         <select
                             value={upStat}
@@ -1065,10 +1120,35 @@ export function UnitClient({
                         ))}
                     </div>
 
+                    {isZetansArmy && upDelta > 0 && (
+                        <div className="mt-2 space-y-1">
+                            <div className="text-[11px] font-medium text-zinc-300">Training source army</div>
+                            <select
+                                value={upTrainingArmyId}
+                                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setUpTrainingArmyId(e.target.value)}
+                                disabled={zetanTrainingOptions.length === 0}
+                                className="h-10 w-full rounded-xl bg-zinc-900 px-3 text-sm disabled:opacity-60"
+                            >
+                                {zetanTrainingOptions.length === 0 ? (
+                                    <option value="">No played non-Zetan armies</option>
+                                ) : (
+                                    zetanTrainingOptions.map((row) => (
+                                        <option key={row.armyId} value={row.armyId}>
+                                            {row.armyName} | {row.factionName}
+                                        </option>
+                                    ))
+                                )}
+                            </select>
+                            <div className="text-[11px] text-zinc-500">
+                                Each positive Zetan upgrade uses the selected army&apos;s training table.
+                            </div>
+                        </div>
+                    )}
+
                     <button
                         onClick={() => void addUpgrade()}
-                        disabled={addingUpgrade || upDelta === 0}
-                        className="mt-2 h-10 w-full rounded-xl bg-emerald-500 text-base font-semibold text-emerald-950 disabled:opacity-50"
+                        disabled={addingUpgrade || upDelta === 0 || (requiresTrainingSource && !upTrainingArmyId)}
+                        className="ff-cta ff-cta-primary mt-2 h-10 w-full text-base"
                     >
                         {addingUpgrade ? 'Adding...' : 'Add Upgrade / Wound'}
                     </button>
@@ -1080,11 +1160,23 @@ export function UnitClient({
 
                 <div className="mt-3 grid gap-2 text-xs text-zinc-300">
                     {positiveUpgrades.map((u) => (
-                        <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 rounded-lg bg-zinc-950/65 px-2.5 py-1.5">
-                            <div className="min-w-0 truncate">
-                                <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
-                                {u.delta > 0 ? `+${u.delta}` : u.delta}
-                                <span className="text-zinc-500"> | {new Date(u.at).toLocaleString()}</span>
+                        <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 border-b border-zinc-800/70 px-0 py-2">
+                            <div className="min-w-0">
+                                <div className="truncate">
+                                    <span className="font-medium">{u.statKey.toUpperCase()}</span>{' '}
+                                    {u.delta > 0 ? `+${u.delta}` : u.delta}
+                                    <span className="text-zinc-500"> | {new Date(u.at).toLocaleString()}</span>
+                                </div>
+                                {isZetansArmy && u.trainingArmyId ? (
+                                    <div className="truncate text-[11px] text-zinc-500">
+                                        Source:{' '}
+                                        {(() => {
+                                            const row = zetanTrainingOptionByArmyId.get(u.trainingArmyId ?? '');
+                                            if (!row) return 'selected army';
+                                            return `${row.armyName} | ${row.factionName}`;
+                                        })()}
+                                    </div>
+                                ) : null}
                             </div>
                             <button
                                 onClick={() => void deleteUpgrade(u.id)}
@@ -1107,7 +1199,7 @@ export function UnitClient({
                     </div>
                     <div className="grid gap-2 text-xs">
                         {woundUpgrades.map((u) => (
-                            <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 rounded-lg bg-red-950/40 px-2.5 py-1.5 text-red-200">
+                            <div key={u.id} className="grid grid-cols-[minmax(0,1fr)_92px] items-center gap-2 border-b border-red-900/40 px-0 py-2 text-red-200">
                                 <div className="min-w-0 truncate">
                                     <span className="font-semibold">{u.statKey.toUpperCase()}</span> {u.delta}
                                     <span className="ml-1 text-red-300/70">| {new Date(u.at).toLocaleString()}</span>
@@ -1129,16 +1221,26 @@ export function UnitClient({
             </section>
 
             {/* Perks */}
-            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
+            <section className="mt-4">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Perks</div>
-                    <div className="text-[11px] text-zinc-500">Owned: {(ownedPerks ?? []).length}</div>
+                    <button
+                        type="button"
+                        onClick={() => setPerkPickerOpen(true)}
+                        className="ff-cta ff-cta-primary"
+                    >
+                        Add Perks
+                    </button>
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-500">
+                    Owned: <span className="font-semibold text-zinc-300">{(ownedPerks ?? []).length}</span> | Available SPECIAL:{' '}
+                    <span className="font-semibold text-zinc-300">{specialPerks.length}</span>
                 </div>
 
                 {/* Owned perks list */}
                 <div className="mt-2 grid gap-2">
                     {(ownedPerks ?? []).map((p) => (
-                        <div key={p.id} className="rounded-xl bg-zinc-950/65 p-3">
+                        <div key={p.id} className="border-b border-zinc-800/70 py-2">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <div className="font-medium">{p.name}</div>
@@ -1163,24 +1265,10 @@ export function UnitClient({
                     ))}
                     {(ownedPerks ?? []).length === 0 && <div className="text-sm text-zinc-500">No perks.</div>}
                 </div>
-
-                {/* Dodawanie */}
-                <div className="mt-4 flex items-center justify-between gap-2">
-                    <div className="text-[11px] text-zinc-500">
-                        Available SPECIAL: <span className="font-semibold text-zinc-300">{specialPerks.length}</span>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setPerkPickerOpen(true)}
-                        className="rounded-xl bg-emerald-500 px-3 py-1 text-emerald-950"
-                    >
-                        Add perk
-                    </button>
-                </div>
             </section>
 
             {/* Captured (rare action at bottom) */}
-            <section className="mt-4 rounded-2xl bg-zinc-900/35 p-3">
+            <section className="mt-4">
                 <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Captured</div>
                     {captureState.capturedByArmyId ? (
@@ -1194,7 +1282,7 @@ export function UnitClient({
                     )}
                 </div>
 
-                <div className="mt-2 rounded-xl bg-zinc-950/55 p-2.5">
+                <div className="mt-2 space-y-2">
                     <div className="text-xs text-zinc-300">
                         {captureState.capturedByArmyId
                             ? activeCaptureTarget
@@ -1345,10 +1433,10 @@ export function UnitClient({
                                                     disabled={!canAdd || addingPerkId === p.id}
                                                     onClick={() => void addPerk(p.id)}
                                                     className={
-                                                        'shrink-0 rounded-lg px-2.5 py-1 text-xs font-semibold ' +
+                                                        'ff-cta shrink-0 ' +
                                                         (canAdd
-                                                            ? 'bg-emerald-500 text-emerald-950'
-                                                            : 'bg-zinc-900 text-zinc-500')
+                                                            ? 'ff-cta-primary'
+                                                            : 'ff-cta-neutral text-zinc-500')
                                                     }
                                                 >
                                                     {addingPerkId === p.id ? 'Adding...' : 'Add'}

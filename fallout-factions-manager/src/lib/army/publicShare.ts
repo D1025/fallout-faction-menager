@@ -1,4 +1,22 @@
 import { prisma } from '@/server/prisma';
+import {
+    buildTrainingRuleLookup,
+    getUpgradeRatingPerPointForUnit,
+    resolveEffectiveTrainingFactionId,
+    type TrainingRuleLookup,
+} from '@/lib/rules/trainingTable';
+
+const p = prisma as unknown as {
+    army: {
+        findUnique: (args: unknown) => Promise<unknown>;
+    };
+    weaponTemplate: {
+        findMany: (args: unknown) => Promise<unknown[]>;
+    };
+    factionUpgradeRule: {
+        findMany: (args: unknown) => Promise<unknown[]>;
+    };
+};
 
 type EffectKind = 'WEAPON' | 'CRITICAL';
 
@@ -82,6 +100,92 @@ export type PublicArmySnapshot = {
     }>;
 };
 
+type SnapshotArmyData = {
+    id: string;
+    name: string;
+    tier: number;
+    factionId: string;
+    subfactionId: string | null;
+    caps: number;
+    parts: number;
+    scout: number;
+    reach: number;
+    exp: number;
+    ploys: number;
+    faction: {
+        id: string;
+        name: string;
+        limits: Array<{ tag: string; tier1: number | null; tier2: number | null; tier3: number | null }>;
+    };
+    subfaction: { name: string } | null;
+    playedOpponents: Array<{
+        boxesChecked: number;
+        updatedAt: Date;
+        opponentArmy: {
+            factionId: string;
+            faction: { name: string };
+        };
+    }>;
+    HomeTurf: {
+        hazardDef: { name: string; description: string } | null;
+        hazard: string;
+        facilities: Array<{
+            name: string;
+            facilityDef: { name: string; description: string } | null;
+        }>;
+    } | null;
+    units: Array<{
+        id: string;
+        present: boolean;
+        wounds: number;
+        temporaryLeader: boolean;
+        unit: {
+            id: string;
+            name: string;
+            roleTag: string | null;
+            isLeader: boolean;
+            hp: number;
+            s: number;
+            p: number;
+            e: number;
+            c: number;
+            i: number;
+            a: number;
+            l: number;
+            baseRating: number | null;
+            startPerks: Array<{ perk: { id: string; name: string; description: string | null } }>;
+        };
+        chosenPerks: Array<{ perk: { id: string; name: string; description: string | null } }>;
+        upgrades: Array<{ statKey: string; delta: number; trainingFactionId?: string | null }>;
+        weapons: Array<{ templateId: string; activeMods: string[] }>;
+        selectedOption: { rating: number | null } | null;
+    }>;
+};
+
+type SnapshotTemplateRow = {
+    id: string;
+    name: string;
+    baseType: string;
+    baseTest: string;
+    baseEffects: Array<{
+        effect: { id: string; name: string; kind: EffectKind | string; description: string };
+        valueInt: number | null;
+        valueText: string | null;
+    }>;
+    profiles: Array<{
+        id: string;
+        ratingDelta: number | null;
+        typeOverride: string | null;
+        testOverride: string | null;
+        effects: Array<{
+            effect: { id: string; name: string; kind: EffectKind | string; description: string };
+            valueInt: number | null;
+            valueText: string | null;
+            effectMode?: 'ADD' | 'REMOVE';
+        }>;
+    }>;
+};
+
 function formatEffectName(name: string, valueInt: number | null, valueText: string | null): string {
     if (valueInt != null) return `${name} (${valueInt})`;
     const vt = (valueText ?? '').trim();
@@ -158,7 +262,7 @@ function computeWeaponDisplay(input: {
 }
 
 async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promise<PublicArmySnapshot | null> {
-    const army = await prisma.army.findUnique({
+    const army = await p.army.findUnique({
         where: { id: armyId },
         include: {
             faction: {
@@ -172,6 +276,18 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
                 },
             },
             subfaction: { select: { name: true } },
+            playedOpponents: {
+                where: { boxesChecked: { gt: 0 } },
+                orderBy: { updatedAt: 'desc' },
+                include: {
+                    opponentArmy: {
+                        select: {
+                            factionId: true,
+                            faction: { select: { name: true } },
+                        },
+                    },
+                },
+            },
             HomeTurf: {
                 include: {
                     hazardDef: { select: { name: true, description: true } },
@@ -224,19 +340,50 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
                 orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
             },
         },
-    });
+    }) as SnapshotArmyData | null;
     if (!army) return null;
+    const crewFactionName = army.faction.name;
 
-    const rules = await prisma.factionUpgradeRule.findMany({
-        where: { factionId: army.factionId },
-        select: { statKey: true, ratingPerPoint: true },
+    const effectiveTrainingFactionId = resolveEffectiveTrainingFactionId({
+        ownFactionId: army.factionId,
+        ownFactionName: army.faction.name,
+        playedOpponents: army.playedOpponents.map((row) => ({
+            boxesChecked: row.boxesChecked,
+            updatedAt: row.updatedAt,
+            opponentFactionId: row.opponentArmy.factionId,
+            opponentFactionName: row.opponentArmy.faction.name,
+        })),
     });
-    const ruleByKey = new Map<string, number>(rules.map((r) => [r.statKey, r.ratingPerPoint]));
+    const explicitTrainingFactionIds = Array.from(
+        new Set(
+            army.units
+                .flatMap((u) => u.upgrades.map((up) => up.trainingFactionId ?? null))
+                .filter((id): id is string => Boolean(id)),
+        ),
+    );
+    const allTrainingFactionIds = Array.from(
+        new Set([effectiveTrainingFactionId, ...explicitTrainingFactionIds]),
+    );
+    const rules = await p.factionUpgradeRule.findMany({
+        where: { factionId: { in: allTrainingFactionIds } },
+        select: { factionId: true, statKey: true, ratingPerPoint: true, ratingPerPointChampion: true },
+    }) as Array<{
+        factionId: string;
+        statKey: string;
+        ratingPerPoint: number;
+        ratingPerPointChampion?: number | null;
+    }>;
+    const trainingRuleLookupByFaction = new Map<string, TrainingRuleLookup>();
+    for (const factionId of allTrainingFactionIds) {
+        const rows = rules.filter((rule) => rule.factionId === factionId);
+        trainingRuleLookupByFaction.set(factionId, buildTrainingRuleLookup(rows));
+    }
+    const defaultTrainingRuleLookup = trainingRuleLookupByFaction.get(effectiveTrainingFactionId) ?? new Map();
 
     const templateIds = Array.from(new Set(army.units.flatMap((u) => u.weapons.map((w) => w.templateId))));
     const templates =
         templateIds.length > 0
-            ? await prisma.weaponTemplate.findMany({
+            ? await p.weaponTemplate.findMany({
                 where: { id: { in: templateIds } },
                 include: {
                     baseEffects: {
@@ -251,8 +398,8 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
                         orderBy: { order: 'asc' },
                     },
                 },
-            })
-            : [];
+            }) as SnapshotTemplateRow[]
+            : ([] as SnapshotTemplateRow[]);
     const templateById = new Map(templates.map((t) => [t.id, t]));
     const armyUnits = army.units;
     type ArmyUnitRow = (typeof armyUnits)[number];
@@ -273,11 +420,24 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             );
             return sum + delta;
         }, 0);
+        const unitPerkNames = [
+            ...unit.unit.startPerks.map((sp) => sp.perk.name),
+            ...unit.chosenPerks.map((cp) => cp.perk.name),
+        ];
 
         const statsDelta = unit.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc;
-            const key = up.statKey === 'hp' ? 'hp' : up.statKey;
-            return acc + up.delta * (ruleByKey.get(key) ?? 0);
+            const rulesLookup = up.trainingFactionId
+                ? trainingRuleLookupByFaction.get(up.trainingFactionId) ?? defaultTrainingRuleLookup
+                : defaultTrainingRuleLookup;
+            const per = getUpgradeRatingPerPointForUnit({
+                statKey: up.statKey,
+                roleTag: unit.unit.roleTag,
+                unitPerkNames,
+                crewFactionName,
+                rulesLookup,
+            });
+            return acc + up.delta * per;
         }, 0);
 
         return baseFromTemplate + optionRating + weaponDelta + statsDelta;

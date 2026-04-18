@@ -6,6 +6,15 @@ import { prisma } from '@/server/prisma';
 import { FactionsClient, type UIFaction } from '@/components/FactionsClient';
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 
+function defaultChampionRating(statKey: string): number {
+    const key = statKey === 'hp' ? 'HP' : statKey.toUpperCase();
+    if (key === 'HP') return 20;
+    if (key === 'S' || key === 'P' || key === 'A') return 10;
+    if (key === 'E' || key === 'L') return 15;
+    if (key === 'C' || key === 'I') return 8;
+    return 0;
+}
+
 export default async function Page() {
     let factions: UIFaction[];
     try {
@@ -34,7 +43,12 @@ export default async function Page() {
                     .sort((a, b) => a.tier - b.tier || a.order - b.order)
                     .map((g) => ({ id: g.id, tier: g.tier as 1 | 2 | 3, description: g.description, target: g.target, order: g.order })),
             })),
-            upgradeRules: f.upgradeRules.map((r) => ({ statKey: r.statKey, ratingPerPoint: r.ratingPerPoint })),
+            upgradeRules: f.upgradeRules.map((r) => ({
+                statKey: r.statKey,
+                ratingPerPoint: r.ratingPerPoint,
+                ratingPerPointChampion:
+                    (r as unknown as { ratingPerPointChampion?: number | null }).ratingPerPointChampion ?? defaultChampionRating(r.statKey),
+            })),
         }));
     } catch {
         factions = [];

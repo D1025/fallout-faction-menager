@@ -161,8 +161,8 @@ export function ProfileEditor({
     }
 
     return (
-        <div className="mt-3 space-y-2.5">
-            <section className="rounded-[22px] bg-zinc-900/60 p-3">
+        <div className="mt-3 space-y-4">
+            <section className="border-b border-zinc-800/70 pb-3">
                 <div className="flex items-start gap-3">
                     <div className="h-[84px] w-[84px] shrink-0 overflow-hidden rounded-xl bg-zinc-950/70">
                         {!photoMissing ? (
@@ -184,7 +184,7 @@ export function ProfileEditor({
                     <div className="min-w-0 flex-1">
                         <div className="text-base font-semibold leading-tight text-zinc-100">{initialName}</div>
                         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span className="rounded-full bg-zinc-950 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
+                            <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[11px] font-semibold text-zinc-200">
                                 ACCOUNT
                             </span>
                             <span
@@ -241,9 +241,11 @@ export function ProfileEditor({
                 </div>
             </section>
 
-            <section className="rounded-[22px] bg-zinc-900/60 p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-100">Credentials</div>
-                <div className="mt-1 text-sm font-medium text-zinc-100">Edit profile</div>
+            <section>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-sm font-medium text-zinc-100">Credentials</div>
+                    <div className="text-[11px] text-zinc-500">{roleLabel}</div>
+                </div>
                 <div className="mt-2 grid gap-2">
                     <Input
                         value={name}
@@ -295,10 +297,10 @@ export function ProfileEditor({
                         onClick={() => void saveProfile()}
                         disabled={credentialsLocked || saving || !hasCredentialsChanges}
                         className={
-                            'h-10 rounded-xl px-3 text-sm font-semibold transition-all ' +
+                            'ff-cta h-10 px-3 text-sm transition-all ' +
                             (credentialsLocked || saving || !hasCredentialsChanges
-                                ? 'bg-zinc-800 text-zinc-500'
-                                : 'bg-emerald-500 text-emerald-950 active:scale-[0.99]')
+                                ? 'ff-cta-neutral text-zinc-500'
+                                : 'ff-cta-primary')
                         }
                     >
                         {saving ? 'Saving...' : 'Save changes'}

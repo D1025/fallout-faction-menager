@@ -614,13 +614,6 @@ export function AdminWeaponsClient({ initial }: { initial?: WeaponListItem[] }) 
                         >
                             <FilterOutlined />
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => void reload()}
-                            className="h-9 vault-input px-3 text-xs text-zinc-300"
-                        >
-                            Refresh
-                        </button>
                     </div>
                 </div>
 
