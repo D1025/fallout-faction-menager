@@ -10,6 +10,7 @@ type CompanionBehavior = 'COMPANION_ROBOT' | 'COMPANION_BEAST';
 const CreateUnitSchema = z.object({
     unitTemplateId: z.string().min(1),
     optionId: z.string().min(1),
+    temporary: z.boolean().optional(),
     companion: z
         .object({
             perkBehavior: z.enum(['COMPANION_ROBOT', 'COMPANION_BEAST']),
@@ -48,6 +49,7 @@ type UnitInstanceTx = {
             displayOrder: number;
             wounds: number;
             present: boolean;
+            temporary?: boolean;
             companionOwnerId?: string | null;
         };
         select: { id: true };
@@ -99,8 +101,9 @@ type PrismaLike = {
 const p = prisma as unknown as PrismaLike;
 
 async function userHasWriteAccess(armyId: string, userId: string): Promise<boolean> {
-    const army = await prisma.army.findUnique({ where: { id: armyId }, select: { ownerId: true } });
+    const army = await prisma.army.findUnique({ where: { id: armyId }, select: { ownerId: true, deleted: true } });
     if (!army) return false;
+    if (army.deleted) return false;
     if (army.ownerId === userId) return true;
 
     const share = await prisma.armyShare.findFirst({
@@ -145,6 +148,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     if (!can) return new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status: 403 });
 
     const { unitTemplateId, optionId, companion } = parsed.data;
+    const temporary = Boolean(parsed.data.temporary);
 
     const mainOption = await p.unitWeaponOption.findUnique({
         where: { id: optionId },
@@ -264,6 +268,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
                 displayOrder: nextDisplayOrder,
                 wounds: 0,
                 present: true,
+                temporary,
             },
             select: { id: true },
         });

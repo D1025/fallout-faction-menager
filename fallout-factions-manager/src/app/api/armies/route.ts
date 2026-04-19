@@ -144,13 +144,13 @@ export async function GET() {
 
     // armies you own or that are shared with you
     const owned = await prisma.army.findMany({
-        where: { ownerId: userId },
+        where: { ownerId: userId, deleted: false },
         select: { id: true, name: true, factionId: true, tier: true, activeGoalSetId: true },
         orderBy: { name: 'asc' },
     });
 
     const shared = await prisma.armyShare.findMany({
-        where: { userId },
+        where: { userId, army: { deleted: false } },
         select: { armyId: true, perm: true },
     });
 

@@ -18,9 +18,10 @@ const BodySchema = z.object({
 async function canWriteByArmyId(armyId: string, userId: string): Promise<boolean> {
     const army = await prisma.army.findUnique({
         where: { id: armyId },
-        select: { ownerId: true },
+        select: { ownerId: true, deleted: true },
     });
     if (!army) return false;
+    if (army.deleted) return false;
     if (army.ownerId === userId) return true;
     const share = await prisma.armyShare.findFirst({
         where: { armyId, userId, perm: 'WRITE' },
@@ -66,7 +67,7 @@ export async function PATCH(req: Request, ctx: AsyncCtx) {
     }
 
     const sharedTarget = await prisma.armyShare.findFirst({
-        where: { userId, armyId: capturedByArmyId },
+        where: { userId, armyId: capturedByArmyId, army: { deleted: false } },
         select: { id: true },
     });
     if (!sharedTarget) {

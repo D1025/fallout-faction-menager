@@ -80,6 +80,7 @@ type UnitListItem = {
 
     isLeader?: boolean;
     temporaryLeader?: boolean;
+    temporary?: boolean;
 };
 
 type RoleFilter = 'ALL' | 'CHAMPION' | 'GRUNT' | 'COMPANION' | 'LEGENDS';
@@ -614,6 +615,18 @@ function ArmyDashboardClientInner({
         },
     });
 
+    const saveTemporaryTagMutation = useMutation({
+        mutationFn: async ({ unitId, temporary }: { unitId: string; temporary: boolean }) => {
+            const res = await fetch(`/api/units/${unitId}/temporary`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ temporary }),
+            });
+            if (!res.ok) throw new Error(await readResponseError(res, 'Failed to save Temporary tag'));
+            return { unitId, temporary };
+        },
+    });
+
     async function setValue(kind: Kind, value: number) {
         const v = Math.max(0, Math.floor(value));
         setBusy(kind);
@@ -799,6 +812,12 @@ function ArmyDashboardClientInner({
         );
     }
 
+    function onUnitTemporaryChange(unitId: string, temporary: boolean) {
+        setOrderedUnits((prev) =>
+            prev.map((unit) => (unit.id === unitId ? { ...unit, temporary } : unit)),
+        );
+    }
+
     const persistPresence = useCallback(
         async (unitId: string, present: boolean) => {
             await savePresenceMutation.mutateAsync({ unitId, present });
@@ -818,6 +837,13 @@ function ArmyDashboardClientInner({
             await saveTemporaryLeaderMutation.mutateAsync({ unitId, temporaryLeader });
         },
         [saveTemporaryLeaderMutation],
+    );
+
+    const persistTemporary = useCallback(
+        async (unitId: string, temporary: boolean) => {
+            await saveTemporaryTagMutation.mutateAsync({ unitId, temporary });
+        },
+        [saveTemporaryTagMutation],
     );
 
     function appendUnits(nextUnits: UnitListItem[]) {
@@ -1129,9 +1155,11 @@ function ArmyDashboardClientInner({
                          onPresenceChange,
                          onWoundsChange,
                          onTemporaryLeaderChange,
+                         onTemporaryChange,
                          persistPresence,
                          persistWounds,
                          persistTemporaryLeader,
+                         persistTemporary,
                          readOnly,
                          canMoveUp,
                          canMoveDown,
@@ -1148,9 +1176,11 @@ function ArmyDashboardClientInner({
         onPresenceChange: (unitId: string, present: boolean) => void;
         onWoundsChange: (unitId: string, wounds: number) => void;
         onTemporaryLeaderChange: (unitId: string, temporaryLeader: boolean) => void;
+        onTemporaryChange: (unitId: string, temporary: boolean) => void;
         persistPresence: (unitId: string, present: boolean) => Promise<void>;
         persistWounds: (unitId: string, wounds: number) => Promise<void>;
         persistTemporaryLeader: (unitId: string, temporaryLeader: boolean) => Promise<void>;
+        persistTemporary: (unitId: string, temporary: boolean) => Promise<void>;
         readOnly: boolean;
         canMoveUp: boolean;
         canMoveDown: boolean;
@@ -1174,6 +1204,7 @@ function ArmyDashboardClientInner({
         const [wounds, setWounds] = useState(u.wounds);
         const [absent, setAbsent] = useState(!u.present);
         const [tmpLeader, setTmpLeader] = useState(Boolean(u.temporaryLeader));
+        const [temporary, setTemporary] = useState(Boolean(u.temporary));
         const [photoMissing, setPhotoMissing] = useState(false);
         const [menuOpen, setMenuOpen] = useState(false);
         const menuBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -1217,6 +1248,7 @@ function ArmyDashboardClientInner({
         useEffect(() => setWounds(u.wounds), [u.wounds]);
         useEffect(() => setAbsent(!u.present), [u.present]);
         useEffect(() => setTmpLeader(Boolean(u.temporaryLeader)), [u.temporaryLeader]);
+        useEffect(() => setTemporary(Boolean(u.temporary)), [u.temporary]);
         useEffect(() => setPhotoMissing(false), [u.id, u.photoPath, u.hasPhoto]);
         useEffect(() => {
             const el = headerSpecialRef.current;
@@ -1268,6 +1300,21 @@ function ArmyDashboardClientInner({
                 setTmpLeader(prev);
                 onTemporaryLeaderChange(u.id, prev);
                 notifyApiError('Failed to save Crew Leader.');
+                return;
+            }
+        }
+
+        async function saveTemporary(next: boolean) {
+            if (readOnly) return;
+            const prev = temporary;
+            setTemporary(next);
+            onTemporaryChange(u.id, next);
+            try {
+                await persistTemporary(u.id, next);
+            } catch {
+                setTemporary(prev);
+                onTemporaryChange(u.id, prev);
+                notifyApiError('Failed to save Temporary tag.');
                 return;
             }
         }
@@ -1411,7 +1458,7 @@ function ArmyDashboardClientInner({
                         <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="truncate text-base font-semibold leading-tight">{u.templateName}</div>
-                                {(linkedOwnerName || linkedCompanionCount > 0) ? (
+                                {(linkedOwnerName || linkedCompanionCount > 0 || temporary) ? (
                                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
                                         {linkedOwnerName ? (
                                             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">
@@ -1421,6 +1468,11 @@ function ArmyDashboardClientInner({
                                         {!linkedOwnerName && linkedCompanionCount > 0 ? (
                                             <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-200">
                                                 Companion linked x{linkedCompanionCount}
+                                            </span>
+                                        ) : null}
+                                        {temporary ? (
+                                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-200">
+                                                Temporary
                                             </span>
                                         ) : null}
                                     </div>
@@ -1464,6 +1516,19 @@ function ArmyDashboardClientInner({
                                         >
                                             <span>Absent</span>
                                             <span className={absent ? 'text-red-300' : 'text-zinc-500'}>{absent ? 'ON' : 'OFF'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                setMenuOpen(false);
+                                                void saveTemporary(!temporary);
+                                            }}
+                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                        >
+                                            <span>Temporary</span>
+                                            <span className={temporary ? 'text-amber-300' : 'text-zinc-500'}>{temporary ? 'ON' : 'OFF'}</span>
                                         </button>
                                         <button
                                             type="button"
@@ -2532,9 +2597,11 @@ function ArmyDashboardClientInner({
                                         onPresenceChange={onUnitPresenceChange}
                                         onWoundsChange={onUnitWoundsChange}
                                         onTemporaryLeaderChange={onUnitTemporaryLeaderChange}
+                                        onTemporaryChange={onUnitTemporaryChange}
                                         persistPresence={persistPresence}
                                         persistWounds={persistWounds}
                                         persistTemporaryLeader={persistTemporaryLeader}
+                                        persistTemporary={persistTemporary}
                                         readOnly={readOnly}
                                         canMoveUp={moveState.canMoveUp}
                                         canMoveDown={moveState.canMoveDown}
@@ -3518,16 +3585,19 @@ function AddUnitSheet({
     const [selCompanionTemplateId, setSelCompanionTemplateId] = useState<string | null>(null);
     const [selCompanionOptionId, setSelCompanionOptionId] = useState<string | null>(null);
     const [companionStepOpen, setCompanionStepOpen] = useState(false);
+    const [addAsTemporary, setAddAsTemporary] = useState(false);
     const [busy, setBusy] = useState(false);
 
     const addUnitMutation = useMutation({
         mutationFn: async ({
             unitTemplateId,
             optionId,
+            temporary,
             companion,
         }: {
             unitTemplateId: string;
             optionId: string;
+            temporary?: boolean;
             companion?: {
                 perkBehavior: CompanionBehavior;
                 unitTemplateId: string;
@@ -3537,7 +3607,7 @@ function AddUnitSheet({
             const res = await fetch(`/api/armies/${armyId}/units`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ unitTemplateId, optionId, companion }),
+                body: JSON.stringify({ unitTemplateId, optionId, temporary, companion }),
             });
             if (!res.ok) throw new Error(await readResponseError(res, 'Failed to add unit'));
             return (await res.json().catch(() => null)) as {
@@ -3634,6 +3704,7 @@ function AddUnitSheet({
         setSelCompanionTemplateId(null);
         setSelCompanionOptionId(null);
         setCompanionStepOpen(false);
+        setAddAsTemporary(false);
         void loadNext(true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [factionId, subfactionId, tab, q]);
@@ -3771,6 +3842,7 @@ function AddUnitSheet({
             const payload = await addUnitMutation.mutateAsync({
                 unitTemplateId: selected.id,
                 optionId: selectedOption.id,
+                temporary: addAsTemporary,
                 companion: companionPayload,
             });
             const championId = payload?.championId;
@@ -3785,6 +3857,7 @@ function AddUnitSheet({
                 roleTag: selected.roleTag,
                 isLeader: Boolean(selected.isLeader),
                 temporaryLeader: false,
+                temporary: addAsTemporary,
                 base: {
                     hp: selected.stats.hp,
                     S: selected.stats.s,
@@ -3827,6 +3900,7 @@ function AddUnitSheet({
                     roleTag: selectedCompanionTemplate.roleTag,
                     isLeader: Boolean(selectedCompanionTemplate.isLeader),
                     temporaryLeader: false,
+                    temporary: false,
                     base: {
                         hp: selectedCompanionTemplate.stats.hp,
                         S: selectedCompanionTemplate.stats.s,
@@ -4109,7 +4183,7 @@ function AddUnitSheet({
                             </div>
 
                             <div className="mt-3 flex flex-wrap gap-2">
-                                <TabChip k="ALL" label="All" />
+                                <TabChip k="ALL" label="Base" />
                                 <TabChip k="COMPANIONS" label="Companions" />
                                 <TabChip k="LEGENDS" label="Legends" />
                             </div>
@@ -4368,6 +4442,17 @@ function AddUnitSheet({
                 </div>
 
                 <div className="bg-zinc-900 p-4">
+                    {!companionStepOpen && selected ? (
+                        <label className="mb-3 inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
+                            <input
+                                type="checkbox"
+                                checked={addAsTemporary}
+                                onChange={(e) => setAddAsTemporary(e.target.checked)}
+                                className="h-3.5 w-3.5 accent-amber-500"
+                            />
+                            Add with Temporary tag
+                        </label>
+                    ) : null}
                     <div className="flex gap-2">
                         <button
                             onClick={onClose}

@@ -54,6 +54,7 @@ type ArmyUnitRow = {
     photoPath: string | null;
     photoEtag?: string | null;
     temporaryLeader?: boolean;
+    temporary?: boolean;
     capturedAt?: Date | null;
     unit: ArmyUnitTemplateRow;
     upgrades: Array<{ statKey: string; delta: number; trainingFactionId?: string | null }>;
@@ -67,6 +68,7 @@ type ArmyPageData = {
     id: string;
     name: string;
     tier: number;
+    deleted: boolean;
     factionId: string;
     caps: number;
     parts: number;
@@ -192,7 +194,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         },
     }) as unknown as Parameters<typeof prisma.army.findUnique>[0]) as unknown as ArmyPageData | null;
 
-    if (!army) return <div className="p-4 text-red-300">Army not found.</div>;
+    if (!army || army.deleted) return <div className="p-4 text-red-300">Army not found.</div>;
 
     const isOwner = army.ownerId === userId;
     const hasSharedAccess = isOwner
@@ -401,6 +403,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             roleTag: u.unit.roleTag,
             isLeader: (u.unit as unknown as { isLeader?: boolean }).isLeader ?? false,
             temporaryLeader: (u as unknown as { temporaryLeader?: boolean }).temporaryLeader ?? false,
+            temporary: (u as unknown as { temporary?: boolean }).temporary ?? false,
             base,
             bonus,
             bonusPositive,

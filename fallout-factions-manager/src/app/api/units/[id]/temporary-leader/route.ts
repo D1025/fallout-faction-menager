@@ -11,9 +11,10 @@ const Body = z.object({ temporaryLeader: z.boolean() });
 async function canWriteByUnitId(unitId: string, userId: string) {
     const unit = await prisma.unitInstance.findUnique({
         where: { id: unitId },
-        select: { armyId: true, army: { select: { ownerId: true } } },
+        select: { armyId: true, army: { select: { ownerId: true, deleted: true } } },
     });
     if (!unit) return false;
+    if (unit.army.deleted) return false;
     if (unit.army.ownerId === userId) return true;
     const share = await prisma.armyShare.findFirst({
         where: { armyId: unit.armyId, userId, perm: 'WRITE' },

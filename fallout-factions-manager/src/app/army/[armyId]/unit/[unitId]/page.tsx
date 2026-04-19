@@ -42,6 +42,7 @@ type UnitDetailRow = {
     army: {
         ownerId: string;
         factionId: string;
+        deleted: boolean;
         faction: { name: string };
     };
     unit: {
@@ -131,6 +132,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
                 select: {
                     ownerId: true,
                     factionId: true,
+                    deleted: true,
                     faction: { select: { name: true } },
                 },
             },
@@ -168,6 +170,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
         },
     }) as unknown as Parameters<typeof prisma.unitInstance.findUnique>[0]) as unknown as UnitDetailRow | null;
     if (!unit) return <div className="p-4 text-red-300">Unit not found.</div>;
+    if (unit.army.deleted) return <div className="p-4 text-red-300">Unit not found.</div>;
 
     const share = unit.army.ownerId === userId
         ? null
@@ -209,7 +212,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     const captureTargets = canWrite
         ? (
             (await prisma.armyShare.findMany({
-                where: { userId },
+                where: { userId, army: { deleted: false } },
                 include: {
                     army: {
                         select: {

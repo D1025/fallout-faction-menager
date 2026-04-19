@@ -84,6 +84,7 @@ function mapSnapshotUnitsToDashboard(snapshot: PublicArmySnapshot) {
             })),
             isLeader: u.isLeader,
             temporaryLeader: u.temporaryLeader,
+            temporary: u.temporary,
         };
     });
 }

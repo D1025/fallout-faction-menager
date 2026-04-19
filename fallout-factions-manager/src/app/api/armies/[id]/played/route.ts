@@ -29,9 +29,10 @@ const CreatePlayedArmySchema = z.object({
 async function canReadArmy(armyId: string, userId: string): Promise<boolean> {
     const army = await prisma.army.findUnique({
         where: { id: armyId },
-        select: { ownerId: true },
+        select: { ownerId: true, deleted: true },
     });
     if (!army) return false;
+    if (army.deleted) return false;
     if (army.ownerId === userId) return true;
     const share = await prisma.armyShare.findFirst({
         where: { armyId, userId },
@@ -43,9 +44,10 @@ async function canReadArmy(armyId: string, userId: string): Promise<boolean> {
 async function canWriteArmy(armyId: string, userId: string): Promise<boolean> {
     const army = await prisma.army.findUnique({
         where: { id: armyId },
-        select: { ownerId: true },
+        select: { ownerId: true, deleted: true },
     });
     if (!army) return false;
+    if (army.deleted) return false;
     if (army.ownerId === userId) return true;
     const share = await prisma.armyShare.findFirst({
         where: { armyId, userId, perm: 'WRITE' },
@@ -107,7 +109,7 @@ export async function GET(_req: Request, ctx: AsyncCtx) {
             orderBy: { createdAt: 'asc' },
         }),
         p.armyShare.findMany({
-            where: { userId },
+            where: { userId, army: { deleted: false } },
             include: {
                 army: {
                     select: {
@@ -224,7 +226,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
     }
 
     const sharedCandidate = await p.armyShare.findFirst({
-        where: { userId, armyId: opponentArmyId },
+        where: { userId, armyId: opponentArmyId, army: { deleted: false } },
         select: { id: true },
     }) as { id: string } | null;
     if (!sharedCandidate) {

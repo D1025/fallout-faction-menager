@@ -10,9 +10,10 @@ type AsyncCtx = { params: Promise<{ id: string }> };
 async function canManageShare(armyId: string, userId: string) {
     const row = await prisma.army.findUnique({
         where: { id: armyId },
-        select: { ownerId: true },
+        select: { ownerId: true, deleted: true },
     });
     if (!row) return { ok: false as const, found: false as const };
+    if (row.deleted) return { ok: false as const, found: false as const };
     if (row.ownerId !== userId) return { ok: false as const, found: true as const };
     return { ok: true as const, found: true as const };
 }

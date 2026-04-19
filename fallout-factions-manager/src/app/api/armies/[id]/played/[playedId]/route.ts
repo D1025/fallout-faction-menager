@@ -25,9 +25,10 @@ const UpdatePlayedArmySchema = z
 async function canWriteArmy(armyId: string, userId: string): Promise<boolean> {
     const army = await prisma.army.findUnique({
         where: { id: armyId },
-        select: { ownerId: true },
+        select: { ownerId: true, deleted: true },
     });
     if (!army) return false;
+    if (army.deleted) return false;
     if (army.ownerId === userId) return true;
     const share = await prisma.armyShare.findFirst({
         where: { armyId, userId, perm: 'WRITE' },

@@ -115,7 +115,7 @@ export default async function Home() {
   try {
     const [armiesRaw, sharedRowsRaw, factionRows] = await Promise.all([
       p.army.findMany({
-        where: { ownerId: userId },
+        where: { ownerId: userId, deleted: false },
         orderBy: { updatedAt: 'desc' },
         include: {
           faction: { select: { id: true, name: true } },
@@ -151,7 +151,7 @@ export default async function Home() {
         },
       }),
       p.armyShare.findMany({
-        where: { userId },
+        where: { userId, army: { deleted: false } },
         include: {
           army: {
             include: {

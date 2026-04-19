@@ -384,7 +384,8 @@ function DotsMenu({
             return;
         }
         confirmAction({
-            title: 'Delete this army? This action cannot be undone.',
+            title: 'Hide this army from lists?',
+            content: 'The army will be marked as deleted and removed from visible lists.',
             okText: 'Delete',
             cancelText: 'Cancel',
             danger: true,

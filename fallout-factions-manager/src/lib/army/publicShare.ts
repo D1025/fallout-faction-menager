@@ -68,6 +68,7 @@ export type PublicArmySnapshot = {
         roleTag: string | null;
         isLeader: boolean;
         temporaryLeader: boolean;
+        temporary: boolean;
         present: boolean;
         wounds: number;
         rating: number;
@@ -104,6 +105,7 @@ type SnapshotArmyData = {
     id: string;
     name: string;
     tier: number;
+    deleted: boolean;
     factionId: string;
     subfactionId: string | null;
     caps: number;
@@ -139,6 +141,7 @@ type SnapshotArmyData = {
         present: boolean;
         wounds: number;
         temporaryLeader: boolean;
+        temporary: boolean;
         unit: {
             id: string;
             name: string;
@@ -350,7 +353,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             },
         },
     }) as SnapshotArmyData | null;
-    if (!army) return null;
+    if (!army || army.deleted) return null;
     const crewFactionName = army.faction.name;
 
     const effectiveTrainingFactionId = resolveEffectiveTrainingFactionId({
@@ -559,6 +562,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             roleTag: u.unit.roleTag,
             isLeader: Boolean(u.unit.isLeader),
             temporaryLeader: Boolean(u.temporaryLeader),
+            temporary: Boolean(u.temporary),
             present: u.present,
             wounds: u.wounds,
             rating: unitRating(u),

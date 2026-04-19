@@ -86,6 +86,7 @@ model Army {
   name      String
   factionId String
   tier      Int
+  deleted   Boolean @default(false)
   // Resources - aggregate values without history
   caps  Int @default(0)
   parts Int @default(0)
@@ -117,6 +118,9 @@ model Army {
   playedOpponents ArmyPlayed[] @relation("ArmyPlayedList")
   appearsInPlayedBy ArmyPlayed[] @relation("ArmyPlayedOpponent")
   captivesTaken UnitInstance[] @relation("CapturedByArmy")
+
+  @@index([ownerId, deleted])
+  @@index([deleted])
 }
 
 model ArmyGoalProgress {
@@ -445,6 +449,7 @@ model UnitInstance {
   weapons  WeaponInstance[]
   // Marks this unit as temporary leader in the army
   temporaryLeader Boolean @default(false)
+  temporary Boolean @default(false)
 
   @@index([armyId])
   @@index([armyId, displayOrder])
