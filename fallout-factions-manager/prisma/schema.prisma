@@ -196,6 +196,7 @@ model Faction {
 
   goalSets     FactionGoalSet[]
   upgradeRules FactionUpgradeRule[]
+  ploys        FactionPloy[]
 
   subfactions Subfaction[]
 }
@@ -637,6 +638,34 @@ model ArmyChem {
   @@index([chemId])
 }
 
+model PloyDefinition {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  sortOrder   Int      @default(0)
+  isStandard  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  factions         FactionPloy[]
+  subfactionAllows SubfactionPloyAllow[]
+  subfactionDenies SubfactionPloyDeny[]
+
+  @@index([isStandard, sortOrder, name])
+}
+
+model FactionPloy {
+  id        String @id @default(cuid())
+  factionId String
+  ployId    String
+
+  faction Faction        @relation(fields: [factionId], references: [id])
+  ploy    PloyDefinition @relation(fields: [ployId], references: [id])
+
+  @@unique([factionId, ployId])
+  @@index([ployId])
+}
+
 model Subfaction {
   id        String   @id @default(cuid())
   factionId String
@@ -651,6 +680,8 @@ model Subfaction {
   unitDenies   SubfactionUnitDeny[]
   weaponAllows SubfactionWeaponAllow[]
   weaponDenies SubfactionWeaponDeny[]
+  ployAllows   SubfactionPloyAllow[]
+  ployDenies   SubfactionPloyDeny[]
 
   @@unique([factionId, name])
   @@index([factionId])
@@ -702,5 +733,29 @@ model SubfactionWeaponDeny {
 
   @@unique([subfactionId, weaponId])
   @@index([weaponId])
+}
+
+model SubfactionPloyAllow {
+  id           String @id @default(cuid())
+  subfactionId String
+  ployId       String
+
+  subfaction Subfaction     @relation(fields: [subfactionId], references: [id])
+  ploy       PloyDefinition @relation(fields: [ployId], references: [id])
+
+  @@unique([subfactionId, ployId])
+  @@index([ployId])
+}
+
+model SubfactionPloyDeny {
+  id           String @id @default(cuid())
+  subfactionId String
+  ployId       String
+
+  subfaction Subfaction     @relation(fields: [subfactionId], references: [id])
+  ploy       PloyDefinition @relation(fields: [ployId], references: [id])
+
+  @@unique([subfactionId, ployId])
+  @@index([ployId])
 }
 

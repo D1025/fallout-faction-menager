@@ -7,6 +7,7 @@ import {
     DownOutlined,
     EllipsisOutlined,
     InfoCircleOutlined,
+    LinkOutlined,
     MedicineBoxOutlined,
     SearchOutlined,
     StarOutlined,
@@ -107,6 +108,19 @@ type GoalsResponse = {
     currentTier: number;
     set: { id: string; name: string } | null;
     goals: Goal[];
+};
+type PloyMode = 'PLOYS' | 'GUNNERS_RESOURCE_POINTS';
+type UIPloy = {
+    id: string;
+    name: string;
+    description: string;
+    sortOrder: number;
+    source: 'STANDARD' | 'FACTION' | 'SUBFACTION';
+};
+type UIGunnersResourcePoint = {
+    name: string;
+    cost: number;
+    description: string;
 };
 
 type UIChem = {
@@ -307,6 +321,9 @@ export function ArmyDashboardClient({
     units,
     rating,
     subfactionId,
+    availablePloys,
+    ployMode,
+    gunnersResourcePoints,
     readOnly,
     // zamiast refa
     onActionsReadyAction,
@@ -322,6 +339,9 @@ export function ArmyDashboardClient({
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    availablePloys?: UIPloy[];
+    ployMode?: PloyMode;
+    gunnersResourcePoints?: UIGunnersResourcePoint[];
     readOnly?: boolean;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
     onFiltersActiveChangeAction?: (active: boolean) => void;
@@ -338,6 +358,9 @@ export function ArmyDashboardClient({
             units={units}
             rating={rating}
             subfactionId={subfactionId}
+            availablePloys={availablePloys ?? []}
+            ployMode={ployMode ?? 'PLOYS'}
+            gunnersResourcePoints={gunnersResourcePoints ?? []}
             readOnly={Boolean(readOnly)}
             onActionsReadyAction={onActionsReadyAction}
             onFiltersActiveChangeAction={onFiltersActiveChangeAction}
@@ -356,6 +379,9 @@ function ArmyDashboardClientInner({
     units,
     rating,
     subfactionId,
+    availablePloys,
+    ployMode,
+    gunnersResourcePoints,
     readOnly,
     onActionsReadyAction,
     onFiltersActiveChangeAction,
@@ -370,6 +396,9 @@ function ArmyDashboardClientInner({
     units: UnitListItem[];
     rating: number;
     subfactionId?: string | null;
+    availablePloys: UIPloy[];
+    ployMode: PloyMode;
+    gunnersResourcePoints: UIGunnersResourcePoint[];
     readOnly: boolean;
     onActionsReadyAction?: (actions: ArmyDashboardActions) => void;
     onFiltersActiveChangeAction?: (active: boolean) => void;
@@ -1323,6 +1352,7 @@ function ArmyDashboardClientInner({
         const dmg = Math.max(0, Math.min(maxHp, wounds));
         const hpPlus = u.bonusPositive?.HP ?? Math.max(0, u.bonus.HP);
         const hpMinus = u.bonusNegative?.HP ?? Math.max(0, -u.bonus.HP);
+        const isCompanion = Boolean(u.companionOwnerId);
         const weaponDisplays = useMemo(() => u.weapons.map((w) => computeWeaponDisplay(w)), [u.weapons]);
         const unitPerks = u.perks ?? [];
         const weaponTestHints = useMemo(
@@ -1420,13 +1450,19 @@ function ArmyDashboardClientInner({
                         : undefined
                 }
                 className={
-                    'block max-w-full overflow-hidden rounded-[22px] p-3 ' +
-                    (u.companionOwnerId
-                        ? 'bg-emerald-950/20 ring-1 ring-emerald-500/25'
-                        : 'bg-zinc-900/60')
+                    'relative block max-w-full overflow-hidden rounded-[22px] p-3 ' +
+                    (isCompanion ? 'bg-zinc-900/60 pl-7' : 'bg-zinc-900/60')
                 }
             >
-                <div className="flex items-start gap-2">
+                {isCompanion ? (
+                    <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute left-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full border border-emerald-400/55 bg-zinc-950/90 text-[10px] text-emerald-300 shadow-[0_0_0_2px_rgba(9,9,11,.55)]"
+                    >
+                        <LinkOutlined />
+                    </span>
+                ) : null}
+                <div className={'flex items-start gap-2 ' + (isCompanion ? 'flex-row-reverse' : '')}>
                     <div
                         className="shrink-0 overflow-hidden rounded-xl bg-zinc-950/70"
                         style={{
@@ -1458,18 +1494,8 @@ function ArmyDashboardClientInner({
                         <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                                 <div className="truncate text-base font-semibold leading-tight">{u.templateName}</div>
-                                {(linkedOwnerName || linkedCompanionCount > 0 || temporary) ? (
+                                {temporary ? (
                                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                                        {linkedOwnerName ? (
-                                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-200">
-                                                Companion of: {linkedOwnerName}
-                                            </span>
-                                        ) : null}
-                                        {!linkedOwnerName && linkedCompanionCount > 0 ? (
-                                            <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-200">
-                                                Companion linked x{linkedCompanionCount}
-                                            </span>
-                                        ) : null}
                                         {temporary ? (
                                             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-200">
                                                 Temporary
@@ -1489,7 +1515,7 @@ function ArmyDashboardClientInner({
                                         e.stopPropagation();
                                         setMenuOpen((v) => !v);
                                     }}
-                                    className="inline-flex h-auto items-center justify-center p-0 text-zinc-300 hover:text-zinc-100"
+                                    className="inline-flex h-auto cursor-pointer items-center justify-center p-0 text-zinc-300 hover:text-zinc-100"
                                     aria-label="Unit actions"
                                     title="Unit actions"
                                 >
@@ -1512,7 +1538,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 void savePresence(absent);
                                             }}
-                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                            className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
                                         >
                                             <span>Absent</span>
                                             <span className={absent ? 'text-red-300' : 'text-zinc-500'}>{absent ? 'ON' : 'OFF'}</span>
@@ -1525,7 +1551,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 void saveTemporary(!temporary);
                                             }}
-                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                            className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
                                         >
                                             <span>Temporary</span>
                                             <span className={temporary ? 'text-amber-300' : 'text-zinc-500'}>{temporary ? 'ON' : 'OFF'}</span>
@@ -1538,7 +1564,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 void saveTemporaryLeader(!tmpLeader);
                                             }}
-                                            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                                            className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800"
                                         >
                                             <span>Crew Leader</span>
                                             <span className={tmpLeader ? 'text-emerald-300' : 'text-zinc-500'}>{tmpLeader ? 'ON' : 'OFF'}</span>
@@ -1552,7 +1578,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 onMoveUp();
                                             }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             <UpOutlined />
                                             <span>Move up</span>
@@ -1566,7 +1592,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 onMoveDown();
                                             }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+                                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             <DownOutlined />
                                             <span>Move down</span>
@@ -1580,7 +1606,7 @@ function ArmyDashboardClientInner({
                                                 setMenuOpen(false);
                                                 onDelete();
                                             }}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:opacity-40"
+                                            className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-900/20 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             <span>{deleting ? 'Deleting...' : 'Delete'}</span>
                                         </button>
@@ -1687,6 +1713,16 @@ function ArmyDashboardClientInner({
                                 CHAMPION
                             </span>
                         ) : null}
+                        {linkedOwnerName ? (
+                            <span className="max-w-[14rem] truncate whitespace-nowrap rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+                                COMPANION OF: {linkedOwnerName}
+                            </span>
+                        ) : null}
+                        {!linkedOwnerName && linkedCompanionCount > 0 ? (
+                            <span className="whitespace-nowrap rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
+                                COMPANION x{linkedCompanionCount}
+                            </span>
+                        ) : null}
                         {u.isLeader ? (
                             <span className="whitespace-nowrap rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-200">
                                 LEADER
@@ -1774,7 +1810,20 @@ function ArmyDashboardClientInner({
         },
     };
     const STASH_RESOURCE_ORDER: CoreKind[] = ['caps', 'parts', 'scout', 'reach', 'exp'];
-    const EDIT_RESOURCE_ORDER: CoreKind[] = ['caps', 'parts', 'scout', 'reach', 'exp'];
+    const PLOY_SOURCE_META: Record<UIPloy['source'], { label: string; className: string }> = {
+        STANDARD: {
+            label: 'STANDARD',
+            className: 'bg-sky-500/15 text-sky-200',
+        },
+        FACTION: {
+            label: 'FACTION',
+            className: 'bg-violet-500/15 text-violet-200',
+        },
+        SUBFACTION: {
+            label: 'SUBFACTION',
+            className: 'bg-emerald-500/15 text-emerald-200',
+        },
+    };
 
     const commonChems = useMemo(
         () =>
@@ -1815,8 +1864,13 @@ function ArmyDashboardClientInner({
             }),
         [uncommonChems, showOwnedChemsOnly, chemSearch],
     );
-    const ploysMax = Math.max(0, Math.floor(currentTier));
-    const ploysChecked = Math.max(0, Math.min(ploysMax, totals.ploys ?? 0));
+    const visiblePloys = useMemo(() => {
+        return [...availablePloys].sort((a, b) => {
+            if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+            return a.name.localeCompare(b.name);
+        });
+    }, [availablePloys]);
+    const gunnersMode = ployMode === 'GUNNERS_RESOURCE_POINTS';
 
     // Lazy load chems only when Chems tab is opened.
     useEffect(() => {
@@ -2238,129 +2292,6 @@ function ArmyDashboardClientInner({
     function clearAllFilters() {
         setFilter('ALL');
         setHideInactive(false);
-    }
-
-    async function setPloys(next: number) {
-        const clamped = Math.max(0, Math.min(ploysMax, Math.floor(next)));
-        await setValue('ploys', clamped);
-    }
-
-    function PloysCheckboxCard() {
-        const saving = busy === 'ploys';
-        return (
-            <div className="rounded-2xl bg-zinc-950 p-3">
-                <div className="mb-2">
-                    <div>
-                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
-                            <span className="text-sm">{RESOURCE_META.ploys.icon}</span>
-                            <span>{RESOURCE_META.ploys.label}</span>
-                        </div>
-                        <div className="mt-1 text-[11px] text-zinc-500">Tier {currentTier}</div>
-                    </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    {Array.from({ length: ploysMax }, (_, i) => {
-                        const idx = i + 1;
-                        const checked = idx <= ploysChecked;
-                        return (
-                            <label key={idx} className="inline-flex items-center gap-1.5 text-xs text-zinc-300">
-                                <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    disabled={saving}
-                                    onChange={() => {
-                                        const next = checked && ploysChecked === idx ? idx - 1 : idx;
-                                        void setPloys(next);
-                                    }}
-                                    className="h-4 w-4 accent-emerald-500"
-                                    aria-label={`Set ploys to ${idx}`}
-                                />
-                                <span>#{idx}</span>
-                            </label>
-                        );
-                    })}
-                    {ploysMax === 0 ? <span className="text-xs text-zinc-500">No ploys at tier 0.</span> : null}
-                </div>
-            </div>
-        );
-    }
-
-    function renderResourceValueCard(kind: Kind) {
-        const meta = RESOURCE_META[kind];
-        const value = totals[kind];
-        const saving = busy === kind;
-
-        return (
-            <div key={kind} className="rounded-xl bg-zinc-950 p-3">
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-300">
-                        <span className="text-sm">{meta.icon}</span>
-                        <span>{meta.label}</span>
-                    </div>
-                    <div className="tabular-nums text-2xl font-semibold leading-none text-zinc-100">{value}</div>
-                </div>
-
-                <div className="mt-2 grid grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-2">
-                    <button
-                        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
-                        onClick={() => void setValue(kind, value - 1)}
-                        disabled={saving}
-                        aria-label={`Decrease ${meta.label}`}
-                    >
-                        -
-                    </button>
-                    <input
-                        inputMode="numeric"
-                        min={0}
-                        aria-label={`${meta.label} value`}
-                        value={value}
-                        onChange={(e) =>
-                            setTotals((t) => ({
-                                ...t,
-                                [kind]: Math.max(0, Math.floor(n(e.target.value, t[kind]))),
-                            }))
-                        }
-                        onBlur={(e) => void setValue(kind, n(e.target.value, value))}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                void setValue(kind, n((e.currentTarget as HTMLInputElement).value, value));
-                            }
-                        }}
-                        className="h-10 min-w-0 vault-input px-3 text-center text-lg font-semibold tabular-nums"
-                    />
-                    <button
-                        className="h-10 w-10 shrink-0 rounded-lg bg-zinc-900 text-lg font-bold active:scale-95 disabled:opacity-40"
-                        onClick={() => void setValue(kind, value + 1)}
-                        disabled={saving}
-                        aria-label={`Increase ${meta.label}`}
-                    >
-                        +
-                    </button>
-                </div>
-
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                    {meta.quick.map((d) => (
-                        <button
-                            key={`${kind}_${d}`}
-                            className="h-7 min-w-[3.25rem] rounded-lg bg-zinc-900 px-2 text-[11px] font-medium active:scale-95 disabled:opacity-50"
-                            onClick={() => void setValue(kind, Math.max(0, value + d))}
-                            disabled={saving}
-                        >
-                            {d > 0 ? `+${d}` : d}
-                        </button>
-                    ))}
-                    <button
-                        className="h-7 rounded-lg bg-zinc-900 px-2 text-[11px] font-medium text-zinc-400 active:scale-95 disabled:opacity-50"
-                        onClick={() => void setValue(kind, 0)}
-                        disabled={saving || value === 0}
-                        title={`Reset ${meta.label}`}
-                    >
-                        Reset
-                    </button>
-                </div>
-            </div>
-        );
     }
 
     function ChemCheckboxGroup({ title, items }: { title: string; items: UIChem[] }) {
@@ -2958,6 +2889,66 @@ function ArmyDashboardClientInner({
                             })}
                         </>
                     )}
+
+                    <div className="mt-4">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-medium">Available ploys</div>
+                            {gunnersMode ? (
+                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200">
+                                    Gunners exception
+                                </span>
+                            ) : null}
+                        </div>
+
+                        {gunnersMode ? (
+                            <div className="mt-2 space-y-2">
+                                <div className="text-xs leading-relaxed text-amber-100/90">
+                                    Gunners crews do not use standard faction ploys. They use Resource Points to purchase battlefield options.
+                                </div>
+                                <div className="grid gap-2">
+                                    {gunnersResourcePoints.map((item) => (
+                                        <div key={item.name} className="rounded-2xl bg-zinc-900/85 p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-sm font-medium text-zinc-100">{item.name}</div>
+                                                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-zinc-300">
+                                                    RP {item.cost}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-sm leading-relaxed text-zinc-300">{item.description}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="mt-2 grid gap-2">
+                                {visiblePloys.map((ploy) => {
+                                    const sourceMeta = PLOY_SOURCE_META[ploy.source];
+                                    return (
+                                        <div key={ploy.id} className="rounded-2xl bg-zinc-900/85 p-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="text-sm font-medium text-zinc-100">{ploy.name}</div>
+                                                <span
+                                                    className={
+                                                        `rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${sourceMeta.className}`
+                                                    }
+                                                >
+                                                    {sourceMeta.label}
+                                                </span>
+                                            </div>
+                                            <div className="mt-1 text-sm leading-relaxed text-zinc-300">
+                                                <RuleDescription text={ploy.description} />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {visiblePloys.length === 0 ? (
+                                    <div className="rounded-2xl bg-zinc-900/85 p-3 text-sm text-zinc-500">
+                                        No ploys configured for this faction.
+                                    </div>
+                                ) : null}
+                            </div>
+                        )}
+                    </div>
                 </section>
             )}
 
@@ -3581,9 +3572,11 @@ function AddUnitSheet({
 
     const [selT, setSelT] = useState<string | null>(null);
     const [selO, setSelO] = useState<string | null>(null);
+    const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
     const [companionBehavior, setCompanionBehavior] = useState<CompanionBehavior | null>(null);
     const [selCompanionTemplateId, setSelCompanionTemplateId] = useState<string | null>(null);
     const [selCompanionOptionId, setSelCompanionOptionId] = useState<string | null>(null);
+    const [expandedCompanionTemplateId, setExpandedCompanionTemplateId] = useState<string | null>(null);
     const [companionStepOpen, setCompanionStepOpen] = useState(false);
     const [addAsTemporary, setAddAsTemporary] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -3613,7 +3606,6 @@ function AddUnitSheet({
             return (await res.json().catch(() => null)) as {
                 championId?: string;
                 companionId?: string | null;
-                companionRatingBonus?: number;
             } | null;
         },
     });
@@ -3700,9 +3692,11 @@ function AddUnitSheet({
         setHasMore(true);
         setSelT(null);
         setSelO(null);
+        setExpandedTemplateId(null);
         setCompanionBehavior(null);
         setSelCompanionTemplateId(null);
         setSelCompanionOptionId(null);
+        setExpandedCompanionTemplateId(null);
         setCompanionStepOpen(false);
         setAddAsTemporary(false);
         void loadNext(true);
@@ -3767,6 +3761,7 @@ function AddUnitSheet({
         setCompanionBehavior(null);
         setSelCompanionTemplateId(null);
         setSelCompanionOptionId(null);
+        setExpandedCompanionTemplateId(null);
         setCompanionStepOpen(false);
     }
 
@@ -3880,10 +3875,7 @@ function AddUnitSheet({
                 photoPath: null,
                 hasPhoto: false,
                 companionOwnerId: null,
-                rating:
-                    (selected.baseRating ?? 0) +
-                    (selectedOption.rating ?? 0) +
-                    (payload?.companionRatingBonus ?? 0),
+                rating: (selected.baseRating ?? 0) + (selectedOption.rating ?? 0),
                 weapons: [
                     toUnitWeapon(selectedOption.weapon1, selectedOption.weapon1Name),
                     ...(selectedOption.weapon2Name
@@ -4206,6 +4198,7 @@ function AddUnitSheet({
                                         setCompanionBehavior('COMPANION_ROBOT');
                                         setSelCompanionTemplateId(null);
                                         setSelCompanionOptionId(null);
+                                        setExpandedCompanionTemplateId(null);
                                     }}
                                     className={
                                         'h-8 rounded-full px-3 text-xs font-medium ' +
@@ -4222,6 +4215,7 @@ function AddUnitSheet({
                                         setCompanionBehavior('COMPANION_BEAST');
                                         setSelCompanionTemplateId(null);
                                         setSelCompanionOptionId(null);
+                                        setExpandedCompanionTemplateId(null);
                                     }}
                                     className={
                                         'h-8 rounded-full px-3 text-xs font-medium ' +
@@ -4256,6 +4250,7 @@ function AddUnitSheet({
                             <div className="grid gap-2">
                                 {availableCompanions.map((companionTemplate) => {
                                     const isCompanionSelected = selCompanionTemplateId === companionTemplate.id;
+                                    const isCompanionExpanded = expandedCompanionTemplateId === companionTemplate.id;
                                     const selectedCompanionOptionLocal = isCompanionSelected
                                         ? companionTemplate.options.find((o) => o.id === selCompanionOptionId) ?? null
                                         : null;
@@ -4269,8 +4264,13 @@ function AddUnitSheet({
                                             <button
                                                 type="button"
                                                 onClick={() => {
+                                                    if (isCompanionSelected) {
+                                                        setExpandedCompanionTemplateId((prev) => (prev === companionTemplate.id ? null : companionTemplate.id));
+                                                        return;
+                                                    }
                                                     setSelCompanionTemplateId(companionTemplate.id);
                                                     setSelCompanionOptionId(null);
+                                                    setExpandedCompanionTemplateId(companionTemplate.id);
                                                 }}
                                                 className="flex w-full items-center gap-2 p-3 text-left"
                                             >
@@ -4284,10 +4284,10 @@ function AddUnitSheet({
                                                     </div>
                                                     {isCompanionSelected ? <SpecialRow t={companionTemplate} hints={selectedCompanionHints} /> : null}
                                                 </div>
-                                                <div className="text-xs text-zinc-400">{isCompanionSelected ? <UpOutlined /> : <DownOutlined />}</div>
+                                                <div className="text-xs text-zinc-400">{isCompanionExpanded ? <UpOutlined /> : <DownOutlined />}</div>
                                             </button>
 
-                                            {isCompanionSelected ? (
+                                            {isCompanionExpanded ? (
                                                 <div className="bg-zinc-950 p-2">
                                                     {companionTemplate.options.map((o) => {
                                                         const checked = selCompanionOptionId === o.id;
@@ -4345,17 +4345,24 @@ function AddUnitSheet({
                             <div className="grid gap-2">
                                 {list.map((t) => {
                                     const isSel = t.id === selT;
+                                    const isExpanded = expandedTemplateId === t.id;
                                     const selectedCompanionHints = isSel ? weaponHintsForOption(selectedOption ?? undefined) : [];
 
                                     return (
                                         <div key={t.id} className={'rounded-2xl ' + (isSel ? 'bg-emerald-500/5' : 'bg-zinc-900')}>
                                             <button
                                                 onClick={() => {
+                                                    if (isSel) {
+                                                        setExpandedTemplateId((prev) => (prev === t.id ? null : t.id));
+                                                        return;
+                                                    }
                                                     setSelT(t.id);
+                                                    setExpandedTemplateId(t.id);
                                                     setSelO(null);
                                                     setCompanionBehavior(null);
                                                     setSelCompanionTemplateId(null);
                                                     setSelCompanionOptionId(null);
+                                                    setExpandedCompanionTemplateId(null);
                                                     setCompanionStepOpen(false);
                                                 }}
                                                 className="flex w-full items-center gap-2 p-3 text-left"
@@ -4375,10 +4382,10 @@ function AddUnitSheet({
                                                     </div>
                                                     {isSel ? <SpecialRow t={t} hints={selectedCompanionHints} /> : null}
                                                 </div>
-                                                <div className="text-xs text-zinc-400">{isSel ? <UpOutlined /> : <DownOutlined />}</div>
+                                                <div className="text-xs text-zinc-400">{isExpanded ? <UpOutlined /> : <DownOutlined />}</div>
                                             </button>
 
-                                            {isSel ? (
+                                            {isExpanded ? (
                                                 <div className="bg-zinc-950 p-2">
                                                     {t.options.map((o) => {
                                                         const checked = selO === o.id;

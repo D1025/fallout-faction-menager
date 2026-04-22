@@ -4,6 +4,7 @@ export const revalidate = 0;
 import { MobilePageShell } from '@/components/ui/antd/MobilePageShell';
 import { ArmyPageClient } from '@/components/army/ArmyPageClient';
 import { auth } from '@/lib/authServer';
+import { resolveAvailablePloysForArmy } from '@/lib/army/ploys';
 import { getPublicArmySnapshotByToken, type PublicArmySnapshot } from '@/lib/army/publicShare';
 import { prisma } from '@/server/prisma';
 import { redirect } from 'next/navigation';
@@ -111,16 +112,20 @@ export default async function Page({ params }: { params: Promise<{ token: string
             </MobilePageShell>
         );
     }
+    const armyMeta = await prisma.army.findUnique({
+        where: { id: snapshot.army.id },
+        select: { ownerId: true, subfactionId: true },
+    });
+    const ployReadModel = await resolveAvailablePloysForArmy({
+        factionId: snapshot.army.faction.id,
+        factionName: snapshot.army.faction.name,
+        subfactionId: armyMeta?.subfactionId ?? null,
+    });
 
     let canRedirectToArmyPath = false;
     if (userId) {
         try {
-            const owner = await prisma.army.findUnique({
-                where: { id: snapshot.army.id },
-                select: { ownerId: true },
-            });
-
-            if (owner && owner.ownerId !== userId) {
+            if (armyMeta && armyMeta.ownerId !== userId) {
                 await prisma.armyShare.upsert({
                     where: {
                         armyId_userId: {
@@ -136,7 +141,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
                     },
                 });
             }
-            canRedirectToArmyPath = Boolean(owner);
+            canRedirectToArmyPath = Boolean(armyMeta);
         } catch {
             // Never block shared preview because of auto-save errors.
         }
@@ -180,6 +185,15 @@ export default async function Page({ params }: { params: Promise<{ token: string
             units={units}
             rating={snapshot.army.rating}
             subfactionId={null}
+            availablePloys={ployReadModel.ploys.map((ploy) => ({
+                id: ploy.id,
+                name: ploy.name,
+                description: ploy.description,
+                sortOrder: ploy.sortOrder,
+                source: ploy.source,
+            }))}
+            ployMode={ployReadModel.mode}
+            gunnersResourcePoints={ployReadModel.gunnersResourcePoints}
         />
     );
 }

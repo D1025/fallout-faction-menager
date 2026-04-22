@@ -7,6 +7,7 @@ import {
     UserRole,
 } from '@prisma/client';
 import { createHash, randomBytes, scryptSync } from 'crypto';
+import { FACTION_PLOY_NAMES, PLOY_DEFINITIONS, STANDARD_PLOY_NAMES, SUBFACTION_PLOY_RULES } from './ploys-catalog.ts';
 
 const prisma = new PrismaClient();
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME ?? 'admin').trim();
@@ -404,6 +405,146 @@ async function replaceSubfactionUnitRules(
             data: denyUnitIds.map((unitId) => ({ subfactionId, unitId })),
             skipDuplicates: true,
         });
+    }
+}
+
+type SeedPloyRow = {
+    id: string;
+    name: string;
+    description: string;
+    sortOrder: number;
+    isStandard: boolean;
+};
+
+type SeedPloyDelegate = {
+    findFirst(args: { where: { name: string } }): Promise<SeedPloyRow | null>;
+    create(args: {
+        data: { name: string; description: string; sortOrder: number; isStandard: boolean };
+    }): Promise<SeedPloyRow>;
+    update(args: {
+        where: { id: string };
+        data: { description: string; sortOrder: number; isStandard: boolean };
+    }): Promise<SeedPloyRow>;
+};
+
+type SeedFactionPloyDelegate = {
+    deleteMany(args: { where: { factionId: string } }): Promise<{ count: number }>;
+    createMany(args: { data: Array<{ factionId: string; ployId: string }>; skipDuplicates?: boolean }): Promise<{ count: number }>;
+};
+
+type SeedSubfactionPloyAllowDelegate = {
+    deleteMany(args: { where: { subfactionId: string } }): Promise<{ count: number }>;
+    createMany(args: { data: Array<{ subfactionId: string; ployId: string }>; skipDuplicates?: boolean }): Promise<{ count: number }>;
+};
+
+type SeedSubfactionPloyDenyDelegate = {
+    deleteMany(args: { where: { subfactionId: string } }): Promise<{ count: number }>;
+    createMany(args: { data: Array<{ subfactionId: string; ployId: string }>; skipDuplicates?: boolean }): Promise<{ count: number }>;
+};
+
+type SeedFactionNameRow = { id: string; name: string };
+type SeedSubfactionNameRow = { id: string; name: string };
+
+const pPloys = prisma as unknown as {
+    ployDefinition: SeedPloyDelegate;
+    factionPloy: SeedFactionPloyDelegate;
+    subfactionPloyAllow: SeedSubfactionPloyAllowDelegate;
+    subfactionPloyDeny: SeedSubfactionPloyDenyDelegate;
+    faction: {
+        findMany(args: { where: { name: { in: string[] } }; select: { id: true; name: true } }): Promise<SeedFactionNameRow[]>;
+    };
+    subfaction: {
+        findMany(args: { where: { name: { in: string[] } }; select: { id: true; name: true } }): Promise<SeedSubfactionNameRow[]>;
+    };
+};
+
+async function upsertPloyDefinition(input: {
+    name: string;
+    description: string;
+    sortOrder: number;
+    isStandard: boolean;
+}) {
+    const existing = await pPloys.ployDefinition.findFirst({ where: { name: input.name } });
+    if (!existing) {
+        return pPloys.ployDefinition.create({ data: input });
+    }
+    return pPloys.ployDefinition.update({
+        where: { id: existing.id },
+        data: {
+            description: input.description,
+            sortOrder: input.sortOrder,
+            isStandard: input.isStandard,
+        },
+    });
+}
+
+async function seedPloyCatalog() {
+    const standardNames = new Set<string>(STANDARD_PLOY_NAMES);
+    const ployIdByName = new Map<string, string>();
+
+    for (const def of PLOY_DEFINITIONS) {
+        const row = await upsertPloyDefinition({
+            name: def.name,
+            description: def.description,
+            sortOrder: def.sortOrder,
+            isStandard: standardNames.has(def.name),
+        });
+        ployIdByName.set(row.name, row.id);
+    }
+
+    const mustPloyId = (name: string): string => {
+        const id = ployIdByName.get(name);
+        if (!id) throw new Error(`Missing ploy in seed catalog: ${name}`);
+        return id;
+    };
+
+    const factionNames = Object.keys(FACTION_PLOY_NAMES);
+    const factionRows = await pPloys.faction.findMany({
+        where: { name: { in: factionNames } },
+        select: { id: true, name: true },
+    });
+    const factionIdByName = new Map(factionRows.map((row) => [row.name, row.id] as const));
+
+    for (const factionName of factionNames) {
+        const factionId = factionIdByName.get(factionName);
+        if (!factionId) throw new Error(`Missing faction for ploy seed: ${factionName}`);
+
+        await pPloys.factionPloy.deleteMany({ where: { factionId } });
+        const names = FACTION_PLOY_NAMES[factionName] ?? [];
+        if (names.length > 0) {
+            await pPloys.factionPloy.createMany({
+                data: names.map((name) => ({ factionId, ployId: mustPloyId(name) })),
+                skipDuplicates: true,
+            });
+        }
+    }
+
+    const subfactionNames = SUBFACTION_PLOY_RULES.map((rule) => rule.subfactionName);
+    const subfactionRows = await pPloys.subfaction.findMany({
+        where: { name: { in: subfactionNames } },
+        select: { id: true, name: true },
+    });
+    const subfactionIdByName = new Map(subfactionRows.map((row) => [row.name, row.id] as const));
+
+    for (const rule of SUBFACTION_PLOY_RULES) {
+        const subfactionId = subfactionIdByName.get(rule.subfactionName);
+        if (!subfactionId) throw new Error(`Missing subfaction for ploy seed: ${rule.subfactionName}`);
+
+        await pPloys.subfactionPloyAllow.deleteMany({ where: { subfactionId } });
+        await pPloys.subfactionPloyDeny.deleteMany({ where: { subfactionId } });
+
+        if (rule.allow.length > 0) {
+            await pPloys.subfactionPloyAllow.createMany({
+                data: rule.allow.map((name) => ({ subfactionId, ployId: mustPloyId(name) })),
+                skipDuplicates: true,
+            });
+        }
+        if (rule.deny.length > 0) {
+            await pPloys.subfactionPloyDeny.createMany({
+                data: rule.deny.map((name) => ({ subfactionId, ployId: mustPloyId(name) })),
+                skipDuplicates: true,
+            });
+        }
     }
 }
 
@@ -5277,7 +5418,9 @@ async function main(): Promise<void> {
         { weapon1Id: mustWeaponId('Yao Guai Claws and Jaws'), costCaps: 60, rating: 60 },
     ]);
 
-    console.log('Seed OK: admin, effects, weapons, Brotherhood of Steel, Super Mutants, Survivors, Wasteland Raiders, The Pack, The Operators, The Disciples, The Gunners, Followers of the Winged One, Zetans, Children of Atom, Trappers, Automatrons, Legends, companions, unit templates.');
+    await seedPloyCatalog();
+
+    console.log('Seed OK: admin, effects, weapons, factions, subfactions, ploys, legends, companions, unit templates.');
 }
 main()
     .catch((e) => {

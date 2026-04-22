@@ -9,15 +9,13 @@
     "prisma:generate": "prisma generate",
     "prisma:db:push": "prisma db push",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "seed": "prisma db seed",
-    "seed:delta:01": "node prisma/seed-delta-01.ts",
-    "seed:delta:02": "node prisma/seed-delta-02.ts",
+    "seed": "npm run prisma:generate && prisma db seed",
+    "seed:delta:01": "npm run prisma:generate && node prisma/seed-delta-01.ts",
+    "seed:delta:02": "npm run prisma:generate && node prisma/seed-delta-02.ts",
+    "seed:delta:03": "npm run prisma:generate && node prisma/seed-delta-03.ts",
     "seed:prod": "prisma generate && prisma db seed",
     "start:prod": "prisma generate && prisma migrate deploy && next start -p 3000",
     "start:docker": "echo \"DATABASE_URL=$DATABASE_URL\" && prisma generate && prisma db push && prisma db seed && next start -p 3000"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

@@ -6,6 +6,16 @@ export const runtime = 'nodejs';
 
 type AsyncCtx = { params: Promise<{ id: string }> };
 
+type SubfactionDeleteTx = {
+    subfactionUnitAllow: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfactionUnitDeny: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfactionWeaponAllow: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfactionWeaponDeny: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfactionPloyAllow: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfactionPloyDeny: { deleteMany(args: { where: { subfactionId: string } }): Promise<unknown> };
+    subfaction: { delete(args: { where: { id: string } }): Promise<unknown> };
+};
+
 const PatchSchema = z.object({
     name: z.string().trim().min(2),
 });
@@ -35,11 +45,15 @@ export async function DELETE(_req: Request, ctx: AsyncCtx) {
     }
 
     await prisma.$transaction(async (tx) => {
-        await tx.subfactionUnitAllow.deleteMany({ where: { subfactionId: id } });
-        await tx.subfactionUnitDeny.deleteMany({ where: { subfactionId: id } });
-        await tx.subfactionWeaponAllow.deleteMany({ where: { subfactionId: id } });
-        await tx.subfactionWeaponDeny.deleteMany({ where: { subfactionId: id } });
-        await tx.subfaction.delete({ where: { id } });
+        const ptx = tx as unknown as SubfactionDeleteTx;
+
+        await ptx.subfactionUnitAllow.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfactionUnitDeny.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfactionWeaponAllow.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfactionWeaponDeny.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfactionPloyAllow.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfactionPloyDeny.deleteMany({ where: { subfactionId: id } });
+        await ptx.subfaction.delete({ where: { id } });
     });
 
     return new Response(null, { status: 204 });

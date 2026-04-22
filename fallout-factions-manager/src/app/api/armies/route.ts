@@ -13,7 +13,7 @@ type SubfactionDelegate = {
 const pSub = prisma as unknown as { subfaction: SubfactionDelegate };
 
 const CreateArmySchema = z.object({
-    name: z.string().min(3),
+    name: z.string().trim().min(3).max(120),
     factionId: z.string(),
     tier: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     // NEW: goalSetId from frontend (optional, for safety)
@@ -21,6 +21,19 @@ const CreateArmySchema = z.object({
     // NEW: subfaction is optional
     subfactionId: z.string().optional().nullable(),
 });
+
+async function hasArmyNameConflict(ownerId: string, name: string, excludeArmyId?: string): Promise<boolean> {
+    const found = await prisma.army.findFirst({
+        where: {
+            ownerId,
+            deleted: false,
+            ...(excludeArmyId ? { id: { not: excludeArmyId } } : {}),
+            name: { equals: name, mode: 'insensitive' },
+        },
+        select: { id: true },
+    });
+    return Boolean(found);
+}
 
 async function ensureUserExists(userId: string): Promise<boolean> {
     // In normal flow user is created in authorize() (Credentials),
@@ -59,6 +72,17 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, factionId, tier, goalSetId, subfactionId } = parsed.data;
+
+    if (await hasArmyNameConflict(ownerId, name)) {
+        return NextResponse.json(
+            {
+                error: 'ARMY_NAME_EXISTS',
+                details: 'You already have an active army with this name.',
+                field: 'name',
+            },
+            { status: 409 },
+        );
+    }
 
     // if subfactionId is provided, verify it exists and belongs to faction
     let finalSubfactionId: string | null = null;

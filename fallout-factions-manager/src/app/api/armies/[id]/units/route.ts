@@ -124,12 +124,6 @@ function hasStartPerk(unit: OptionRow['unit'], perkName: string): boolean {
     return unit.startPerks.some((sp) => sp.perk.name.trim().toUpperCase() === needle);
 }
 
-function companionRatingFromOption(option: OptionRow): number {
-    const optionRating = option.rating ?? 0;
-    const baseRating = option.unit.baseRating ?? 0;
-    return optionRating !== 0 ? optionRating : baseRating;
-}
-
 export async function POST(req: Request, ctx: AsyncCtx) {
     const { id } = await ctx.params;
     const armyId = id;
@@ -175,7 +169,6 @@ export async function POST(req: Request, ctx: AsyncCtx) {
 
     let companionOption: OptionRow | null = null;
     let companionPerk: PerkRow | null = null;
-    let companionRatingBonus = 0;
 
     if (companion) {
         if (mainOption.unit.roleTag !== 'CHAMPION') {
@@ -248,7 +241,6 @@ export async function POST(req: Request, ctx: AsyncCtx) {
                 status: 400,
             });
         }
-        companionRatingBonus = companionRatingFromOption(companionOption);
     }
 
     const created = await p.$transaction(async (tx) => {
@@ -286,7 +278,7 @@ export async function POST(req: Request, ctx: AsyncCtx) {
                 data: {
                     unitId: champion.id,
                     perkId: companionPerk.id,
-                    valueInt: companionRatingBonus,
+                    valueInt: null,
                 },
             });
 
@@ -318,7 +310,6 @@ export async function POST(req: Request, ctx: AsyncCtx) {
         return {
             championId: champion.id,
             companionId: linkedCompanionId,
-            companionRatingBonus,
         };
     });
 

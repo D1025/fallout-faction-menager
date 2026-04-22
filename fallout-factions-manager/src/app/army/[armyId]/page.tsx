@@ -11,6 +11,7 @@ import {
     resolveEffectiveTrainingFactionId,
     type TrainingRuleLookup,
 } from '@/lib/rules/trainingTable';
+import { resolveAvailablePloysForArmy } from '@/lib/army/ploys';
 
 type BonusKeys = 'HP' | 'S' | 'P' | 'E' | 'C' | 'I' | 'A' | 'L';
 type BonusMap = Record<BonusKeys, number>;
@@ -211,6 +212,11 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
     }
     const readOnly = !isOwner;
     const crewFactionName = army.faction.name;
+    const ployReadModel = await resolveAvailablePloysForArmy({
+        factionId: army.factionId,
+        factionName: army.faction.name,
+        subfactionId: army.subfactionId,
+    });
 
     const effectiveTrainingFactionId = resolveEffectiveTrainingFactionId({
         ownFactionId: army.factionId,
@@ -281,12 +287,6 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             ...u.unit.startPerks.map((sp) => sp.perk.name),
             ...u.chosenPerks.map((cp) => cp.perk.name),
         ];
-        const companionPerkBonus = u.chosenPerks.reduce((sum, cp) => {
-            const behavior = cp.perk.behavior ?? 'NONE';
-            if (behavior !== 'COMPANION_ROBOT' && behavior !== 'COMPANION_BEAST') return sum;
-            const bonus = cp.valueInt ?? 0;
-            return sum + (bonus > 0 ? bonus : 0);
-        }, 0);
 
         // Only positive stat upgrades count toward rating.
         const statsDelta = u.upgrades.reduce((acc, up) => {
@@ -304,7 +304,7 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             return acc + up.delta * per;
         }, 0);
 
-        return baseFromTemplate + optionRating + weaponDelta + statsDelta + companionPerkBonus;
+        return baseFromTemplate + optionRating + weaponDelta + statsDelta;
     }
 
     const uiUnits = unitsArr.map((u) => {
@@ -452,6 +452,15 @@ export default async function Page({ params }: { params: Promise<{ armyId: strin
             units={uiUnits}
             rating={uiUnits.reduce((acc, u) => acc + (u.present ? u.rating : 0), 0)}
             subfactionId={(army as unknown as { subfactionId?: string | null }).subfactionId ?? null}
+            availablePloys={ployReadModel.ploys.map((ploy) => ({
+                id: ploy.id,
+                name: ploy.name,
+                description: ploy.description,
+                sortOrder: ploy.sortOrder,
+                source: ploy.source,
+            }))}
+            ployMode={ployReadModel.mode}
+            gunnersResourcePoints={ployReadModel.gunnersResourcePoints}
         />
     );
 }

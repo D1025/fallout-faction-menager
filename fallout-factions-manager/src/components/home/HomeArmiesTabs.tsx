@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { confirmAction, notifyApiError, notifySuccess, notifyWarning } from '@/lib/ui/notify';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { CopyOutlined, DeleteOutlined, EllipsisOutlined, LinkOutlined, QrcodeOutlined, ReloadOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, EditOutlined, EllipsisOutlined, LinkOutlined, QrcodeOutlined, ReloadOutlined, ShareAltOutlined, StopOutlined } from '@ant-design/icons';
 import { FilterBar, SortSelect, type ActiveFilterChip } from '@/components/ui/filters';
 import { EmptyState } from '@/components/ui/antd/ScreenStates';
 import { Portal } from '@/components/ui/Portal';
@@ -345,11 +345,13 @@ function ShareArmyModal({
 function DotsMenu({
     kind,
     armyId,
+    currentName,
     shareId,
     onDeleted,
 }: {
     kind: 'MINE' | 'SHARED';
     armyId: string;
+    currentName: string;
     shareId?: string;
     onDeleted?: () => void;
 }) {
@@ -426,6 +428,44 @@ function DotsMenu({
         });
     }
 
+    async function renameArmy() {
+        setOpen(false);
+        if (kind !== 'MINE') {
+            notifyWarning('Only your own armies can be renamed.');
+            return;
+        }
+
+        const nextRaw = window.prompt('Enter new faction name:', currentName);
+        if (nextRaw == null) return;
+
+        const nextName = nextRaw.trim();
+        if (nextName.length < 3) {
+            notifyWarning('Name must be at least 3 characters.');
+            return;
+        }
+
+        const res = await fetch(`/api/armies/${armyId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nextName }),
+        });
+
+        if (!res.ok) {
+            const contentType = res.headers.get('content-type') ?? '';
+            if (contentType.includes('application/json')) {
+                const payload = (await res.json().catch(() => null)) as { error?: string; details?: string } | null;
+                notifyApiError(payload?.details || payload?.error || 'Failed to rename army.');
+            } else {
+                const fallback = await res.text().catch(() => '');
+                notifyApiError(fallback || 'Failed to rename army.');
+            }
+            return;
+        }
+
+        notifySuccess('Faction name updated.');
+        onDeleted?.();
+    }
+
     return (
         <div className="relative">
             <button
@@ -454,6 +494,14 @@ function DotsMenu({
                 >
                     {kind === 'MINE' ? (
                         <>
+                            <button
+                                type="button"
+                                onClick={() => void renameArmy()}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-900"
+                            >
+                                <EditOutlined className="text-zinc-300" /> Rename faction
+                            </button>
+                            <div className="h-px bg-zinc-800" />
                             <button
                                 type="button"
                                 onClick={(e) => {
@@ -530,7 +578,7 @@ function ArmyCard({
 
                 <div className="flex shrink-0 items-start gap-2">
                     {right}
-                    <DotsMenu kind={kind} armyId={a.id} shareId={shareId} onDeleted={onDeleted} />
+                    <DotsMenu kind={kind} armyId={a.id} currentName={a.name} shareId={shareId} onDeleted={onDeleted} />
                 </div>
             </div>
         </div>

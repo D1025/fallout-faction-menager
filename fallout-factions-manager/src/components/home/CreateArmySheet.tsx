@@ -118,8 +118,14 @@ function Sheet({ factions, onClose }: { factions: FactionDTO[]; onClose: () => v
             }),
         });
         if (!res.ok) {
-            const txt = await res.text().catch(() => '');
-            notifyApiError(txt, 'Failed to create army');
+            const contentType = res.headers.get('content-type') ?? '';
+            if (contentType.includes('application/json')) {
+                const payload = (await res.json().catch(() => null)) as { details?: string; error?: string } | null;
+                notifyApiError(payload?.details || payload?.error || 'Failed to create army', 'Failed to create army');
+            } else {
+                const txt = await res.text().catch(() => '');
+                notifyApiError(txt || 'Failed to create army', 'Failed to create army');
+            }
             return;
         }
         const { id } = (await res.json()) as { id: string };

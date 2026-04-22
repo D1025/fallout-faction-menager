@@ -436,12 +436,6 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             ...unit.unit.startPerks.map((sp) => sp.perk.name),
             ...unit.chosenPerks.map((cp) => cp.perk.name),
         ];
-        const companionPerkBonus = unit.chosenPerks.reduce((sum, cp) => {
-            const behavior = cp.perk.behavior ?? 'NONE';
-            if (behavior !== 'COMPANION_ROBOT' && behavior !== 'COMPANION_BEAST') return sum;
-            const bonus = cp.valueInt ?? 0;
-            return sum + (bonus > 0 ? bonus : 0);
-        }, 0);
 
         const statsDelta = unit.upgrades.reduce((acc, up) => {
             if (up.delta <= 0) return acc;
@@ -458,7 +452,7 @@ async function buildSnapshotByArmyId(armyId: string, shareToken: string): Promis
             return acc + up.delta * per;
         }, 0);
 
-        return baseFromTemplate + optionRating + weaponDelta + statsDelta + companionPerkBonus;
+        return baseFromTemplate + optionRating + weaponDelta + statsDelta;
     }
 
     const units = armyUnits.map((u) => {
