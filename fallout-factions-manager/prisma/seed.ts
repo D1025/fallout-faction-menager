@@ -2584,31 +2584,31 @@ async function main(): Promise<void> {
         name: 'Super Mutants',
         goalSets: [
             {
-                name: 'DEAR HEARTS AND GENTLE PEOPLE',
+                name: 'SURVIVAL OF THE FITTEST',
                 goals: [
-                    { tier: 1, description: 'A model in the crew uses the Patch Up Action.', target: 8 },
-                    { tier: 1, description: 'A Rare Chem is added to the Crew Roster.', target: 2 },
-                    { tier: 1, description: 'You purchase a Modification for a Pistol or Rifle.', target: 3 },
-                    { tier: 2, description: 'Your crew takes the Barter Story Action.', target: 4 },
-                    { tier: 2, description: 'You use the No Place Like Home Survivors Ploy.', target: 3 },
-                    { tier: 2, description: 'You Upgrade a model.', target: 4 },
-                    { tier: 3, description: 'You end a game with fewer Incapacitated models than your opponent.', target: 3 },
-                    { tier: 3, description: 'A Champion recovers from Serious Injuries.', target: 5 },
-                    { tier: 3, description: 'Your crew has 5 Champions.', target: 1 },
+                    { tier: 1, description: 'You Upgrade a model\'s Strength or Endurance.', target: 4 },
+                    { tier: 1, description: 'You modify a weapon.', target: 3 },
+                    { tier: 1, description: 'A model in the crew Incapacitates an Enemy Champion.', target: 4 },
+                    { tier: 2, description: 'A model in the crew gains a Strength or Endurance Perk.', target: 2 },
+                    { tier: 2, description: 'An Enemy model Fails a Confusion Test.', target: 5 },
+                    { tier: 2, description: 'You end a game with fewer Incapacitated models than your opponent.', target: 3 },
+                    { tier: 3, description: 'You use a Super Mutant Ploy.', target: 6 },
+                    { tier: 3, description: 'You modify a weapon that already has two Modifications.', target: 3 },
+                    { tier: 3, description: 'You have a model with 8 Upgrades.', target: 1 },
                 ],
             },
             {
-                name: 'MY HOME TOWN',
+                name: 'OURS BY RIGHT',
                 goals: [
-                    { tier: 1, description: 'You build a Facility using the Expand Story Action.', target: 1 },
-                    { tier: 1, description: 'You have at least 50 Caps in your Stash.', target: 1 },
-                    { tier: 1, description: 'You use a Survivors Ploy.', target: 3 },
-                    { tier: 2, description: 'Your crew Incapacitates an Enemy model.', target: 10 },
-                    { tier: 2, description: 'A model in your crew gains a Charisma or Intelligence Perk.', target: 4 },
-                    { tier: 2, description: 'The crew takes the Recruit Story Action.', target: 5 },
+                    { tier: 1, description: 'You build a Facility.', target: 1 },
+                    { tier: 1, description: 'The crew earns at least 3 XP in a single game.', target: 2 },
+                    { tier: 1, description: 'A model in the crew passes a Confusion Test.', target: 5 },
+                    { tier: 2, description: 'Your crew has at least 5 Reach at the end of the Story Phase.', target: 3 },
+                    { tier: 2, description: 'Your crew finds a dose of Rare Chems.', target: 4 },
+                    { tier: 2, description: 'You force another player to become Nomadic.', target: 1 },
+                    { tier: 3, description: 'You have at least 100 Caps in your Stash.', target: 1 },
+                    { tier: 3, description: 'You play a Raid Objective as the Attacker.', target: 3 },
                     { tier: 3, description: 'Your crew has at least 10 Reach.', target: 1 },
-                    { tier: 3, description: 'You take the Redeem Captive Story Action.', target: 2 },
-                    { tier: 3, description: 'An Enemy model Fails a Confusion Test.', target: 6 },
                 ],
             },
             {
@@ -2667,8 +2667,9 @@ async function main(): Promise<void> {
     });
     await setUnitStartPerks(brute.id, ['BURLY', 'RAD RESISTANT']);
     await replaceUnitOptions(brute.id, [
-        { weapon1Id: mustWeaponId('Hand Weapon'), weapon2Id: mustWeaponId('Molotov Cocktails'), costCaps: 34, rating: 34 },
-        { weapon1Id: mustWeaponId('Heavy Pipe Pistol'), weapon2Id: mustWeaponId('Sledgehammer'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Laser Rifle'), costCaps: 40, rating: 40 },
+        { weapon1Id: mustWeaponId('Sledgehammer'), costCaps: 37, rating: 37 },
+        { weapon1Id: mustWeaponId('Minigun'), costCaps: 48, rating: 48 },
     ]);
 
     const enforcer = await upsertUnitTemplate('Enforcer', {
